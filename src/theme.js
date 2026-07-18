@@ -39,3 +39,13 @@ export const toneColor = (t) =>
 // z-score -> colour, with the same break points the legacy used.
 export const zColor = (z) =>
   z >= THRESH ? c.alarm : z >= 0.75 ? c.caution : z <= -0.75 ? c.mitig : c.muted;
+
+// Vertical crisis / regime markers drawn on every time-series chart.
+// `year` is a decimal year; `short` is the on-chart label. Tunable in one place.
+export const CRISES = [
+  { year: 1971, short: "Gold std. ends", label: "US ends gold convertibility (1971)" },
+  { year: 1987, short: "Black Monday", label: "Black Monday crash (1987)" },
+  { year: 2000, short: "Dot-com", label: "Dot-com peak (2000)" },
+  { year: 2008, short: "GFC", label: "Global financial crisis (2007–08)" },
+  { year: 2020, short: "COVID", label: "COVID crash (2020)" },
+];
