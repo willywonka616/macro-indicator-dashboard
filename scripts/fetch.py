@@ -309,7 +309,7 @@ def build_us(manual: dict, force: bool) -> dict:
         cb_reserves_row = {
             "label": "World CB reserves in USD", "value": num(cofer["latest"]),
             "display": pct_display(cofer["latest"], 1), "unit": "", "tone": "mitig",
-            "tag": "live", "src": "IMF COFER (API)", "asOf": cofer["asOf"], "history": cofer["history"],
+            "tag": "live", "src": "IMF COFER (DBnomics)", "asOf": cofer["asOf"], "history": cofer["history"],
         }
     except Exception as e:  # noqa: BLE001
         print(f"IMF COFER unavailable, using manual value: {e}")
