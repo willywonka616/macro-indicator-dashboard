@@ -74,7 +74,21 @@ export default function Chart({ data, color, unit = "", height = 300 }) {
   const area = `${px(minX).toFixed(1)},${py(loY).toFixed(1)} ${line} ${px(maxX).toFixed(1)},${py(loY).toFixed(1)}`;
   const last = data[data.length - 1];
   const zeroInRange = loY < 0 && hiY > 0;
-  const crises = CRISES.filter((cr) => cr.year >= minX && cr.year <= maxX);
+  // Cascade crisis labels left-to-right with a guaranteed minimum gap so
+  // clusters of 2+ close markers (e.g. 1973/1979/1980 on a narrow phone
+  // chart) fan out instead of stacking on top of each other. Each label's
+  // TEXT position is pushed right only as far as needed to clear the
+  // previous one; the dashed reference line always stays at the marker's
+  // true year. Computed from actual on-screen spacing, so it holds at any
+  // chart width.
+  const LABEL_MIN_GAP = 16;
+  let lastTx = -Infinity;
+  const crises = CRISES.filter((cr) => cr.year >= minX && cr.year <= maxX).map((cr) => {
+    const cx = px(cr.year);
+    const tx = Math.max(cx - 3, lastTx + LABEL_MIN_GAP);
+    lastTx = tx;
+    return { ...cr, cx, tx };
+  });
 
   const onMove = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -130,14 +144,15 @@ export default function Chart({ data, color, unit = "", height = 300 }) {
 
         {/* crisis / regime markers */}
         {crises.map((cr, i) => {
-          const cx = px(cr.year);
+          const { cx, tx } = cr;
+          const ly = m.top + 3;
           return (
             <g key={`c${i}`}>
               <line x1={cx} x2={cx} y1={m.top} y2={m.top + ih} stroke={c.faint} strokeWidth={1} strokeDasharray="3 3" opacity={0.55} />
               <text
-                x={cx - 3}
-                y={m.top + 3}
-                transform={`rotate(-90 ${cx - 3} ${m.top + 3})`}
+                x={tx}
+                y={ly}
+                transform={`rotate(-90 ${tx} ${ly})`}
                 textAnchor="end"
                 fontSize={9}
                 fill={c.faint}

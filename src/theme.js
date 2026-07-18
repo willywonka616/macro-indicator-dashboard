@@ -48,6 +48,6 @@ export const CRISES = [
   { year: 1980, short: "1980", label: "Volcker shock / early-80s recession (1980)" },
   { year: 1987, short: "Black Monday", label: "Black Monday crash (1987)" },
   { year: 2000, short: "Dot-com", label: "Dot-com peak (2000)" },
-  { year: 2008, short: "GFC", label: "Global financial crisis (2007–08)" },
+  { year: 2008, short: "Subprime mortgage crisis", label: "Subprime mortgage crisis (2007–08)" },
   { year: 2020, short: "COVID", label: "COVID crash (2020)" },
 ];
