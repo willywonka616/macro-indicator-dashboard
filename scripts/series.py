@@ -36,6 +36,8 @@ FRED_SERIES = {
     "TCMDO":  {"label": "Total debt, all sectors", "units": "Millions of Dollars", "freq": "Quarterly", "start": "1945", "kind": "level"},
     "IEABC":  {"label": "Balance on current account", "units": "Millions of Dollars", "freq": "Quarterly", "start": "1960", "kind": "level"},
     "TRESEGUSM052N": {"label": "Total reserves excl. gold", "units": "Millions of Dollars", "freq": "Monthly", "start": "1950s", "kind": "level"},
+    "DGS10":  {"label": "10-year Treasury yield", "units": "Percent", "freq": "Daily", "start": "1962", "kind": "percent"},
+    "CPIAUCSL": {"label": "CPI (all urban)", "units": "Index 1982-1984=100", "freq": "Monthly", "start": "1947", "kind": "level"},
 }
 
 # --- unit normalisation --------------------------------------------------

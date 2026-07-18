@@ -10,12 +10,6 @@
       "cbLT": { "z": 1.0, "label": "Central bank · long-term", "verdict": "Moderate, could accelerate" },
       "shortTerm": { "level": "Low", "note": "Can change overnight if debt demand weakens or net-selling starts" }
     },
-    "realRatesAssessment": {
-      "display": "Workable",
-      "unit": "real rates",
-      "tone": "neutral",
-      "read": "Real rates currently high enough for lenders without crushing borrowers — the balance Dalio watches."
-    },
     "holders": {
       "centralBank": { "display": "13%", "tone": "neutral", "src": "TIC / FRED" },
       "domestic": { "display": "57%", "tone": "neutral", "src": "TIC" },

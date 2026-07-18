@@ -144,7 +144,11 @@ def verify() -> int:
 
 # --- formatting ----------------------------------------------------------
 
-def pct_display(v, decimals=0):
+def pct_display(v, decimals=None):
+    # Small magnitudes need a decimal so the headline matches the chart
+    # (e.g. reserves 0.8% must not round to "1%").
+    if decimals is None:
+        decimals = 1 if abs(v) < 10 else 0
     q = round(v, decimals)
     s = f"{abs(q):.{decimals}f}"
     return (MINUS if q < 0 else "") + s + "%"
@@ -192,7 +196,7 @@ def build_us(manual: dict, force: bool) -> dict:
     prev = _prev_values()
 
     # --- fetch every FRED series we need ---
-    need = ["FYGFGDQ188S", "GDP", "TCMDO", "IEABC", "TRESEGUSM052N"]
+    need = ["FYGFGDQ188S", "GDP", "TCMDO", "IEABC", "TRESEGUSM052N", "DGS10", "CPIAUCSL"]
     raw = {}
     for sid in need:
         units, obs = series_obs(sid)  # raises loudly on empty/404
@@ -221,13 +225,14 @@ def build_us(manual: dict, force: bool) -> dict:
     annualized = "annual rate" in (ca_units or "").lower()
     current_acct = S.current_account_pct_gdp_3yr(raw["IEABC"][1], ca_units,
                                                  raw["GDP"][1], raw["GDP"][0], annualized)
+    real_rate = S.real_10y_rate(raw["DGS10"][1], raw["CPIAUCSL"][1])
 
     # --- move guards on the positive-level ratios ---
     _check_move("debt_to_gdp", debt["latest"], prev, force)
     _check_move("debt_service_to_revenue", service["latest"], prev, force)
     _check_move("reserves_to_gdp", reserves["latest"], prev, force)
 
-    def live_row(label, metric, tone, src, unit, decimals=0):
+    def live_row(label, metric, tone, src, unit, decimals=None):
         return {
             "label": label, "value": num(metric["latest"]),
             "display": pct_display(metric["latest"], decimals), "unit": unit,
@@ -246,7 +251,6 @@ def build_us(manual: dict, force: bool) -> dict:
             row["history"] = spec["history"]
         return row
 
-    rr = mu["realRatesAssessment"]
     rc = mu["reserveCurrency"]
 
     vitals = [
@@ -256,9 +260,9 @@ def build_us(manual: dict, force: bool) -> dict:
         {"key": "debt_service_to_revenue", "label": "Debt service vs income", **_vital(service, "risk",
             "Interest alone eats roughly a fifth of federal revenue — before principal.",
             "derived · Treasury (budget basis)", "of revenue")},
-        {"key": "real_rates", "label": "Rates vs inflation & growth", "value": None,
-            "display": rr["display"], "unit": rr.get("unit", "real rates"), "tone": rr.get("tone", "neutral"),
-            "read": rr["read"], "tag": "model", "src": "Dalio assessment", "asOf": mu["baseline"]},
+        {"key": "real_rates", "label": "Rates vs inflation & growth", **_vital(real_rate, "neutral",
+            "10-year Treasury yield minus trailing-12-month CPI inflation — the real cost of borrowing Dalio watches.",
+            "derived · FRED (10y − CPI)", "real 10y")},
         {"key": "reserves_to_gdp", "label": "Debt & service vs savings", **_vital(reserves, "risk",
             "Almost no liquid buffer (no sovereign wealth), so little protection if demand for the debt drops.",
             "derived · FRED / IMF", "reserves / GDP")},
@@ -292,6 +296,7 @@ def build_us(manual: dict, force: bool) -> dict:
         "rows": [
             live_row("Total debt (all sectors)", total_debt, "caution", "FRED Z.1", "of GDP"),
             live_row("Current account, 3-yr avg", current_acct, "caution", "BEA / FRED", "of GDP"),
+            live_row("Real 10-year rate (10y − CPI)", real_rate, "neutral", "derived · FRED (DGS10 − CPI)", "real, 10y"),
         ],
     }
     reserve_ccy_panel = {
