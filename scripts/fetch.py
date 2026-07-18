@@ -32,6 +32,7 @@ import requests
 
 import series as S
 import treasury as T
+import imf as I
 
 FRED = "https://api.stlouisfed.org/fred"
 ROOT = Path(__file__).resolve().parent.parent
@@ -138,6 +139,9 @@ def verify() -> int:
 
     # Treasury Fiscal Data (no key) — dumps real schema + the computed ratio.
     treasury_ok = T.verify()
+
+    # IMF COFER (no key) — non-fatal; dumps indicators + the computed USD share.
+    I.verify()
 
     return 0 if (fred_ok and treasury_ok) else 1
 
@@ -299,6 +303,18 @@ def build_us(manual: dict, force: bool) -> dict:
             live_row("Real 10-year rate (10y − CPI)", real_rate, "neutral", "derived · FRED (DGS10 − CPI)", "real, 10y"),
         ],
     }
+    # World CB reserves in USD: live from IMF COFER, else fall back to manual.
+    try:
+        cofer = I.cofer_usd_share()
+        cb_reserves_row = {
+            "label": "World CB reserves in USD", "value": num(cofer["latest"]),
+            "display": pct_display(cofer["latest"], 1), "unit": "", "tone": "mitig",
+            "tag": "live", "src": "IMF COFER (API)", "asOf": cofer["asOf"], "history": cofer["history"],
+        }
+    except Exception as e:  # noqa: BLE001
+        print(f"IMF COFER unavailable, using manual value: {e}")
+        cb_reserves_row = manual_row("World CB reserves in USD", rc["cbReserves"])
+
     reserve_ccy_panel = {
         "eyebrow": "Reserve-currency status", "tag": "manual", "accent": "#5B8DD6",
         "note": rc["note"],
@@ -306,7 +322,7 @@ def build_us(manual: dict, force: bool) -> dict:
             manual_row("World trade in USD", rc["trade"]),
             manual_row("World debt in USD", rc["debt"]),
             manual_row("Global equity market cap", rc["equity"]),
-            manual_row("World CB reserves in USD", rc["cbReserves"]),
+            cb_reserves_row,
         ],
     }
 

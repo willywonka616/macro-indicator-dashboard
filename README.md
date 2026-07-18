@@ -133,6 +133,11 @@ No component changes needed — the country selector is driven by the keys in
 - **Debt vs GDP** uses FRED `FYGFGDQ188S` — federal debt **held by the public**
   as a % of GDP (Dalio's framing), not gross public debt (`GFDEGDQ188S`, which
   also counts intragovernmental holdings and runs ~20 pts higher).
+- **World CB reserves in USD** (reserve-currency panel) is live from the **IMF
+  COFER** API (`scripts/imf.py`): USD-allocated ÷ sum of all currency components,
+  quarterly. IMF is fetched best-effort — if it's unreachable the build **falls
+  back to the manual value** rather than failing the run. The other three
+  reserve-currency shares (trade, debt, equity) stay manual (no free API).
 - **Current account / GDP** (from FRED `IEABC`, BEA) is a 3-year trailing average;
   the fetcher annualises the quarterly flow unless the series is already annualised
   (`--verify` shows the units so this can be confirmed).
