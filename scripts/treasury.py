@@ -28,8 +28,6 @@ BASE = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service"
 
 # Gross interest on the public debt (marketable + government account series).
 INTEREST_ENDPOINT = "/v2/accounting/od/interest_expense"
-# Summary of receipts, outlays and the surplus/deficit — has "Total Receipts".
-RECEIPTS_ENDPOINT = "/v1/accounting/mts/mts_table_1"
 
 TTM = 12  # trailing months used to annualise both numerator and denominator
 
@@ -84,57 +82,84 @@ def _ym(record_date: str):
 # --- monthly series ------------------------------------------------------
 
 def monthly_interest() -> dict:
-    """{(year, month): total gross interest on the public debt, $} — monthly."""
+    """{(year, month): total gross interest on the public debt, $} — monthly.
+
+    Sums the accrued-interest rows across categories (public issues + GAS) and
+    security types; skips amortization/discount memoranda so nothing is
+    double-counted.
+    """
     rows = _get(INTEREST_ENDPOINT, {"sort": "record_date"})
     if not rows:
         raise RuntimeError("interest_expense: no rows returned")
     s = rows[0]
-    datek = _pick(s, ["record_date"], contains=["record", "date"])
-    amtk = _pick(s, ["month_expense_amt", "interest_expense_amt"],
-                 contains=["month", "amt"], exclude=["fytd", "prior", "fiscal", "year"])
-    catk = _pick(s, ["expense_category_desc", "expense_type_desc", "classification_desc"],
-                 contains=["desc"])
-    if not (datek and amtk and catk):
-        raise RuntimeError(f"interest_expense: could not map fields from {list(s)}")
+    amtk = _pick(s, ["month_expense_amt"], contains=["month", "amt"],
+                 exclude=["fytd", "prior", "fiscal", "year"])
+    groupk = _pick(s, ["expense_group_desc"], contains=["group", "desc"])
+    if not amtk:
+        raise RuntimeError(f"interest_expense: no month amount field in {list(s)}")
 
-    totals, comps = {}, defaultdict(float)
+    monthly = defaultdict(float)
     for row in rows:
         amt = _num(row.get(amtk))
         if amt is None:
             continue
-        ym = _ym(row[datek])
-        cat = str(row.get(catk, "")).lower()
-        if "total" in cat and "interest" in cat:
-            totals[ym] = amt                 # explicit total row wins
-        elif "total" not in cat:
-            comps[ym] += amt                 # else sum the components
-    out = {ym: totals.get(ym, comps.get(ym)) for ym in set(totals) | set(comps)}
-    return {k: v for k, v in out.items() if v}
+        # keep only accrued *interest* groups when the column exists
+        if groupk and "interest" not in str(row.get(groupk, "")).lower():
+            continue
+        monthly[_ym(row["record_date"])] += amt
+    return {k: v for k, v in monthly.items() if v}
+
+
+# Receipts: MTS. Try tables in order; use the row whose classification is the
+# grand total of receipts ("Total ... Receipts").
+RECEIPTS_ENDPOINTS = [
+    "/v1/accounting/mts/mts_table_4",  # Receipts of the U.S. Government
+    "/v1/accounting/mts/mts_table_1",  # Summary of Receipts/Outlays
+]
+
+
+def _is_total_receipts(desc: str) -> bool:
+    d = desc.lower()
+    if "on-budget" in d or "off-budget" in d or "net" in d:
+        return False  # want the unqualified grand total, not a sub-total
+    return "total" in d and "receipt" in d
 
 
 def monthly_receipts() -> dict:
-    """{(year, month): total federal receipts, $} — monthly (current-month)."""
-    rows = _get(RECEIPTS_ENDPOINT, {"sort": "record_date"})
-    if not rows:
-        raise RuntimeError("mts_table_1: no rows returned")
-    s = rows[0]
-    datek = _pick(s, ["record_date"], contains=["record", "date"])
-    classk = _pick(s, ["classification_desc"], contains=["classification", "desc"]) \
-        or _pick(s, [], contains=["desc"])
-    amtk = _pick(s, ["current_month_rcpt_outly_amt", "current_month_gross_rcpt_amt"],
-                 contains=["current", "month", "amt"], exclude=["fytd", "prior", "year"])
-    if not (datek and classk and amtk):
-        raise RuntimeError(f"mts_table_1: could not map fields from {list(s)}")
+    """{(year, month): total federal receipts, $} — monthly (current-month).
 
-    out = {}
-    for row in rows:
-        if "total receipts" in str(row.get(classk, "")).lower():
-            amt = _num(row.get(amtk))
-            if amt is not None:
-                out[_ym(row[datek])] = amt
-    if not out:
-        raise RuntimeError("mts_table_1: no 'Total Receipts' rows matched")
-    return out
+    If several "total receipts" rows match in a month (e.g. on/off-budget
+    splits slip through), the largest is taken — the grand total.
+    """
+    last_err = "no endpoints tried"
+    for ep in RECEIPTS_ENDPOINTS:
+        try:
+            rows = _get(ep, {"sort": "record_date"})
+            if not rows:
+                last_err = f"{ep}: no rows"
+                continue
+            s = rows[0]
+            classk = _pick(s, ["classification_desc"], contains=["classification", "desc"]) \
+                or _pick(s, [], contains=["desc"])
+            amtk = _pick(s, ["current_month_gross_rcpt_amt", "current_month_rcpt_amt"],
+                         contains=["month", "rcpt", "amt"],
+                         exclude=["fytd", "prior", "year", "outly", "dfct"])
+            if not (classk and amtk):
+                last_err = f"{ep}: could not map fields from {list(s)}"
+                continue
+            out = {}
+            for row in rows:
+                if _is_total_receipts(str(row.get(classk, ""))):
+                    amt = _num(row.get(amtk))
+                    if amt is not None:
+                        ym = _ym(row["record_date"])
+                        out[ym] = max(out.get(ym, 0.0), amt)
+            if out:
+                return out
+            last_err = f"{ep}: no 'Total Receipts' rows matched"
+        except Exception as e:  # noqa: BLE001
+            last_err = f"{ep}: {e}"
+    raise RuntimeError(f"receipts: {last_err}")
 
 
 # --- derived metric ------------------------------------------------------
@@ -169,23 +194,51 @@ def debt_service_ratio() -> dict:
 
 # --- verification --------------------------------------------------------
 
+def _distinct(rows, col, limit=30):
+    seen = []
+    for r in rows:
+        v = r.get(col)
+        if v is not None and v not in seen:
+            seen.append(v)
+        if len(seen) >= limit:
+            break
+    return seen
+
+
+def _dump(label, ep, amount_hint):
+    """Print an endpoint's schema, its *_desc distinct values, and the latest
+    date's rows — the source of truth for field names (API isn't reachable from
+    the dev env)."""
+    rows = _get(ep, {"sort": "-record_date", "page[size]": "300"}, max_pages=1)
+    if not rows:
+        print(f"[{label}] {ep}  no rows"); return
+    s = rows[0]
+    print(f"[{label}] {BASE}{ep}")
+    print("  fields:", ", ".join(s))
+    for col in [c for c in s if c.endswith("_desc")]:
+        print(f"  distinct {col}: {_distinct(rows, col)}")
+    latest = s["record_date"]
+    amtk = _pick(s, [], contains=amount_hint, exclude=["fytd", "prior", "year"])
+    dcol = _pick(s, ["classification_desc", "expense_group_desc"], contains=["desc"])
+    print(f"  latest {latest} rows ({dcol} = {amtk}):")
+    for r in [r for r in rows if r["record_date"] == latest][:15]:
+        print(f"    {r.get(dcol)} = {r.get(amtk)}")
+
+
 def verify() -> bool:
-    """Dump each endpoint's schema + latest values, and try the computation.
-    Returns True on success. Printed output is the source of truth for the
-    real field names (the API can't be introspected from the dev env)."""
+    """Dump the Treasury schemas and try the ratio. Returns True on success."""
     print("\nVerifying Treasury Fiscal Data endpoints\n")
     ok = True
-    for name, ep in [("interest", INTEREST_ENDPOINT), ("receipts", RECEIPTS_ENDPOINT)]:
+    try:
+        _dump("interest", INTEREST_ENDPOINT, ["month", "amt"])
+    except Exception as e:  # noqa: BLE001
+        ok = False; print(f"[interest] FAILED: {e}")
+    for ep in RECEIPTS_ENDPOINTS:
         try:
-            rows = _get(ep, {"sort": "-record_date", "page[size]": "3"}, max_pages=1)
-            if not rows:
-                raise RuntimeError("no rows")
-            print(f"[{name}] {BASE}{ep}")
-            print("  fields:", ", ".join(rows[0].keys()))
-            print("  latest record:", rows[0])
+            print()
+            _dump("receipts?", ep, ["rcpt", "amt"])
         except Exception as e:  # noqa: BLE001
-            ok = False
-            print(f"[{name}] {ep}  FAILED: {e}")
+            print(f"[receipts?] {ep} FAILED: {e}")
 
     try:
         r = debt_service_ratio()
