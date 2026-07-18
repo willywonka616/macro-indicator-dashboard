@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# build output
+dist/
+
+# vite / logs
+*.log
+npm-debug.log*
+.vite/
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/

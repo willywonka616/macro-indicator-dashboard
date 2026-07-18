@@ -1,0 +1,219 @@
+{
+  "generatedAt": null,
+  "meta": {
+    "seed": true,
+    "note": "Bootstrap seed carried over from the legacy March 2025 snapshot so the site renders before the fetcher has run. scripts/fetch.py overwrites this with live, full-resolution data (and merges data/manual.json) on the first GitHub Actions run. Numbers here are coarse annual anchors — do not treat as current.",
+    "schema": 1
+  },
+  "countries": {
+    "US": {
+      "name": "United States",
+      "baseline": "March 2025",
+      "headline": {
+        "govLT": {
+          "z": 2.4,
+          "label": "Central government · long-term",
+          "verdict": "Very high",
+          "source": "model"
+        },
+        "cbLT": {
+          "z": 1.0,
+          "label": "Central bank · long-term",
+          "verdict": "Moderate, could accelerate",
+          "source": "model"
+        },
+        "shortTerm": {
+          "level": "Low",
+          "note": "Can change overnight if debt demand weakens or net-selling starts",
+          "source": "model"
+        }
+      },
+      "vitals": [
+        {
+          "key": "debt_to_gdp",
+          "label": "Debt vs income",
+          "value": 99,
+          "display": "99%",
+          "unit": "of GDP",
+          "tone": "risk",
+          "read": "Central-government debt near one year of national income; projected ~122% within 10 years.",
+          "tag": "live",
+          "src": "FRED: GFDEGDQ188S",
+          "asOf": "2024",
+          "history": [
+            { "y": 1966, "v": 40 },
+            { "y": 1980, "v": 26 },
+            { "y": 1993, "v": 47 },
+            { "y": 2001, "v": 32 },
+            { "y": 2008, "v": 39 },
+            { "y": 2012, "v": 70 },
+            { "y": 2020, "v": 99 },
+            { "y": 2024, "v": 97 }
+          ]
+        },
+        {
+          "key": "debt_service_to_revenue",
+          "label": "Debt service vs income",
+          "value": 22,
+          "display": "22%",
+          "unit": "of revenue",
+          "tone": "risk",
+          "read": "Interest alone eats roughly a fifth of federal revenue — before principal.",
+          "tag": "live",
+          "src": "derived · FRED",
+          "asOf": "2025",
+          "history": [
+            { "y": 1990, "v": 19 },
+            { "y": 2000, "v": 13 },
+            { "y": 2008, "v": 10 },
+            { "y": 2015, "v": 9 },
+            { "y": 2021, "v": 9 },
+            { "y": 2024, "v": 18 },
+            { "y": 2025, "v": 22 }
+          ]
+        },
+        {
+          "key": "real_rates",
+          "label": "Rates vs inflation & growth",
+          "value": null,
+          "display": "Workable",
+          "unit": "real rates",
+          "tone": "neutral",
+          "read": "Real rates currently high enough for lenders without crushing borrowers — the balance Dalio watches.",
+          "tag": "model",
+          "src": "Dalio assessment",
+          "asOf": "Mar 2025"
+        },
+        {
+          "key": "reserves_to_gdp",
+          "label": "Debt & service vs savings",
+          "value": 3,
+          "display": "3%",
+          "unit": "reserves / GDP",
+          "tone": "risk",
+          "read": "Almost no liquid buffer (no sovereign wealth), so little protection if demand for the debt drops.",
+          "tag": "live",
+          "src": "derived · FRED / IMF",
+          "asOf": "2024",
+          "history": [
+            { "y": 1980, "v": 6 },
+            { "y": 1995, "v": 3 },
+            { "y": 2005, "v": 1.5 },
+            { "y": 2015, "v": 2 },
+            { "y": 2024, "v": 3 }
+          ]
+        }
+      ],
+      "panels": [
+        {
+          "eyebrow": "Government debt",
+          "tag": "live",
+          "note": "Very large debt with little liquid backing. Who holds it matters: foreign holders can leave faster than domestic ones.",
+          "rows": [
+            { "label": "Gov assets − gov debt", "value": -96, "display": "−96%", "unit": "of GDP", "tone": "risk", "tag": "manual", "src": "derived" },
+            {
+              "label": "Government debt", "value": 99, "display": "99%", "unit": "of GDP", "tone": "risk", "tag": "live", "src": "FRED: GFDEGDQ188S", "asOf": "2024",
+              "history": [
+                { "y": 1966, "v": 40 }, { "y": 1980, "v": 26 }, { "y": 1993, "v": 47 }, { "y": 2001, "v": 32 }, { "y": 2008, "v": 39 }, { "y": 2012, "v": 70 }, { "y": 2020, "v": 99 }, { "y": 2024, "v": 97 }
+              ]
+            },
+            { "label": "Debt, 10-yr projection", "value": 122, "display": "122%", "unit": "of GDP", "tone": "risk", "tag": "manual", "src": "CBO · forward", "asOf": "2025" },
+            { "label": "— held by central bank", "value": 13, "display": "13%", "unit": "", "tone": "neutral", "tag": "manual", "src": "FRED" },
+            { "label": "— held by domestic players", "value": 57, "display": "57%", "unit": "", "tone": "neutral", "tag": "manual", "src": "TIC" },
+            { "label": "— held abroad", "value": 29, "display": "29%", "unit": "", "tone": "caution", "tag": "manual", "src": "TIC" },
+            { "label": "Share in hard (foreign) FX", "value": null, "display": "No", "unit": "", "tone": "mitig", "tag": "manual", "src": "—" },
+            {
+              "label": "Government interest", "value": 22, "display": "22%", "unit": "of revenue", "tone": "risk", "tag": "live", "src": "derived · FRED", "asOf": "2025",
+              "history": [
+                { "y": 1990, "v": 19 }, { "y": 2000, "v": 13 }, { "y": 2008, "v": 10 }, { "y": 2015, "v": 9 }, { "y": 2021, "v": 9 }, { "y": 2024, "v": 18 }, { "y": 2025, "v": 22 }
+              ]
+            }
+          ]
+        },
+        {
+          "eyebrow": "Liquid reserves",
+          "tag": "live",
+          "note": "The cushion a country can draw on before it must default or print. The US has very little.",
+          "rows": [
+            {
+              "label": "FX reserves", "value": 3, "display": "3%", "unit": "of GDP", "tone": "risk", "tag": "live", "src": "IMF / FRED", "asOf": "2024",
+              "history": [
+                { "y": 1980, "v": 6 }, { "y": 1995, "v": 3 }, { "y": 2005, "v": 1.5 }, { "y": 2015, "v": 2 }, { "y": 2024, "v": 3 }
+              ]
+            },
+            { "label": "Sovereign wealth assets", "value": null, "display": "None", "unit": "", "tone": "risk", "tag": "manual", "src": "—" }
+          ]
+        },
+        {
+          "eyebrow": "Broader health",
+          "tag": "live",
+          "note": "Economy-wide leverage and the external balance — how dependent the country is on foreign financing.",
+          "rows": [
+            {
+              "label": "Total debt (all sectors)", "value": 340, "display": "340%", "unit": "of GDP", "tone": "caution", "tag": "live", "src": "FRED Z.1", "asOf": "2024",
+              "history": [
+                { "y": 1980, "v": 160 }, { "y": 1990, "v": 220 }, { "y": 2000, "v": 270 }, { "y": 2008, "v": 360 }, { "y": 2020, "v": 370 }, { "y": 2024, "v": 340 }
+              ]
+            },
+            {
+              "label": "Current account, 3-yr avg", "value": -4, "display": "−4%", "unit": "of GDP", "tone": "caution", "tag": "live", "src": "BEA / FRED", "asOf": "2024",
+              "history": [
+                { "y": 1991, "v": 0 }, { "y": 2000, "v": -4 }, { "y": 2006, "v": -6 }, { "y": 2009, "v": -2.6 }, { "y": 2016, "v": -2.3 }, { "y": 2022, "v": -3.8 }, { "y": 2024, "v": -4 }
+              ]
+            }
+          ]
+        },
+        {
+          "eyebrow": "Reserve-currency status",
+          "tag": "manual",
+          "accent": "#5B8DD6",
+          "note": "Dalio's single biggest risk mitigator. Dollar dominance across trade, debt, equities and reserves is what holds overall risk down — and what the US is undermining. Only the reserve series has long public history (IMF COFER, from 1999).",
+          "rows": [
+            { "label": "World trade in USD", "value": 52.6, "display": "52.6%", "unit": "", "tone": "mitig", "tag": "manual", "src": "SWIFT / BIS · from ~2012" },
+            { "label": "World debt in USD", "value": 80.7, "display": "80.7%", "unit": "", "tone": "mitig", "tag": "manual", "src": "BIS · from ~1990s" },
+            { "label": "Global equity market cap", "value": 65.7, "display": "65.7%", "unit": "", "tone": "mitig", "tag": "manual", "src": "market data" },
+            {
+              "label": "World CB reserves in USD", "value": 57.0, "display": "57.0%", "unit": "", "tone": "mitig", "tag": "manual", "src": "IMF COFER · from 1999", "asOf": "2024",
+              "history": [
+                { "y": 1999, "v": 71 }, { "y": 2008, "v": 64 }, { "y": 2015, "v": 66 }, { "y": 2020, "v": 59 }, { "y": 2024, "v": 58 }
+              ]
+            }
+          ]
+        }
+      ],
+      "govGauge": {
+        "eyebrow": "Government long-term risk gauge",
+        "overall": 2.4,
+        "source": "model",
+        "note": "Built mostly from borrowing need — including the stress case where creditors won't roll the debt over. Being able to borrow in your own currency pulls the score down.",
+        "rows": [
+          { "label": "Current borrowing need", "z": 2.4, "extra": "39% of revenue" },
+          { "label": "— if rollover problems", "z": 2.5, "extra": "239% of revenue" },
+          { "label": "Projected borrowing need", "z": 2.8, "extra": "44% of revenue" },
+          { "label": "— if rollover problems", "z": 2.9, "extra": "254% of revenue" },
+          { "label": "Debt in own currency", "z": -2.0, "extra": "100%", "mitig": true }
+        ]
+      },
+      "cbGauge": {
+        "eyebrow": "Central bank long-term risk gauge",
+        "overall": 1.0,
+        "source": "model",
+        "note": "Income statement looks only mildly negative; the balance sheet is about as stretched as it has ever been — lots of unbacked money against tiny reserves. Reserve-currency and institutional strengths keep the total moderate.",
+        "rows": [
+          { "label": "Central bank profitability", "z": 0.1, "extra": "−0.2% of GDP" },
+          { "label": "— if rates rise", "z": 0.2, "extra": "−0.4% of GDP" },
+          { "label": "Unbacked money", "z": 0.3, "extra": "71% of GDP" },
+          { "label": "Reserves / money", "z": 1.5, "extra": "low" },
+          { "label": "Currency as storehold", "z": -2.0, "extra": "mitigating", "mitig": true },
+          { "label": "Reserve FX / financial center", "z": -3.3, "extra": "dominant", "mitig": true },
+          { "label": "Rule of law", "z": -1.1, "extra": "strong", "mitig": true },
+          { "label": "Inflation volatility", "z": -2.1, "extra": "1.4% ann", "mitig": true }
+        ]
+      },
+      "redFlags": [
+        "A new round of QE to push real interest rates down.",
+        "The central government gaining control over the central bank."
+      ]
+    }
+  }
+}
