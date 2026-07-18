@@ -1,0 +1,59 @@
+name: Deploy to Pages
+
+# Builds the Vite site and publishes to GitHub Pages.
+#   * push to main        — code changes
+#   * workflow_run        — after "Update data" commits fresh data.json
+#     (a commit made with GITHUB_TOKEN does not itself trigger `push`,
+#      so we deploy on the data workflow finishing instead)
+#   * workflow_dispatch   — manual redeploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Update data"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # For workflow_run, only deploy if the data refresh actually succeeded.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Always publish the latest default branch (includes any data.json
+          # the update-data run just committed).
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npm run build # NODE_ENV=production -> base /macro-indicator-dashboard/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

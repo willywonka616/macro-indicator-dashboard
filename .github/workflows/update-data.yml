@@ -1,0 +1,62 @@
+name: Update data
+
+# Monthly refresh of public/data.json from FRED. The 5th (not the 1st) so
+# Treasury / IMF month-end releases have landed. workflow_dispatch lets you
+# trigger it by hand from the GitHub mobile UI.
+on:
+  schedule:
+    - cron: "0 6 5 * *" # 06:00 UTC on the 5th of each month
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Bypass the value-move guard (use only if a big move is real)"
+        type: boolean
+        default: false
+
+# Needs write access to commit the refreshed data.json back to the repo.
+permissions:
+  contents: write
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r scripts/requirements.txt
+
+      # Brief step 2: confirm every FRED ID resolves before trusting it.
+      # Fails the run (red) if any series is missing/renamed.
+      - name: Verify FRED series
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: python scripts/fetch.py --verify
+
+      # Fails loudly on empty/404 series or a value that jumped past the
+      # guard; validates fully in memory and writes atomically, so a bad run
+      # never overwrites good data.
+      - name: Fetch and build data.json
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: python scripts/fetch.py ${{ inputs.force && '--force' || '' }}
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- public/data.json; then
+            echo "public/data.json unchanged — nothing to commit."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add public/data.json
+            git commit -m "data: monthly refresh ($(date -u +%Y-%m-%d))"
+            git push
+          fi
