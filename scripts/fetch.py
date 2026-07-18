@@ -25,6 +25,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import requests
@@ -55,9 +56,17 @@ def _key() -> str:
 
 def fred_get(path: str, **params):
     params = {"api_key": _key(), "file_type": "json", **params}
-    r = requests.get(f"{FRED}/{path}", params=params, timeout=30)
-    r.raise_for_status()
-    return r.json()
+    last = None
+    for i in range(4):  # retry transient drops: 1s, 2s, 4s
+        try:
+            r = requests.get(f"{FRED}/{path}", params=params, timeout=30)
+            r.raise_for_status()
+            return r.json()
+        except requests.exceptions.RequestException as e:
+            last = e
+            if i < 3:
+                time.sleep(2 ** i)
+    raise RuntimeError(f"FRED request {path} failed after 4 tries: {last}")
 
 
 def series_meta(series_id: str) -> dict:

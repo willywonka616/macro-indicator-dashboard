@@ -20,6 +20,7 @@ Docs: https://fiscaldata.treasury.gov/api-documentation/
 from __future__ import annotations
 
 import datetime as dt
+import time
 from collections import defaultdict
 
 import requests
@@ -34,6 +35,22 @@ TTM = 12  # trailing months used to annualise both numerator and denominator
 
 # --- http ----------------------------------------------------------------
 
+def _get_page(url: str, params: dict, tries: int = 4):
+    """GET one page with retry/backoff — the Fiscal Data host occasionally
+    drops connections mid-run (RemoteDisconnected)."""
+    last = None
+    for i in range(tries):
+        try:
+            r = requests.get(url, params=params, timeout=45)
+            r.raise_for_status()
+            return r.json()
+        except requests.exceptions.RequestException as e:
+            last = e
+            if i < tries - 1:
+                time.sleep(2 ** i)  # 1s, 2s, 4s
+    raise RuntimeError(f"Treasury request failed after {tries} tries: {last}")
+
+
 def _get(endpoint: str, params: dict | None = None, max_pages: int = 40):
     params = dict(params or {})
     params.setdefault("format", "json")
@@ -41,9 +58,7 @@ def _get(endpoint: str, params: dict | None = None, max_pages: int = 40):
     rows, page = [], 1
     while page <= max_pages:
         params["page[number]"] = str(page)
-        r = requests.get(BASE + endpoint, params=params, timeout=40)
-        r.raise_for_status()
-        js = r.json()
+        js = _get_page(BASE + endpoint, params)
         rows.extend(js.get("data", []))
         meta = js.get("meta", {})
         total_pages = int(meta.get("total-pages") or meta.get("total_pages") or 1)
