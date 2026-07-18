@@ -22,23 +22,21 @@ confirmed from the first CI run.
 from __future__ import annotations
 
 import json
-import re
 import time
 
 import requests
 
-DBNOMICS = "https://api.db.nomics.world/v22/series/IMF/COFER"
-# Per-currency allocated reserves, valued in USD (last dotted segment of the
-# DBnomics series_code, e.g. Q.W00.RAXGFXARUS_USD -> RAXGFXARUS_USD).
-CUR_RE = re.compile(r"^RAXGFXAR[A-Z]{2,3}_USD$")
-USD_IND = "RAXGFXARUS_USD"
+DATASET = "https://api.db.nomics.world/v22/series/IMF/COFER"
+# COFER exposes a ready-made percent series: allocated reserves, US dollar,
+# share (RaTe, _PT = percent), world, quarterly. Use it directly — no summing.
+SHARE_SERIES = "Q.W00.RAXGFXARUSDRT_PT"
 
 
-def _get(params, tries=3):
+def _get(url, params, tries=3):
     last = None
     for i in range(tries):
         try:
-            r = requests.get(DBNOMICS, params=params, timeout=45)
+            r = requests.get(url, params=params, timeout=45)
             r.raise_for_status()
             return r.json()
         except requests.exceptions.RequestException as e:  # noqa: PERF203
@@ -49,19 +47,14 @@ def _get(params, tries=3):
 
 
 def _docs():
-    """All world (W00) quarterly COFER series, with observations."""
+    """All world (W00) quarterly COFER series (for the --verify dump)."""
     params = {
         "observations": "1",
         "dimensions": json.dumps({"FREQ": ["Q"], "REF_AREA": ["W00"]}),
         "limit": "1000",
     }
-    js = _get(params)
+    js = _get(DATASET, params)
     return js.get("series", {}).get("docs", [])
-
-
-def _indicator(doc):
-    code = doc.get("series_code", "")
-    return code.split(".")[-1] if code else ""
 
 
 def _qkey(period):
@@ -77,34 +70,24 @@ def _qdec(k):
 
 def cofer_usd_share():
     """{"latest": float, "asOf": "YYYY-Qn", "history": [{y, v}]} — USD % of
-    world allocated reserves."""
-    docs = _docs()
+    world allocated reserves, read directly from the COFER percent series."""
+    js = _get(f"{DATASET}/{SHARE_SERIES}", {"observations": "1"})
+    docs = js.get("series", {}).get("docs", [])
     if not docs:
-        raise RuntimeError("COFER: no series returned")
+        raise RuntimeError(f"COFER: {SHARE_SERIES} returned no series — check code via --verify")
+    doc = docs[0]
 
-    usd, total = {}, {}
-    for doc in docs:
-        ind = _indicator(doc)
-        if not CUR_RE.match(ind):
+    share = {}
+    for period, val in zip(doc.get("period", []), doc.get("value", [])):
+        if val is None or period is None:
             continue
-        periods = doc.get("period", [])
-        values = doc.get("value", [])
-        for period, val in zip(periods, values):
-            if val is None or period is None:
-                continue
-            try:
-                v = float(val)
-            except (TypeError, ValueError):
-                continue
-            k = _qkey(period)
-            total[k] = total.get(k, 0.0) + v
-            if ind == USD_IND:
-                usd[k] = v
+        try:
+            share[_qkey(period)] = float(val)
+        except (TypeError, ValueError):
+            continue
+    if not share:
+        raise RuntimeError(f"COFER: {SHARE_SERIES} has no usable observations")
 
-    ks = sorted(k for k in usd.keys() & total.keys() if total[k])
-    if not ks:
-        raise RuntimeError("COFER: no USD/total overlap — check series codes via --verify")
-    share = {k: usd[k] / total[k] * 100.0 for k in ks}
     last = max(share)
     hist = [{"y": _qdec(k), "v": round(share[k], 1)} for k in sorted(share)]
     return {"latest": round(share[last], 1), "asOf": f"{last[0]}-Q{last[1]}", "history": hist}
