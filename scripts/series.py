@@ -19,23 +19,23 @@ from __future__ import annotations
 
 # --- registry ------------------------------------------------------------
 
-# id -> what we expect (used by --verify to flag drift). `kind`:
-#   "level"   plain level series (dollars / index)
-#   "percent" already a percentage / rate
+# FRED series actively used by the fetcher. --verify checks each one every run.
+#
+# The brief's full candidate list (13 IDs incl. GFDEBTN, GDPC1, WALCL, CPIAUCSL,
+# FEDFUNDS, DGS10, A091RC1Q027SBEA, W006RC1Q027SBEA) was verified once against
+# live FRED — all resolved (see the first Update-data run log). Two were dropped
+# from active use afterwards:
+#   * BOPBCA (current account) is DISCONTINUED on FRED -> replaced by IEABC.
+#   * A091/W006 (interest, tax receipts) -> debt service now comes from the
+#     Treasury Fiscal Data API on a budget basis (see treasury.py); the tax-only
+#     W006 denominator also overstated the ratio.
+# `kind`: "level" (dollars) | "percent" (already a rate/percentage).
 FRED_SERIES = {
     "GFDEGDQ188S": {"label": "Federal debt as % of GDP", "units": "percent", "freq": "Quarterly", "start": "1966", "kind": "percent"},
-    "GFDEBTN":     {"label": "Federal debt, total public", "units": "Millions of Dollars", "freq": "Quarterly", "start": "1966", "kind": "level"},
-    "A091RC1Q027SBEA": {"label": "Federal interest payments", "units": "Billions of Dollars", "freq": "Quarterly", "start": "1947", "kind": "level"},
-    "W006RC1Q027SBEA": {"label": "Federal current receipts", "units": "Billions of Dollars", "freq": "Quarterly", "start": "1947", "kind": "level"},
     "GDP":    {"label": "GDP (nominal)", "units": "Billions of Dollars", "freq": "Quarterly", "start": "1947", "kind": "level"},
-    "GDPC1":  {"label": "Real GDP", "units": "Billions of Chained Dollars", "freq": "Quarterly", "start": "1947", "kind": "level"},
     "TCMDO":  {"label": "Total debt, all sectors", "units": "Millions of Dollars", "freq": "Quarterly", "start": "1945", "kind": "level"},
-    "BOPBCA": {"label": "Current account balance", "units": "Millions of Dollars", "freq": "Quarterly", "start": "1960", "kind": "level"},
-    "TRESEGUSM052N": {"label": "Total reserves excl. gold", "units": "U.S. Dollars", "freq": "Monthly", "start": "1950s", "kind": "level"},
-    "WALCL":  {"label": "Fed total assets", "units": "Millions of Dollars", "freq": "Weekly", "start": "2002", "kind": "level"},
-    "CPIAUCSL": {"label": "CPI", "units": "Index 1982-1984=100", "freq": "Monthly", "start": "1947", "kind": "level"},
-    "FEDFUNDS": {"label": "Fed funds rate", "units": "Percent", "freq": "Monthly", "start": "1954", "kind": "percent"},
-    "DGS10":  {"label": "10-year Treasury", "units": "Percent", "freq": "Daily", "start": "1962", "kind": "percent"},
+    "IEABC":  {"label": "Balance on current account", "units": "Millions of Dollars", "freq": "Quarterly", "start": "1960", "kind": "level"},
+    "TRESEGUSM052N": {"label": "Total reserves excl. gold", "units": "Millions of Dollars", "freq": "Monthly", "start": "1950s", "kind": "level"},
 }
 
 # --- unit normalisation --------------------------------------------------
@@ -106,17 +106,9 @@ def _latest(qseries: dict):
     return qseries[k], q_label(k)
 
 
-def debt_service_vs_revenue(interest_obs, interest_units, receipts_obs, receipts_units):
-    """Federal interest payments / current receipts, as a percentage."""
-    i = as_quarterly(interest_obs)
-    r = as_quarterly(receipts_obs)
-    ratio = {}
-    for k in i.keys() & r.keys():
-        denom = to_dollars(r[k], receipts_units)
-        if denom:
-            ratio[k] = to_dollars(i[k], interest_units) / denom * 100.0
-    latest, asof = _latest(ratio)
-    return {"latest": round(latest, 1), "asOf": asof, "history": quarterly_history(ratio)}
+# Debt service vs revenue is computed on a budget basis from the Treasury
+# Fiscal Data API — see treasury.py. (The old FRED NIPA-basis version used
+# interest payments / current tax receipts.)
 
 
 def reserves_pct_gdp(reserves_obs, reserves_units, gdp_obs, gdp_units):

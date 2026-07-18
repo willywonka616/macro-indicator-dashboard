@@ -121,8 +121,14 @@ No component changes needed — the country selector is driven by the keys in
 
 - **Sparklines** show real historical series at native frequency (downsampled to
   quarterly for display); model gauges and short-history shares carry none.
-- **Current account / GDP** is a 3-year trailing average; the fetcher annualises
-  the quarterly flow unless FRED reports the series as already annualised
+- **Debt service vs revenue** is computed on a **budget (cash) basis** from the
+  [Treasury Fiscal Data API](https://fiscaldata.treasury.gov/) (no key):
+  trailing-12-month interest on the public debt ÷ trailing-12-month total federal
+  receipts — the basis Dalio/CBO use. (`scripts/treasury.py`.) That host can't be
+  reached from the dev sandbox, so `--verify` dumps its live schema + the computed
+  ratio, and the build refuses any ratio outside a 5–40% sanity band.
+- **Current account / GDP** (from FRED `IEABC`, BEA) is a 3-year trailing average;
+  the fetcher annualises the quarterly flow unless the series is already annualised
   (`--verify` shows the units so this can be confirmed).
 - **Dalio's Z-score gauges are model output, not live data.** There is no public
   series behind them; they change only when he republishes. A fabricated Z-score

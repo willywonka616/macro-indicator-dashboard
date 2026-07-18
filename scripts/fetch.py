@@ -30,6 +30,7 @@ from pathlib import Path
 import requests
 
 import series as S
+import treasury as T
 
 FRED = "https://api.stlouisfed.org/fred"
 ROOT = Path(__file__).resolve().parent.parent
@@ -114,6 +115,7 @@ def verify() -> int:
             failures.append((sid, expect, str(e)))
             print(f"{sid:<18} {'NO':<3} -- FAILED: {e}")
 
+    fred_ok = not failures
     if failures:
         print("\n" + "=" * 60)
         print(f"{len(failures)} series failed to resolve:")
@@ -122,10 +124,13 @@ def verify() -> int:
             for cand_id, cand_title in search_suggestions(expect["label"]):
                 print(f"      candidate: {cand_id}  {cand_title}")
         print("\nFix the IDs in scripts/series.py, then re-run --verify.")
-        return 1
+    else:
+        print("\nAll FRED series resolved. Review units/frequency above.")
 
-    print("\nAll series resolved. Review units/frequency above before trusting derivations.")
-    return 0
+    # Treasury Fiscal Data (no key) — dumps real schema + the computed ratio.
+    treasury_ok = T.verify()
+
+    return 0 if (fred_ok and treasury_ok) else 1
 
 
 # --- formatting ----------------------------------------------------------
@@ -178,8 +183,7 @@ def build_us(manual: dict, force: bool) -> dict:
     prev = _prev_values()
 
     # --- fetch every FRED series we need ---
-    need = ["GFDEGDQ188S", "A091RC1Q027SBEA", "W006RC1Q027SBEA", "GDP",
-            "TCMDO", "BOPBCA", "TRESEGUSM052N", "CPIAUCSL", "DGS10"]
+    need = ["GFDEGDQ188S", "GDP", "TCMDO", "IEABC", "TRESEGUSM052N"]
     raw = {}
     for sid in need:
         units, obs = series_obs(sid)  # raises loudly on empty/404
@@ -192,15 +196,21 @@ def build_us(manual: dict, force: bool) -> dict:
         "asOf": S.q_label(S.quarter_key(dobs[-1][0])),
         "history": S.quarterly_history(S.as_quarterly(dobs)),
     }
-    service = S.debt_service_vs_revenue(raw["A091RC1Q027SBEA"][1], raw["A091RC1Q027SBEA"][0],
-                                        raw["W006RC1Q027SBEA"][1], raw["W006RC1Q027SBEA"][0])
+    # Debt service vs revenue — budget basis, from Treasury (no FRED).
+    service = T.debt_service_ratio()
+    if not (5.0 <= service["latest"] <= 40.0):
+        raise RuntimeError(
+            f"validation: Treasury debt-service ratio {service['latest']}% is "
+            "outside the sane 5-40% band — likely a wrong field/column mapping. "
+            "Check the Treasury schema dumped by --verify before trusting it."
+        )
     reserves = S.reserves_pct_gdp(raw["TRESEGUSM052N"][1], raw["TRESEGUSM052N"][0],
                                   raw["GDP"][1], raw["GDP"][0])
     total_debt = S.total_debt_pct_gdp(raw["TCMDO"][1], raw["TCMDO"][0],
                                       raw["GDP"][1], raw["GDP"][0])
-    ca_units = raw["BOPBCA"][0]
+    ca_units = raw["IEABC"][0]
     annualized = "annual rate" in (ca_units or "").lower()
-    current_acct = S.current_account_pct_gdp_3yr(raw["BOPBCA"][1], ca_units,
+    current_acct = S.current_account_pct_gdp_3yr(raw["IEABC"][1], ca_units,
                                                  raw["GDP"][1], raw["GDP"][0], annualized)
 
     # --- move guards on the positive-level ratios ---
@@ -236,7 +246,7 @@ def build_us(manual: dict, force: bool) -> dict:
             "FRED: GFDEGDQ188S", "of GDP")},
         {"key": "debt_service_to_revenue", "label": "Debt service vs income", **_vital(service, "risk",
             "Interest alone eats roughly a fifth of federal revenue — before principal.",
-            "derived · FRED", "of revenue")},
+            "derived · Treasury (budget basis)", "of revenue")},
         {"key": "real_rates", "label": "Rates vs inflation & growth", "value": None,
             "display": rr["display"], "unit": rr.get("unit", "real rates"), "tone": rr.get("tone", "neutral"),
             "read": rr["read"], "tag": "model", "src": "Dalio assessment", "asOf": mu["baseline"]},
@@ -256,7 +266,7 @@ def build_us(manual: dict, force: bool) -> dict:
             manual_row("— held by domestic players", mu["holders"]["domestic"]),
             manual_row("— held abroad", mu["holders"]["abroad"]),
             manual_row("Share in hard (foreign) FX", mu["shareHardFX"]),
-            live_row("Government interest", service, "risk", "derived · FRED", "of revenue"),
+            live_row("Government interest", service, "risk", "derived · Treasury", "of revenue"),
         ],
     }
     reserves_panel = {
