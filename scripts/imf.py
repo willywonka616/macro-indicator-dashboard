@@ -101,7 +101,7 @@ def verify() -> bool:
     try:
         docs = _docs()
         codes = sorted({d.get("series_code", "") for d in docs})
-        print(f"[cofer] {DBNOMICS} (FREQ=Q, REF_AREA=W00)")
+        print(f"[cofer] {DATASET} (FREQ=Q, REF_AREA=W00)")
         print(f"  {len(docs)} series; codes: {codes[:40]}")
         r = cofer_usd_share()
         print(f"  computed USD share: {r['latest']}% as of {r['asOf']} ({len(r['history'])} pts)")
