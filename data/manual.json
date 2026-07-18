@@ -1,0 +1,80 @@
+{
+  "_readme": "Values NOT available from FRED. Model gauges are Dalio's proprietary Z-scores (How Countries Go Broke, Ch. 17, March 2025 snapshot) and MUST NOT be recomputed or approximated — carry them verbatim and update only when he republishes. Manual figures (USD shares, holder breakdown, CBO projection) are hand-updated; bump lastChecked when you touch them. fetch.py merges this file into public/data.json.",
+  "US": {
+    "name": "United States",
+    "baseline": "March 2025",
+    "modelSnapshot": "2025-03-01",
+    "lastChecked": "2026-07-18",
+    "headline": {
+      "govLT": { "z": 2.4, "label": "Central government · long-term", "verdict": "Very high" },
+      "cbLT": { "z": 1.0, "label": "Central bank · long-term", "verdict": "Moderate, could accelerate" },
+      "shortTerm": { "level": "Low", "note": "Can change overnight if debt demand weakens or net-selling starts" }
+    },
+    "realRatesAssessment": {
+      "display": "Workable",
+      "unit": "real rates",
+      "tone": "neutral",
+      "read": "Real rates currently high enough for lenders without crushing borrowers — the balance Dalio watches."
+    },
+    "holders": {
+      "centralBank": { "display": "13%", "tone": "neutral", "src": "TIC / FRED" },
+      "domestic": { "display": "57%", "tone": "neutral", "src": "TIC" },
+      "abroad": { "display": "29%", "tone": "caution", "src": "TIC" }
+    },
+    "govAssetsMinusDebt": { "display": "−96%", "unit": "of GDP", "tone": "risk", "src": "derived" },
+    "cboProjection": { "display": "122%", "unit": "of GDP", "tone": "risk", "src": "CBO · forward" },
+    "sovereignWealth": { "display": "None", "tone": "risk", "src": "—" },
+    "shareHardFX": { "display": "No", "tone": "mitig", "src": "—" },
+    "reserveCurrency": {
+      "note": "Dalio's single biggest risk mitigator. Dollar dominance across trade, debt, equities and reserves is what holds overall risk down — and what the US is undermining. Only the reserve series has long public history (IMF COFER, from 1999).",
+      "trade": { "value": 52.6, "display": "52.6%", "tone": "mitig", "src": "SWIFT / BIS · from ~2012" },
+      "debt": { "value": 80.7, "display": "80.7%", "tone": "mitig", "src": "BIS · from ~1990s" },
+      "equity": { "value": 65.7, "display": "65.7%", "tone": "mitig", "src": "market data" },
+      "cbReserves": {
+        "value": 57.0,
+        "display": "57.0%",
+        "tone": "mitig",
+        "src": "IMF COFER · from 1999",
+        "asOf": "2024",
+        "history": [
+          { "y": 1999, "v": 71 },
+          { "y": 2008, "v": 64 },
+          { "y": 2015, "v": 66 },
+          { "y": 2020, "v": 59 },
+          { "y": 2024, "v": 58 }
+        ]
+      }
+    },
+    "govGauge": {
+      "eyebrow": "Government long-term risk gauge",
+      "overall": 2.4,
+      "note": "Built mostly from borrowing need — including the stress case where creditors won't roll the debt over. Being able to borrow in your own currency pulls the score down.",
+      "rows": [
+        { "label": "Current borrowing need", "z": 2.4, "extra": "39% of revenue" },
+        { "label": "— if rollover problems", "z": 2.5, "extra": "239% of revenue" },
+        { "label": "Projected borrowing need", "z": 2.8, "extra": "44% of revenue" },
+        { "label": "— if rollover problems", "z": 2.9, "extra": "254% of revenue" },
+        { "label": "Debt in own currency", "z": -2.0, "extra": "100%", "mitig": true }
+      ]
+    },
+    "cbGauge": {
+      "eyebrow": "Central bank long-term risk gauge",
+      "overall": 1.0,
+      "note": "Income statement looks only mildly negative; the balance sheet is about as stretched as it has ever been — lots of unbacked money against tiny reserves. Reserve-currency and institutional strengths keep the total moderate.",
+      "rows": [
+        { "label": "Central bank profitability", "z": 0.1, "extra": "−0.2% of GDP" },
+        { "label": "— if rates rise", "z": 0.2, "extra": "−0.4% of GDP" },
+        { "label": "Unbacked money", "z": 0.3, "extra": "71% of GDP" },
+        { "label": "Reserves / money", "z": 1.5, "extra": "low" },
+        { "label": "Currency as storehold", "z": -2.0, "extra": "mitigating", "mitig": true },
+        { "label": "Reserve FX / financial center", "z": -3.3, "extra": "dominant", "mitig": true },
+        { "label": "Rule of law", "z": -1.1, "extra": "strong", "mitig": true },
+        { "label": "Inflation volatility", "z": -2.1, "extra": "1.4% ann", "mitig": true }
+      ]
+    },
+    "redFlags": [
+      "A new round of QE to push real interest rates down.",
+      "The central government gaining control over the central bank."
+    ]
+  }
+}
