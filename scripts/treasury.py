@@ -97,11 +97,14 @@ def _ym(record_date: str):
 # --- monthly series ------------------------------------------------------
 
 def monthly_interest() -> dict:
-    """{(year, month): total gross interest on the public debt, $} — monthly.
+    """{(year, month): interest on debt held by the public, $} — monthly.
 
-    Sums the accrued-interest rows across categories (public issues + GAS) and
-    security types; skips amortization/discount memoranda so nothing is
-    double-counted.
+    Sums every interest component on PUBLIC ISSUES — accrued interest, amortized
+    discount (how bill/note discount interest is recognised), amortized premium
+    (a credit), savings bonds, misc — across all security types. Excludes the
+    GOVT ACCOUNT SERIES category (intragovernmental interest paid to trust
+    funds), so this approximates net interest, the basis for "interest as a
+    share of revenue".
     """
     rows = _get(INTEREST_ENDPOINT, {"sort": "record_date"})
     if not rows:
@@ -109,7 +112,7 @@ def monthly_interest() -> dict:
     s = rows[0]
     amtk = _pick(s, ["month_expense_amt"], contains=["month", "amt"],
                  exclude=["fytd", "prior", "fiscal", "year"])
-    groupk = _pick(s, ["expense_group_desc"], contains=["group", "desc"])
+    catk = _pick(s, ["expense_catg_desc", "expense_category_desc"], contains=["cat", "desc"])
     if not amtk:
         raise RuntimeError(f"interest_expense: no month amount field in {list(s)}")
 
@@ -118,8 +121,8 @@ def monthly_interest() -> dict:
         amt = _num(row.get(amtk))
         if amt is None:
             continue
-        # keep only accrued *interest* groups when the column exists
-        if groupk and "interest" not in str(row.get(groupk, "")).lower():
+        # interest to the public only; drop intragovernmental GAS
+        if catk and "public issue" not in str(row.get(catk, "")).lower():
             continue
         monthly[_ym(row["record_date"])] += amt
     return {k: v for k, v in monthly.items() if v}

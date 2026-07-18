@@ -123,10 +123,13 @@ No component changes needed — the country selector is driven by the keys in
   quarterly for display); model gauges and short-history shares carry none.
 - **Debt service vs revenue** is computed on a **budget (cash) basis** from the
   [Treasury Fiscal Data API](https://fiscaldata.treasury.gov/) (no key):
-  trailing-12-month interest on the public debt ÷ trailing-12-month total federal
-  receipts — the basis Dalio/CBO use. (`scripts/treasury.py`.) That host can't be
-  reached from the dev sandbox, so `--verify` dumps its live schema + the computed
-  ratio, and the build refuses any ratio outside a 5–40% sanity band.
+  trailing-12-month interest on debt held by the public ÷ trailing-12-month total
+  federal receipts — the basis Dalio/CBO use. (`scripts/treasury.py`.) Interest
+  is the sum of all components on *public issues* (accrued interest + amortized
+  discount/premium + savings/misc), excluding intragovernmental GAS interest, so
+  it approximates net interest. That host can't be reached from the dev sandbox,
+  so `--verify` dumps its live schema + the computed ratio, and the build refuses
+  any ratio outside a 5–40% sanity band.
 - **Current account / GDP** (from FRED `IEABC`, BEA) is a 3-year trailing average;
   the fetcher annualises the quarterly flow unless the series is already annualised
   (`--verify` shows the units so this can be confirmed).
