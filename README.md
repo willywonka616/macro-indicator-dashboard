@@ -130,6 +130,9 @@ No component changes needed — the country selector is driven by the keys in
   it approximates net interest. That host can't be reached from the dev sandbox,
   so `--verify` dumps its live schema + the computed ratio, and the build refuses
   any ratio outside a 5–40% sanity band.
+- **Debt vs GDP** uses FRED `FYGFGDQ188S` — federal debt **held by the public**
+  as a % of GDP (Dalio's framing), not gross public debt (`GFDEGDQ188S`, which
+  also counts intragovernmental holdings and runs ~20 pts higher).
 - **Current account / GDP** (from FRED `IEABC`, BEA) is a 3-year trailing average;
   the fetcher annualises the quarterly flow unless the series is already annualised
   (`--verify` shows the units so this can be confirmed).

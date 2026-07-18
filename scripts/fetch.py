@@ -192,14 +192,14 @@ def build_us(manual: dict, force: bool) -> dict:
     prev = _prev_values()
 
     # --- fetch every FRED series we need ---
-    need = ["GFDEGDQ188S", "GDP", "TCMDO", "IEABC", "TRESEGUSM052N"]
+    need = ["FYGFGDQ188S", "GDP", "TCMDO", "IEABC", "TRESEGUSM052N"]
     raw = {}
     for sid in need:
         units, obs = series_obs(sid)  # raises loudly on empty/404
         raw[sid] = (units, obs)
 
     # --- live + derived metrics ---
-    du, dobs = raw["GFDEGDQ188S"]
+    du, dobs = raw["FYGFGDQ188S"]
     debt = {
         "latest": num(dobs[-1][1]),
         "asOf": S.q_label(S.quarter_key(dobs[-1][0])),
@@ -251,8 +251,8 @@ def build_us(manual: dict, force: bool) -> dict:
 
     vitals = [
         {"key": "debt_to_gdp", "label": "Debt vs income", **_vital(debt, "risk",
-            "Central-government debt near one year of national income; projected ~122% within 10 years.",
-            "FRED: GFDEGDQ188S", "of GDP")},
+            "Debt held by the public near one year of national income; projected to keep climbing.",
+            "FRED: FYGFGDQ188S", "of GDP")},
         {"key": "debt_service_to_revenue", "label": "Debt service vs income", **_vital(service, "risk",
             "Interest alone eats roughly a fifth of federal revenue — before principal.",
             "derived · Treasury (budget basis)", "of revenue")},
@@ -269,7 +269,7 @@ def build_us(manual: dict, force: bool) -> dict:
         "note": "Very large debt with little liquid backing. Who holds it matters: foreign holders can leave faster than domestic ones.",
         "rows": [
             manual_row("Gov assets − gov debt", mu["govAssetsMinusDebt"]),
-            live_row("Government debt", debt, "risk", "FRED: GFDEGDQ188S", "of GDP"),
+            live_row("Government debt (held by public)", debt, "risk", "FRED: FYGFGDQ188S", "of GDP"),
             manual_row("Debt, 10-yr projection", mu["cboProjection"]),
             manual_row("— held by central bank", mu["holders"]["centralBank"]),
             manual_row("— held by domestic players", mu["holders"]["domestic"]),

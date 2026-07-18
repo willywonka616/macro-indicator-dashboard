@@ -31,7 +31,7 @@ from __future__ import annotations
 #     W006 denominator also overstated the ratio.
 # `kind`: "level" (dollars) | "percent" (already a rate/percentage).
 FRED_SERIES = {
-    "GFDEGDQ188S": {"label": "Federal debt as % of GDP", "units": "percent", "freq": "Quarterly", "start": "1966", "kind": "percent"},
+    "FYGFGDQ188S": {"label": "Federal debt held by public as % of GDP", "units": "percent", "freq": "Quarterly", "start": "1966", "kind": "percent"},
     "GDP":    {"label": "GDP (nominal)", "units": "Billions of Dollars", "freq": "Quarterly", "start": "1947", "kind": "level"},
     "TCMDO":  {"label": "Total debt, all sectors", "units": "Millions of Dollars", "freq": "Quarterly", "start": "1945", "kind": "level"},
     "IEABC":  {"label": "Balance on current account", "units": "Millions of Dollars", "freq": "Quarterly", "start": "1960", "kind": "level"},
