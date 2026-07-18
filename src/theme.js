@@ -43,7 +43,9 @@ export const zColor = (z) =>
 // Vertical crisis / regime markers drawn on every time-series chart.
 // `year` is a decimal year; `short` is the on-chart label. Tunable in one place.
 export const CRISES = [
-  { year: 1971, short: "Gold std. ends", label: "US ends gold convertibility (1971)" },
+  { year: 1973, short: "'73 oil shock", label: "1973 oil shock (OPEC embargo)" },
+  { year: 1979, short: "'79 oil shock", label: "1979 oil shock (Iranian revolution)" },
+  { year: 1980, short: "1980", label: "Volcker shock / early-80s recession (1980)" },
   { year: 1987, short: "Black Monday", label: "Black Monday crash (1987)" },
   { year: 2000, short: "Dot-com", label: "Dot-com peak (2000)" },
   { year: 2008, short: "GFC", label: "Global financial crisis (2007–08)" },
