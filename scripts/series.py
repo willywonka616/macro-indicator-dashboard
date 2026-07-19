@@ -29,11 +29,21 @@ from __future__ import annotations
 #   * A091/W006 (interest, tax receipts) -> debt service now comes from the
 #     Treasury Fiscal Data API on a budget basis (see treasury.py); the tax-only
 #     W006 denominator also overstated the ratio.
+# TCMDO ("All Sectors; Debt Securities and Loans" — Fed Z.1, source ID
+# FL894104005.Q) was replaced by TCMDODNS 2026-07 after a calibration gap
+# against Dalio's Ch.17 "other debt" row (see STATUS.md §9): TCMDO includes
+# the financial sector's own intra-system borrowing, which isn't a real
+# claim on the real economy the way household/business/government debt is.
+# TCMDODNS ("Domestic Nonfinancial Sectors; Debt Securities and Loans" — the
+# standard "Debt of Nonfinancial Sectors" leverage figure the Fed itself
+# publishes) excludes it. fetch.py's verify() still dumps TCMDO alongside it
+# as a live cross-check, since the swap was reasoned from research, not from
+# introspecting the actual scope of either series in this sandbox.
 # `kind`: "level" (dollars) | "percent" (already a rate/percentage).
 FRED_SERIES = {
     "FYGFGDQ188S": {"label": "Federal debt held by public as % of GDP", "units": "percent", "freq": "Quarterly", "start": "1966", "kind": "percent"},
     "GDP":    {"label": "GDP (nominal)", "units": "Billions of Dollars", "freq": "Quarterly", "start": "1947", "kind": "level"},
-    "TCMDO":  {"label": "Total debt, all sectors", "units": "Millions of Dollars", "freq": "Quarterly", "start": "1945", "kind": "level"},
+    "TCMDODNS": {"label": "Domestic nonfinancial sectors debt (all)", "units": "Millions of Dollars", "freq": "Quarterly", "start": "1945", "kind": "level"},
     "IEABC":  {"label": "Balance on current account", "units": "Millions of Dollars", "freq": "Quarterly", "start": "1960", "kind": "level"},
     "TRESEGUSM052N": {"label": "Total reserves excl. gold", "units": "Millions of Dollars", "freq": "Monthly", "start": "1950s", "kind": "level"},
     "DGS10":  {"label": "10-year Treasury yield", "units": "Percent", "freq": "Daily", "start": "1962", "kind": "percent"},

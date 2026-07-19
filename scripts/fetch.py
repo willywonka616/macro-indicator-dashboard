@@ -151,6 +151,29 @@ def verify() -> int:
         print(f"(tax-receipts-only denominator unavailable for the matrix: {e})")
     treasury_ok = T.verify(tax_receipts_monthly)
 
+    # Total-debt calibration cross-check (STATUS.md §9): TCMDODNS (nonfinancial
+    # sectors only, now used for "Total debt" — see series.py) vs. TCMDO (all
+    # sectors incl. financial, the prior basis) — dumped side by side, as % of
+    # the same GDP observation, so a live run shows whether excluding the
+    # financial sector actually closes the gap to Dalio's Ch.17 "other debt"
+    # figure (340%) rather than assuming it.
+    print("\nTotal-debt series comparison (Dalio Ch.17 US 'other debt' target: 340%):")
+    try:
+        gdp_units, gdp_obs = series_obs("GDP")
+        gdp_latest_d, gdp_latest_v = gdp_obs[-1]
+        gdp_usd = S.to_dollars(gdp_latest_v, gdp_units)
+        for sid in ("TCMDODNS", "TCMDO"):
+            try:
+                units, obs = series_obs(sid)
+                d, v = obs[-1]
+                pct = S.to_dollars(v, units) / gdp_usd * 100.0
+                note = " <- now used for 'Total debt' row" if sid == "TCMDODNS" else " (diagnostic only, not used)"
+                print(f"  {sid}: {pct:.1f}% of GDP as of {d} (GDP as of {gdp_latest_d}){note}")
+            except Exception as e:  # noqa: BLE001
+                print(f"  {sid}: FAILED: {e}")
+    except Exception as e:  # noqa: BLE001
+        print(f"  comparison FAILED: {e}")
+
     # IMF COFER (no key) — non-fatal; dumps indicators + the computed USD share.
     I.verify()
 
@@ -229,7 +252,7 @@ def build_us(manual: dict, force: bool) -> dict:
     prev = _prev_values()
 
     # --- fetch every FRED series we need ---
-    need = ["FYGFGDQ188S", "GDP", "TCMDO", "IEABC", "TRESEGUSM052N", "DGS10", "CPIAUCSL"]
+    need = ["FYGFGDQ188S", "GDP", "TCMDODNS", "IEABC", "TRESEGUSM052N", "DGS10", "CPIAUCSL"]
     raw = {}
     for sid in need:
         units, obs = series_obs(sid)  # raises loudly on empty/404
@@ -289,7 +312,7 @@ def build_us(manual: dict, force: bool) -> dict:
         gf = mu["reservesInclGoldFallback"]
         reserves_incl_gold = {"latest": gf["value"], "asOf": mu.get("lastChecked"), "history": []}
 
-    total_debt = S.total_debt_pct_gdp(raw["TCMDO"][1], raw["TCMDO"][0],
+    total_debt = S.total_debt_pct_gdp(raw["TCMDODNS"][1], raw["TCMDODNS"][0],
                                       raw["GDP"][1], raw["GDP"][0])
     ca_units = raw["IEABC"][0]
     annualized = "annual rate" in (ca_units or "").lower()
@@ -405,7 +428,7 @@ def build_us(manual: dict, force: bool) -> dict:
         "eyebrow": "Broader health", "tag": "live",
         "note": "Economy-wide leverage and the external balance — how dependent the country is on foreign financing.",
         "rows": [
-            live_row("Total debt (all sectors)", total_debt, "caution", "FRED Z.1", "of GDP"),
+            live_row("Total debt, nonfinancial sectors", total_debt, "caution", "FRED: TCMDODNS (Z.1)", "of GDP"),
             live_row("Current account, 3-yr avg", current_acct, "caution", "BEA / FRED", "of GDP"),
             live_row("Real 10-year rate (10y − CPI)", real_rate, "neutral", "derived · FRED (DGS10 − CPI)", "real, 10y"),
         ],
