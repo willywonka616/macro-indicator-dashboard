@@ -6,16 +6,16 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-19c-verification.md` (run output) and
-> `docs/review/2026-07-19c-values.md` (headline values), base commit
-> `b25f8a6`. Each review pass now gets its own new file under
-> `docs/review/` instead of rewriting `docs/verification-log.md` /
-> `docs/current-values.md` in place — a reviewer's fetch tool caches by URL
-> and can't see edits to an already-fetched path, so an old path that keeps
-> getting rewritten is invisible on a repeat check. Those two old paths now
-> hold short tombstone stubs pointing here; do not resurrect the
-> regenerate-in-place pattern. When you add a new round, update this line
-> to point at it.
+> `docs/review/2026-07-19d-verification.md` (run output) and
+> `docs/review/2026-07-19d-values.md` (headline values), base commit
+> `76362af`. Each review pass gets its own new file under `docs/review/`
+> instead of rewriting `docs/verification-log.md` / `docs/current-values.md`
+> in place — a reviewer's fetch tool caches by URL and can't see edits to
+> an already-fetched path, so an old path that keeps getting rewritten is
+> invisible on a repeat check. Those two old paths hold short tombstone
+> stubs pointing here; do not resurrect the regenerate-in-place pattern.
+> Prior round: `docs/review/2026-07-19c-*.md` (superseded, left in place).
+> When you add a new round, update this line to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -48,6 +48,27 @@ four denominators tested, vs. on-budget's 714%). This is a
 basis-*identification* finding, not a basis change — §12 records it as a
 recommendation for the next task, and revises §10.2's retraction (real
 drift does exist, just not where the first retraction looked).
+
+**Later the same day, a fourth pass (§13, ships): the "total receipts"
+§12 (and every round before it) computed had been GROSS receipts, not
+net of refunds** — a ~7% overstatement, checked against CBO's published
+FY2024 ($4.920T) and FY2025 ($5.235T) totals (net matches both almost
+exactly; gross misses both by ~7%). Fixed in `treasury.py`. Two
+consequences: (1) no realised-data basis reproduces Dalio's 22% closely
+any more (closest: gross/total at 23.9%, ~2pt off — within the book's own
+Ch.3-vs-Ch.17 20%/22% spread); (2) **debt/revenue on the corrected TOTAL,
+net-of-refunds basis lands at 580% for 2025-Q1 — essentially exact
+against Dalio's own stated ~580%**, the strongest independent
+confirmation this project has found for what his denominator actually
+is. Shipped: `debt_service_ratio()`, `gross_debt_service_ratio()`, and
+`revenue_ttm_dollars()` now all divide by TOTAL receipts, net of refunds
+(dropping the on-budget basis §3/§11 adopted, whose closeness to 22% is
+now understood to have been an artifact of the gross-receipts bug). Also
+found and stated plainly: §10.2's "the pipeline's 23.0% matches GAO/CBO's
+23.0%" was coincidence, not corroboration — the pipeline's actual figure
+at the time used the inflated gross denominator. See §13 for the full
+writeup, including the corrected 3×4 matrix and why on-budget was
+dropped for total on definitional (not just numerical) grounds.
 
 ---
 
@@ -188,6 +209,14 @@ Bugs found and fixed, in order:
    amortized discount/premium + savings + misc), explicitly excluding
    `INTEREST EXPENSE ON GOVT ACCOUNT SERIES` (intragovernmental, paid to
    trust funds — not part of net interest to the public).
+
+> **Superseded again — see §13.** Rounds 1 and 2 below (kept for the
+> record) are followed by a Round 3 (§12, diagnostic) and Round 4 (§13,
+> the current state): the on-budget-receipts denominator both rounds below
+> settled on turned out to rest on a field-selection bug (summing GROSS
+> receipts, not net of refunds) — fixed in §13, which also drops on-budget
+> for TOTAL receipts. **For the current shipped basis, read §13, not the
+> "Round 2" text below.**
 
 **RESOLVED 2026-07-19, revised again same day** after an external review of
 this exact write-up caught a real error in it — see §10.2 for the retraction
@@ -615,7 +644,7 @@ gap had gone unnoticed because it was never added to this table.
 | Debt held by public / GDP | ~100% (99%) | 99% | live, `FYGFGDQ188S` | Matches closely |
 | Debt, 10-yr projection / GDP | 122% | 122% | **manual**, carried from `data/manual.json` (CBO) | Trivial — same figure, not independently derived |
 | Held by CB / domestic / abroad | 13% / 57% / 29% | 13% / 57% / 29% | **manual**, carried from `data/manual.json` (TIC) | Trivial — same figures, not independently derived |
-| Debt service / revenue | 22% | 23.1% (net-to-public / on-budget receipts) | live, `scripts/treasury.py` | Close but not exact — see §3, §10.2's retraction. Residual ~1pt, unexplained |
+| Debt service / revenue | 22% | 19.6% (net-to-public / **total** receipts, net of refunds) | live, `scripts/treasury.py` | **Further off than before** (-2.4pt vs. the prior on-budget basis's +1.1pt) — see §13: the prior basis's closeness to 22% was an artifact of a gross-vs-net receipts bug; corrected, no realised-data basis reproduces 22% closely (closest: gross/total at 23.9% @ Mar-2025, ~2pt off, within the book's own Ch.3-vs-Ch.17 20%/22% spread) |
 | FX reserves / GDP | 3% | 3.7% (excl.-gold FX + gold at market) | live, `scripts/gold.py` + FRED | Close but not exact — residual ~0.7pt, attributed partly to the gold-price staleness (§3/§7) |
 | Total debt (Dalio's "other debt") / GDP | 340% | 362.6% (TCMDO, all sectors incl. financial) | live, `FRED: TCMDO` | **Does not match** — +22.6pt gap. A nonfinancial-only alternative (TCMDODNS) was tried and made it *worse* (256.7%, -83pt) — see below |
 | Current account, 3-yr avg / GDP | −4% | −3.7% | live, `IEABC` (FRED) | Matches closely |
@@ -623,7 +652,7 @@ gap had gone unnoticed because it was never added to this table.
 | World debt in USD | 80.7% | 80.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
 | Global equity market cap in USD | 65.7% | 65.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
 | World CB reserves in USD | 57.0% | 57.7% | live, IMF COFER via DBnomics | Matches closely — independently computed, not carried |
-| Debt / revenue | ~580% (Mar 2025, stated); ~700% (his 10-yr projection) | 692% (debt / **on-budget** revenue, shipped basis) | live, derived (§3, §12) | **Does not match well on the shipped basis** — +112pt. §12's drift test shows debt / **total** receipts (542%, realised) and debt / **CBO-projected** receipts (530%) both land much closer (-38pt / -50pt) — on-budget and tax-only are the two denominators his 580% clearly rules out, not the two closest to it. See §12; not forced to reconcile, recorded as an open question for the next basis-decision task |
+| Debt / revenue | ~580% (Mar 2025, stated); ~700% (his 10-yr projection) | 576% (2026-Q1, shipped); **580% at 2025-Q1 (Mar-2025, his own vintage)** | live, derived (§3, §12, §13) | **Matches almost exactly at his vintage** — see §13: switching to TOTAL receipts, net of refunds (the corrected, shipped basis) puts debt/revenue at $28.93T / $4.99T TTM = 580% for 2025-Q1, essentially identical to his stated figure. Strongest confirmation yet that TOTAL, net-of-refunds receipts is his denominator |
 
 **Read the "Basis" column before trusting a "match."** Six of the twelve
 rows are `manual` — hand-carried from `data/manual.json`, which in most
@@ -640,16 +669,16 @@ data source:**
 - **Debt service**: required deciding which numerator (gross vs.
   net-to-public vs. function-900) and denominator (tax receipts, total
   receipts, or on-budget receipts) this pipeline uses — a 3×3 matrix (§3)
-  made all nine candidates explicit. The current basis (net-to-public /
-  on-budget receipts) is chosen on definitional grounds, not because it's
-  the closest fit to 22% (it ties with net-function-900/on-budget, and
-  isn't meaningfully closer than the old gross/total-receipts basis was).
-  **§12's later drift test (a monthly recomputation at Dalio's stated
-  vintage, extended with a 4th denominator) identifies gross ÷ total
-  receipts — not net ÷ on-budget — as the construction that best
-  reproduces both of Dalio's independent anchors (22% interest, 580%
-  debt/revenue) simultaneously.** That's an identification finding, not
-  yet a basis change — see §12 for why those are kept separate.
+  made all nine candidates explicit. §12's drift test identified gross ÷
+  total receipts as the closest reconstruction of Dalio's 22% — but §13
+  found the "total receipts" both §3 and §12 used had been GROSS receipts
+  (before refunds, a ~7% overstatement), not net. Corrected, no realised
+  basis reproduces 22% closely (closest: gross/total, 23.9% @ Mar-2025).
+  **The shipped basis is now net-to-public / TOTAL receipts (net of
+  refunds)** — chosen on definitional grounds (the numerator/denominator
+  scope-consistency argument from Round 2, unaffected by the receipts
+  bug, plus TOTAL being the standard published denominator once
+  closeness-to-22% stopped being a live consideration). See §13.
 - **Reserves**: no amount of debugging FRED's `TRESEGUSM052N` alone could
   close this gap — the series structurally excludes gold. Required a new
   data source (Treasury gold holdings × a live gold price).
@@ -663,10 +692,10 @@ data source:**
   session). **Reported as an open gap, not forced to reconcile.**
 
 **Two rows already matched before this session** (debt/GDP, COFER USD
-share) and needed no change. **Debt/revenue now has a book anchor** (§12
-found Dalio's own stated ~580%/~700% figures) — the shipped on-budget basis
-doesn't match it well, but a realised-total-receipts basis would come much
-closer; see §12 for the full identification.
+share) and needed no change. **Debt/revenue now has a book anchor and
+matches it almost exactly** (§12 found Dalio's own stated ~580%/~700%
+figures; §13's corrected TOTAL-receipts basis puts debt/revenue at 580%
+for 2025-Q1, his own vintage — see §13).
 
 ---
 
@@ -1211,6 +1240,210 @@ obtained the book text).
 | The §10.2 timing-drift retraction was too broad — real drift exists on the gross/total cell | **VERIFIED** — direct monthly recomputation, not inference |
 | The next task should adopt gross/total-receipts as the shipped basis | **RECOMMENDATION, not a verified fact** — a decision this task explicitly defers, offered with the evidence above |
 | Direct CBO/FRED/Treasury access is blocked from this session's sandbox (not from Actions) | **VERIFIED** — quoted from the proxy's own diagnostic endpoint |
+
+**⚠️ ADDENDUM, same day, §13.** This entire §12 analysis — including the
+matrix in §12.2, the "total receipts" TTM$ figures in §12.3, and the
+"gross ÷ total ≈ 22%" identification above — used `monthly_receipts()`,
+which §13 found had been summing GROSS receipts (before refunds) the
+whole time, a ~7% overstatement. The *debt/revenue* finding held up
+anyway (§13 finds an even closer match, 580% almost exact, on the
+corrected basis) — but the *interest-ratio* identification did not:
+corrected, gross/total lands at 23.9% at Mar-2025, not 22.3%, a
+materially worse match. Left as-is above per the retract-explicitly
+convention; see §13 for the corrected numbers and what they change.
+
+---
+
+## 13. Receipts denominator fix: gross → net, on-budget → total (2026-07-19, fourth pass)
+
+Per `TASKreceiptsdenominator.md`: a reviewer working from §12/`docs/review/
+2026-07-19c-verification.md` alone (i.e. from committed files, not this
+session's live transcript) spotted that the drift test's own $5.34T
+"total receipts" figure at 2025-Q1 didn't match three independent
+estimates of Dalio's actual denominator (~$4.99T from his 580% figure,
+CBO's $4.92T FY2024 total already cited in §10.2, and an independent
+Treasury/JEC estimate) — and correctly traced the ~7% gap to
+`mts_table_4`'s **gross** vs **net-of-refunds** receipts fields, not a
+new numerator question. **This basis change ships** — unlike §12, this
+pass is not diagnostic-only.
+
+### 13.1 The bug, confirmed against CBO's published FY totals
+
+`mts_table_4`'s "Total -- Receipts" row (2026-06 shown, but the same
+three fields exist every month):
+```
+classification_desc: 'Total -- Receipts'
+gross=563,801,628,771.00  refund=68,040,147,202.30  net=495,761,481,568.70
+gross - refund = 495,761,481,568.70 = net  (exact, confirms the arithmetic)
+```
+`monthly_receipts()` (and `off_budget_receipts_monthly()`) had summed
+`current_month_gross_rcpt_amt` since this function was first written —
+every prior round's "total receipts"/"on-budget receipts" figure used it.
+
+| FY | CBO published | Pipeline, GROSS (old) | Pipeline, NET (fixed) |
+|---|---|---|---|
+| FY2024 | $4.920T | $5.265T (**+7.0%**) | $4.919T (**-0.03%**) |
+| FY2025 | $5.235T | $5.617T (**+7.3%**) | $5.235T (**-0.01%**) |
+
+**Claim status: VERIFIED** — both rows read from a live `workflow_dispatch`
+run (`https://github.com/willywonka616/macro-indicator-dashboard/actions/runs/29703925309`,
+job `88237568913`), CBO's FY2024/FY2025 totals as cited in `TASKreceiptsdenominator.md`
+(FY2024 already independently cited in §10.2; FY2025 cross-checked via
+WebSearch against two independent statements — "$5.235T actual, $72B/1%
+above the $5.163T Jan-2025 baseline" and "+$317B/6% over FY2024's $4.92T"
+— both arithmetically consistent with $5.235T). Net matches both to
+within rounding; gross misses both by essentially the same ~7%. Fixed:
+`monthly_receipts()` and `off_budget_receipts_monthly()` now sum
+`current_month_net_rcpt_amt` (see `scripts/treasury.py`).
+
+### 13.2 The on-budget-vs-total question, re-examined
+
+With the field bug fixed, `TASKreceiptsdenominator.md` §1's own predicted
+consequence held almost exactly: gross ÷ total (now correctly net) at
+Mar-2025 came in at **23.9%** (task's estimate: "roughly 23.9%") and
+net-to-public ÷ total at **19.0%** (task's estimate: "roughly 19.0%") —
+both confirmed live, not just predicted. Full corrected 3×4 matrix
+(monthly TTM, Mar-2025 vs. today; verbatim run in
+`docs/review/2026-07-19d-verification.md`):
+
+| Numerator | Denominator | Mar-2025 | Today (2026-06) |
+|---|---|---|---|
+| gross (incl. GAS) | **total (net, shipped)** | 23.9% | 25.1% |
+| gross (incl. GAS) | on-budget (net) | 32.2% | 33.3% |
+| gross (incl. GAS) | tax only | 37.6% | 35.0% |
+| gross (incl. GAS) | CBO Jan-2025 projected | 22.5% | 24.9% |
+| net-to-public | **total (net, shipped)** | 19.0% | 19.6% |
+| net-to-public | on-budget (net) | 25.6% | 25.9% |
+| net-to-public | tax only | 29.9% | 27.8% |
+| net-to-public | CBO Jan-2025 projected | 17.9% | 19.4% |
+| net interest, fn900 | **total (net, shipped)** | 18.9% | 19.5% |
+| net interest, fn900 | on-budget (net) | 25.4% | 25.8% |
+| net interest, fn900 | tax only | 29.7% | 27.8% |
+| net interest, fn900 | CBO Jan-2025 projected | 17.7% | 19.3% |
+
+**No realised-data cell is close to 22%** — the closest, gross/total at
+23.9%, is ~2pt off, which is inside the book's own internal spread (Ch.3
+says 20%, Ch.17 says 22% — a 2pt gap in the source itself). Per
+`TASKreceiptsdenominator.md`'s own outcome table, this is closest to *"No
+cell near 22% at his vintage, on any denominator → Definitional gap
+confirmed. Choose on definitional grounds, document the residual"* — with
+one caveat: **gross ÷ CBO-projected receipts is closer still (22.5%)**,
+mildly reviving the footnote-20 "trailing numerator, projected
+denominator" hypothesis for *his* construction specifically. That doesn't
+change what ships (`TASKreceiptsdenominator.md`'s prior-round guidance
+still applies: identifying his construction isn't a reason to build ours
+on a forecast-dependent denominator that moves independently of the real
+fiscal position).
+
+### 13.3 debt_to_revenue: the strongest confirmation this project has found
+
+This is the finding `TASKreceiptsdenominator.md` didn't predict. Debt held
+by the public, 2025-Q1 (Mar-2025): **$28.93T** (matches the task's ~$28.9T
+estimate). Against each of the four denominators' TTM$ at that same
+quarter:
+
+| Denominator | TTM$ at 2025-Q1 | debt/revenue | vs. Dalio's ~580% |
+|---|---|---|---|
+| **total, net of refunds (shipped)** | **$4.99T** | **580%** | **~0pt — essentially exact** |
+| CBO Jan-2025 projected | $5.31T | 545% | -35pt |
+| on-budget, net | $3.71T | 780% | +200pt |
+| tax receipts only | $3.17T | 912% | +332pt |
+
+**Claim status: VERIFIED** — computed live in the same run as §13.2's
+matrix (`docs/review/2026-07-19d-verification.md`). $4.99T is, to the
+cent this pipeline can measure it, the same figure the task derived by
+hand from Dalio's own 580% ("$28.9T / 580% ≈ $4.99T"). This is the
+single strongest piece of evidence in this project for what Dalio's
+denominator actually is: TOTAL receipts, net of refunds — not on-budget,
+not tax-only, and (at his own March-2025 vintage) not meaningfully
+different from the CBO-projected variant either, though the realised
+figure is the closer of the two and has no forecast-staleness risk.
+
+### 13.4 Basis shipped
+
+`debt_service_ratio()`, `gross_debt_service_ratio()`, and
+`revenue_ttm_dollars()` now all divide by `monthly_receipts()` — TOTAL
+receipts, net of refunds — instead of `on_budget_receipts_monthly()`.
+`on_budget_receipts_monthly()` is kept for the diagnostic matrix only.
+Confirmed live in the production run that follows this fix
+(`https://github.com/willywonka616/macro-indicator-dashboard/actions/runs/29704235465`,
+commit `76362af`):
+
+- `debt_service_to_revenue` (headline): **19.6%** (display "20%"), was 23.1%
+  (display "23%") under the on-budget basis.
+- Gross interest, second row: **25.1%** (display "25%"), was 29.7% (display "30%").
+- `Debt vs revenue` (renamed from "Debt vs on-budget revenue"): **576%**
+  (2026-Q1), was 692%.
+
+All within the existing sanity bands (10-40%, 15-50%, 200-1200%) with
+comfortable headroom — no band changes needed. One shared
+`provenance.revenueDefinition` (TOTAL, net of refunds) now covers both
+debt-service rows and `debt_to_revenue`, per acceptance criterion 4.
+Local mock test (`scripts/requirements.txt`-installed, no network) updated
+and re-run: `ALL CHECKS PASSED`.
+
+### 13.5 The §10.2 GAO/CBO "corroboration" — coincidence, not corroboration
+
+`TASKreceiptsdenominator.md` §1 asked this to be checked explicitly.
+§10.2's independent cross-check computed GAO's FY2024 gross interest
+($1,126.5B) over **CBO's own published FY2024 total ($4.9T, i.e. net of
+refunds)** = 23.0%, and noted this matched the pipeline's own live ratio
+at the time, also ~23.0%. But the pipeline's live ratio at that time was
+gross interest over the pipeline's **gross**-receipts denominator — a
+different, inflated quantity that happened to round to the same headline
+percentage as the correct external calculation. Recomputing what the
+pipeline's TTM-ending-then figure actually was on a like-for-like FY2024
+basis (gross interest $1,133.0B / gross receipts $5.265T = 21.5%) does
+**not** match 23.0% — the apparent agreement was between two different
+quantities that both rounded near 23%, not a genuine independent
+corroboration of the pipeline's method. **Say-so, per the task's
+instruction: yes, this was coincidence, not corroboration.** The GAO/CBO
+figures themselves (external, correctly using CBO's net-of-refunds total)
+remain valid — only the "the pipeline agrees with them" claim is
+retracted.
+
+### 13.6 Denominator choice: on-budget dropped, total adopted, on definitional grounds
+
+`TASKreceiptsdenominator.md` §2 asked this to be re-examined once §1
+resolved, and to be explicit that on-budget's original selling point
+(closeness to 22%) might be shown to be an artifact. It was: on-budget's
+23.1% (old, gross-receipts basis) vs. Dalio's 22% was a ~1pt "match" built
+on a ~7%-inflated denominator that happened to still land close by
+chance of scale. Once receipts are corrected, on-budget is no longer
+close to anything (25.6-25.9% net-to-public, 32.2-33.3% gross — both
+further from 22% than the total-receipts variants). With
+closeness-to-target no longer a live consideration, TOTAL receipts is
+adopted on the grounds that matter: it's the denominator every standard
+published interest-to-revenue figure (CBO, OMB, GAO) actually uses,
+where on-budget/off-budget is a budget-*process* artifact (2 U.S.C.
+622(7) governs statutory budget-enforcement totals, not which cash is
+economically available to pay interest — Treasury commingles on- and
+off-budget receipts in the same general account). §13.3's debt/revenue
+match is independent confirmation this was the right call, arrived at
+without targeting that figure.
+
+### 13.7 §3 rising-burden note (task §3)
+
+Noted, not acted on further this pass: the shipped headline (net /
+total) reads 19.0% at Mar-2025 and 19.6% today — rising, not falling
+(the opposite of what the equivalent on-budget-basis figures showed,
+23.4% → 23.1%). Dalio's framing is of a rising burden, so the corrected
+basis is *more* consistent with that framing than the one it replaced,
+not less — worth a line in the commentary if/when the equation-button
+task (still out of scope here) revisits panel copy.
+
+### 13.8 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| `monthly_receipts()` had been summing gross, not net, receipts | **VERIFIED** — read live from `mts_table_4`'s three fields, arithmetic checks (gross − refund = net) |
+| Net matches CBO's FY2024/FY2025 published totals; gross overshoots both by ~7% | **VERIFIED** — live run vs. cited CBO figures |
+| No realised-data cell reproduces 22% closely post-fix | **VERIFIED** — full corrected matrix, live |
+| gross ÷ CBO-projected (22.5%) is the closest surviving cell to 22% | **VERIFIED**, but not adopted — forecast-dependent denominator, see §13.2 |
+| debt/revenue on the corrected total-receipts basis ≈ Dalio's 580% at his vintage | **VERIFIED** — 580% computed live vs. his stated ~580% |
+| The §10.2 GAO/CBO "agreement" was coincidental, not corroborating | **VERIFIED** — recomputed the like-for-like FY2024 figure, doesn't match |
+| TOTAL (net) receipts is now the shipped denominator for all three revenue-denominated rows | **VERIFIED** — read from committed `public/data.json` at commit `76362af` |
+| This basis is closer to Dalio's rising-burden framing than the one it replaced | **VERIFIED** (directionally: 19.0%→19.6% rises; the old on-budget 23.4%→23.1% fell) |
 
 ---
 
