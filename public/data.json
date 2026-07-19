@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-19T10:34:43Z",
+  "generatedAt": "2026-07-19T12:04:56Z",
   "meta": {
     "seed": false,
     "schema": 1
@@ -8166,7 +8166,7 @@
         "manualLastChecked": "2026-07-18",
         "currentAccountAnnualizedInput": false,
         "debtServiceBasis": "gross interest (incl. GAS) / total federal receipts, Treasury budget basis — chosen 2026-07 to match Dalio's Ch.17 US snapshot (22%); see STATUS.md",
-        "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz) x live gold price (DBnomics LBMA), gold valued at MARKET not the $42.2222/oz statutory book rate — resolved 2026-07 to match Dalio's Ch.17 US snapshot (3%); see STATUS.md",
+        "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz) x live gold price (DBnomics: IMF PCPS, indicator PGOLD — DBnomics' LBMA mirror was dropped 2026-07 after LBMA moved its price tables behind a members-only portal), gold valued at MARKET not the $42.2222/oz statutory book rate — resolved 2026-07 to match Dalio's Ch.17 US snapshot (3%); see STATUS.md",
         "reservesInclGoldTag": "live"
       }
     }
