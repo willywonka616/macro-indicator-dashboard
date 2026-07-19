@@ -5,6 +5,18 @@ instruction this file was created under, and it stands going forward. Written
 for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
+> **Current review-round files:**
+> `docs/review/2026-07-19c-verification.md` (run output) and
+> `docs/review/2026-07-19c-values.md` (headline values), base commit
+> `b25f8a6`. Each review pass now gets its own new file under
+> `docs/review/` instead of rewriting `docs/verification-log.md` /
+> `docs/current-values.md` in place — a reviewer's fetch tool caches by URL
+> and can't see edits to an already-fetched path, so an old path that keeps
+> getting rewritten is invisible on a repeat check. Those two old paths now
+> hold short tombstone stubs pointing here; do not resurrect the
+> regenerate-in-place pattern. When you add a new round, update this line
+> to point at it.
+
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
 debt-service into net (headline, to the public) and gross (incl.
@@ -380,8 +392,8 @@ count with a 2025-06 gold price was the more directly actionable problem —
 a reader has no way to know that from the number alone. Fixed: `src` now
 names both dates explicitly whenever they differ (e.g. `"Treasury (gold oz
 2026-06) + DBnomics (price 2025-06)"`, confirmed live in the 2026-07-19
-run — see `docs/current-values.md`), instead of a generic string that reads
-as fully current. The tag stays `"live"` rather than being downgraded,
+run — see `docs/review/2026-07-19c-values.md`), instead of a generic
+string that reads as fully current. The tag stays `"live"` rather than being downgraded,
 since both components genuinely are live data, just not from the same
 month — downgrading the tag would hide that distinction rather than
 surface it.
@@ -884,12 +896,19 @@ this section.
 
 ## 11. Review package, second round (2026-07-19, current state)
 
-This is the **current** review package — supersedes §10's numbers (§10
-itself is kept, marked historical, not deleted). Base commit: `3ed5858`
-(branch `claude/new-session-ldotj8`). Same file-only-reviewer constraints
-as §10 (no Actions tab, no directory browsing, no `git log`); same
-`docs/verification-log.md` / `docs/current-values.md` support files,
-regenerated this pass with the fresh SHA/timestamp at their own top.
+This round's numbers supersede §10's (§10 itself is kept, marked
+historical, not deleted); §12 (a diagnostic, not a further numbers
+revision) supersedes neither — read this section and §12 together for the
+current state. Base commit: `3ed5858` (branch `claude/new-session-ldotj8`).
+Same file-only-reviewer constraints as §10 (no Actions tab, no directory
+browsing, no `git log`). **Support-file location changed after this round
+was first written:** the content quoted below was originally in
+`docs/verification-log.md` / `docs/current-values.md`, regenerated in
+place; those paths are now short tombstone stubs, and the actual content
+lives at `docs/review/2026-07-19c-verification.md` /
+`docs/review/2026-07-19c-values.md` (see the note at the top of this
+file) — nothing about the numbers changed, only where the supporting file
+lives.
 
 ### 11.1 The 3×3 debt-service matrix, copied verbatim from the run log
 ```
@@ -973,7 +992,8 @@ pass, see below) recomputed the 3×3 matrix as a **monthly** series,
 2023-01→present, reusing `treasury.py`/`series.py`'s numerator and
 denominator definitions **unchanged**, extended with a 4th denominator:
 CBO's January 2025 baseline projected total receipts, by fiscal year. Full
-run output: `docs/verification-log.md`, "Drift test" section.
+run output: `docs/review/2026-07-19c-verification.md`, "Drift test"
+section.
 
 ### 12.1 CBO figures used, and why direct CBO access wasn't possible
 
@@ -1019,7 +1039,7 @@ tables":
 
 3 numerators × 4 denominators, TTM ratio, read at Mar-2025 and at the
 latest available month (full min/max/slope/crossings in
-`docs/verification-log.md`):
+`docs/review/2026-07-19c-verification.md`):
 
 | Numerator | Denominator | Mar-2025 | Today | Crosses 22% in 2024-01→2025-06? |
 |---|---|---|---|---|
@@ -1037,7 +1057,7 @@ latest available month (full min/max/slope/crossings in
 | net interest, fn900 | tax only | 29.7% | 27.8% (2026-03) | No — closest 25.5% |
 
 **Claim status: VERIFIED** — every cell above is copied from the live run
-in `docs/verification-log.md`.
+in `docs/review/2026-07-19c-verification.md`.
 
 **Regime, per the task's slope guardrail:** the whole-window (2023-01→now)
 slope on every cell is steep (+2.2 to +3.6 pt/yr — the 2022–2023 rate-hike
@@ -1169,7 +1189,13 @@ obtained the book text).
   removed** immediately after this pass (commit follows this one) — per
   the task's framing ("a diagnostic, not a feature… nothing ships from it
   except findings"), the reusable artifact is this file and
-  `docs/verification-log.md`, not a permanent script.
+  `docs/review/2026-07-19c-verification.md`, not a permanent script.
+- **Review-file convention changed after this pass was first written:**
+  `docs/verification-log.md` / `docs/current-values.md` (rewritten in
+  place, referenced throughout this section as written) have since moved
+  to per-round files under `docs/review/` — see the note at the top of
+  this file. Nothing in §12's findings changed; only the support-file
+  paths did.
 
 ### 12.8 Verified vs. assumed — this round's new claims
 
