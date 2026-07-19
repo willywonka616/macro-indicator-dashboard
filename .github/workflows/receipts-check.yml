@@ -1,0 +1,36 @@
+name: Receipts check (diagnostic, one-off)
+
+# ONE-OFF diagnostic for "verify the receipts denominator before locking the
+# basis" (see TASKreceiptsdenominator.md). Runs scripts/receipts_check.py,
+# which is not part of the build and ships nothing — findings go into
+# STATUS.md / docs/review/ by hand. This workflow and the script are
+# removed once the findings are recorded.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [claude/new-session-ldotj8]
+    paths:
+      - "scripts/receipts_check.py"
+      - ".github/workflows/receipts-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  receipts-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run receipts check
+        working-directory: scripts
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: python receipts_check.py
