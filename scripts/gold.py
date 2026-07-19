@@ -173,15 +173,20 @@ def _all_gold_price_docs():
 
 def _gold_price_docs():
     """PGOLD series, found by filtering the bare dump client-side rather
-    than guessing PCPS's dimension names. Prefers a monthly (M.*) series
-    code if more than one PGOLD variant comes back (e.g. annual, quarterly)."""
+    than guessing PCPS's dimension names. PCPS carries four PGOLD variants
+    per frequency — an index (.IX), two percent-change series (.PC_*), and
+    the actual dollar level (.USD); confirmed live (2026-07) that .USD is
+    the real per-ounce price and .IX is a rebased index (~268, not ~$3000s).
+    Prefers monthly (M.*) among the USD-suffixed matches."""
     docs = _all_gold_price_docs()
     matches = [d for d in docs
                if GOLD_INDICATOR_HINT in str(d.get("series_code", "")).lower()]
     if not matches:
         return docs  # nothing matched — let the caller see the raw dump via verify()
-    monthly = [d for d in matches if str(d.get("series_code", "")).upper().startswith("M.")]
-    return monthly or matches
+    usd = [d for d in matches if str(d.get("series_code", "")).upper().endswith(".USD")]
+    pool = usd or matches
+    monthly = [d for d in pool if str(d.get("series_code", "")).upper().startswith("M.")]
+    return monthly or pool
 
 
 def _period_to_ym(period: str):
