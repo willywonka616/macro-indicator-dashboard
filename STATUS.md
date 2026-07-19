@@ -9,7 +9,10 @@ Last updated: **2026-07-19**, by Claude (Sonnet 5). This session closed out
 two items §3 had flagged as unverified assumptions (debt-service basis) and
 resolved a reserves discrepancy against Dalio's Ch.17 US figures that hadn't
 been caught before (§3, new subsection, and §9). See §9 for the calibration
-comparison this work was built around.
+comparison this work was built around, and **§10 for a self-contained
+review package** built for a reviewer who can only read individual files by
+public GitHub blob URL (no Actions tab, no directory browsing, no commit
+history) — `docs/verification-log.md` and `docs/current-values.md`.
 
 ---
 
@@ -507,6 +510,158 @@ changes, not just trust that the sanity bands are enough.
 **Two rows already matched** (debt/GDP, COFER USD share) and needed no
 change — worth noting so a future reader doesn't assume everything on the
 page was wrong before this session; only the two flagged assumptions were.
+
+---
+
+## 10. Review package for a file-only reviewer (2026-07-19)
+
+Written for an AI assistant (or human) reviewing this project that **can
+only read individual files by public GitHub blob URL** — it cannot open the
+Actions tab, cannot browse directories, cannot read `git log`, and may be
+served a cached copy of any file. Everything claimed below is either quoted
+verbatim from a real file in this repo, or explicitly marked as inferred.
+Base commit for everything in this section: `4c344e1` (branch
+`claude/new-session-ldotj8`).
+
+**Supporting files** (full paths from repo root):
+- `docs/verification-log.md` — the actual Actions run output, pasted
+  verbatim (timestamps/ANSI codes stripped only), including the 3×2 matrix,
+  every `--verify` schema dump, the sanity-band source, and the prior
+  gold-price failures.
+- `docs/current-values.md` — every headline number as a table, with
+  `tag`/`src`/`asOf`/`unit`, instead of asking the reviewer to parse the
+  ~200KB `public/data.json` by hand.
+
+### 10.1 The 3×2 debt-service matrix, copied verbatim from the run log
+
+```
+  Debt-service calibration matrix (Dalio Ch.17 US target: 22%, Mar 2025):
+  numerator                          tax receipts only        total receipts
+  gross (incl. GAS)                              35.0%                 23.0%
+  net-to-public (excl. GAS)                      27.8%                 17.9%
+  net interest, function 900                     27.8%                 17.8%
+```
+**Claim status: VERIFIED** — copied from `docs/verification-log.md`, which
+is itself a verbatim paste of the job log of a real `workflow_dispatch` run
+(2026-07-19 12:03–12:05 UTC, commit `4c344e1`). I ran this and read the
+output; it is not a recalculation or a re-derivation done just now.
+
+**Combination adopted: gross (incl. GAS) ÷ total receipts = 23.0%.**
+Why: it's the cell closest to Dalio's 22% target of all six, and — more
+importantly than closeness alone — it's the only one that also matches a
+named external statistic (§10.2). The other five cells were considered and
+rejected: the two "total receipts" cells below it (17.9%, 17.8%) are what
+this pipeline shipped *before* this session and are ~4pts off; the three
+"tax receipts only" cells (35.0%, 27.8%, 27.8%) are all too high to be
+plausible matches for a 22% target, because tax receipts alone
+(`W006RC1Q027SBEA`-style) are a narrower denominator than Dalio's "revenue"
+framing — this exact overstatement was already a documented bug earlier in
+the project (STATUS.md §2, the original `W006RC1Q027SBEA` mis-use produced
+33% for the same reason).
+
+### 10.2 Named official statistic cross-check, and the exact residual
+
+**Numerator (gross interest) checked against:** GAO, *Schedule of Federal
+Debt*, report GAO-25-107138 — FY2024 gross interest expense on the total
+public debt outstanding = **$1,126.5B**.
+**Denominator (total receipts) checked against:** CBO, *Monthly Budget
+Review*, FY2024 summary — total federal receipts = **$4.9T**.
+**Independent ratio from those two named figures: $1,126.5B / $4,900B =
+23.0%** (rounds to the same 23.0% this pipeline's live TTM computation
+produced, from an entirely separate data path — Treasury Fiscal Data API
+observations, not GAO/CBO publications).
+
+**Residual vs. Dalio's 22%: +1.0 percentage point.** Stated plainly: this
+does **not** exactly reconcile. My attribution — the book's figure is
+pinned to a March 2025 snapshot; this pipeline computes a rolling
+trailing-12-month ratio that, at the time of the run quoted above, ended
+2026-06 — is a plausible explanation for a 1pt drift over roughly a year,
+but it is **not independently confirmed**. I did not obtain Dalio's own
+underlying month-by-month series to check whether the ratio was closer to
+22% specifically in March 2025 and has since drifted to 23%, versus some
+other cause (a data revision, a different treatment of GAS, etc.).
+**Claim status for the attribution: ASSUMED, not verified.** The 23.0% ↔
+23.0% match between this pipeline and the independent GAO/CBO figures *is*
+verified; the *reason* for the 1pt gap to Dalio specifically is inferred.
+
+### 10.3 Reserves reconciliation
+
+**What `TRESEGUSM052N` actually covers**, quoted verbatim from the FRED
+metadata returned by `--verify` (see `docs/verification-log.md`):
+```
+TRESEGUSM052N      yes M          Millions of Dollars          1950-12-01   Total Reserves excluding Gold for United
+```
+i.e. the series title is *"Total Reserves excluding Gold for United
+States"* — confirmed live against FRED's own metadata, not inferred from
+the series ID alone. **Claim status: VERIFIED.**
+
+**Gold holdings source:** US Treasury Fiscal Data API,
+`/v2/accounting/od/gold_reserve` — 8 rows (by facility/form/location) as of
+`record_date` 2026-06-30, summed to total fine troy ounces. Fields and
+latest rows are quoted verbatim in `docs/verification-log.md`. This is
+**quantity of gold** (troy oz), not a price — Treasury also reports a
+`book_value_amt` per row, but that's the $42.2222/oz statutory rate, which
+this pipeline explicitly does **not** use (see §3).
+
+**Gold price source:** IMF Primary Commodity Price System (PCPS), indicator
+`PGOLD`, series `M.W00.PGOLD.USD`, via DBnomics
+(`https://api.db.nomics.world/v22/series/IMF/PCPS`). Confirmed live:
+`selected series_code: M.W00.PGOLD.USD`, latest observation `2025-06 =
+3351.85857142857 USD/oz` (quoted verbatim in `docs/verification-log.md`).
+
+**Computed including-gold % of GDP: 3.7%** (`tag: "live"`,
+`reserves_to_gdp` vital and the `"Reserves incl. gold (market)"` panel row —
+both in `docs/current-values.md`, sourced from `public/data.json` at commit
+`4c344e1`). Composition: gold holdings (troy oz, 2026-06-30) × PCPS gold
+price ($3,351.86/oz, dated 2025-06) = **$876.5B** gold market value, plus
+FRED's excl.-gold reserves, over nominal GDP. **Claim status: VERIFIED** —
+read directly from the committed `public/data.json`, not recomputed for
+this section.
+
+### 10.4 What did NOT reconcile — stated plainly
+
+- **Residual vs. Dalio's 3% target: +0.7 percentage points** (3.7% vs 3%).
+  Larger, proportionally, than the debt-service residual. Not explained by
+  a single clean cause — see the next two points, both of which contribute
+  and neither of which is fully quantified.
+- **The gold price and the gold quantity are not from the same point in
+  time.** Treasury's holdings figure is dated 2026-06-30 (current to the
+  month before this run). The PCPS gold price is dated 2025-06 — **over a
+  year older**. The $876.5B market-value figure therefore multiplies a
+  current quantity by a stale price, not a fully current snapshot. This is
+  a genuine data-quality gap in the live pipeline, not a display artifact:
+  if gold's actual price in mid-2026 differs materially from its mid-2025
+  price, the true current market value (and therefore the true current
+  reserves-incl-gold %) differs from what `data.json` reports.
+- **The two reserves panel rows carry different `asOf` dates** (2025-Q2 for
+  incl.-gold, 2026-Q1 for excl.-gold — see `docs/current-values.md`) for the
+  same reason: the incl.-gold figure is bottlenecked by PCPS's lag.
+- **This was not corrected or compensated for.** No attempt was made to
+  inflate the stale gold price to a current estimate, or to flag the
+  specific figure as extra-stale in the UI beyond the existing `asOf` field.
+  The pipeline ships the real PCPS observation as-is, most-recent-available,
+  same as every other live series in this project — but the resulting
+  ~13-month price lag is real and unresolved, not smoothed into the 3.7%
+  headline number.
+- **Debt service's 1pt residual (§10.2) is attributed but not confirmed** —
+  restated here because "did not fully reconcile" applies to both metrics,
+  not just reserves.
+
+### 10.5 Verified vs. assumed — summary
+
+| Claim | Status |
+|---|---|
+| 3×2 matrix values (all six cells) | **VERIFIED** — read from a real run log |
+| Gross/total-receipts (23.0%) is the closest cell to Dalio's 22% | **VERIFIED** — arithmetic on the quoted matrix |
+| 23.0% matches an independent GAO+CBO calculation | **VERIFIED** — both source figures are named, publicly citable statistics |
+| The 1pt gap to Dalio is caused by the March-2025-vs-rolling-TTM timing difference | **ASSUMED** — plausible, not independently confirmed |
+| `TRESEGUSM052N` = "Total Reserves excluding Gold" | **VERIFIED** — quoted from live FRED metadata |
+| Gold holdings = 2026-06-30, ~261.5M troy oz (sum of 8 Treasury rows) | **VERIFIED** — quoted from live Treasury API response |
+| Gold price = $3,351.86/oz, dated PCPS 2025-06 | **VERIFIED** — quoted from live DBnomics/PCPS response |
+| Gold market value = $876.5B | **VERIFIED** — printed by the run itself, not recomputed here |
+| Reserves incl. gold = 3.7% of GDP, `tag: "live"` | **VERIFIED** — read from committed `public/data.json` |
+| The 0.7pt gap to Dalio's 3% is caused by the same timing issue as debt service | **NOT CLAIMED** — see §10.4; the price/quantity time-mismatch is a distinct, larger, and unquantified factor |
+| These fixes are live on `main` / on the deployed site | **FALSE, explicitly** — see §4/§8; verified only on `claude/new-session-ldotj8` via direct `workflow_dispatch` |
 
 ---
 
