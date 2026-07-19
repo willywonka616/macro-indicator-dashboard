@@ -49,6 +49,35 @@ export const commentary = {
     // Framing above the red-flags list.
     redFlagsIntro:
       "Things Dalio says we should expect not to see — and treat as serious warnings if we do:",
+    // Rendered directly under the named panel (Panel.jsx's `longNote`), not
+    // in the top "What Dalio reads here" box — a reader seeing two numbers
+    // side by side (net/gross interest, debt/GDP vs debt/revenue) needs the
+    // reason right there, not several screens down. Row labels themselves
+    // carry the short version; this is the fuller explanation.
+    panelNotes: {
+      "Government debt": [
+        [
+          { t: "Net interest is the actual current situation", tone: "calm" },
+          {
+            t: " — cash genuinely leaving the government to holders of the debt, and the right measure of what servicing the debt costs today. ",
+          },
+          { t: "Gross interest is closer to a leading indicator.", tone: "alarm" },
+          {
+            t: " The difference is interest credited to government trust funds, paid not in cash but in additional bonds. That money was borrowed and spent years ago; what remains is a claim. When those bonds are redeemed, Treasury must raise real cash from the public — taxes, spending cuts, or new borrowing. So gross runs ahead of net, and the gap between them is an obligation building up before it appears as an outflow.",
+          },
+        ],
+        [
+          { t: "Debt/GDP measures the debt against the size of the whole economy", tone: "calm" },
+          {
+            t: " — the conventional comparison, and what makes countries comparable. ",
+          },
+          { t: "Debt/revenue measures it against what the government can actually collect", tone: "alarm" },
+          {
+            t: ", the money genuinely available to service it. The economy's output isn't the government's to spend; only its receipts are. So debt/GDP is the standard yardstick, while debt/revenue is closer to the burden actually carried — and it's the ratio Dalio's own equations are written in.",
+          },
+        ],
+      ],
+    },
   },
 };
 

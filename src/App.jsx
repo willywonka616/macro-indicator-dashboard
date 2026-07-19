@@ -114,7 +114,7 @@ export default function App() {
 
       {/* detailed panels — full-width, one per row, each history rendered as a big chart */}
       <div className="flex flex-col gap-3 mb-6">
-        {d.panels.map((p, i) => <Panel key={i} p={p} />)}
+        {d.panels.map((p, i) => <Panel key={i} p={p} longNote={cm.panelNotes?.[p.eyebrow]} />)}
       </div>
 
       {/* red flags */}
