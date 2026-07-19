@@ -230,20 +230,24 @@ def _is_total_receipts(desc: str) -> bool:
     return "total" in d and "receipt" in d
 
 
-def monthly_receipts() -> dict:
+def monthly_receipts(rows=None) -> dict:
     """{(year, month): total federal receipts, $} — monthly (current-month).
 
     If several "total receipts" rows match in a month (e.g. on/off-budget
     splits slip through), the largest is taken — the grand total.
+    `rows` lets a caller that already fetched mts_table_4 (the first, usual
+    RECEIPTS_ENDPOINTS entry) reuse it instead of fetching again; passing it
+    skips the multi-endpoint fallback, since the caller already knows which
+    endpoint the rows came from.
     """
     last_err = "no endpoints tried"
-    for ep in RECEIPTS_ENDPOINTS:
+    for ep in RECEIPTS_ENDPOINTS if rows is None else [RECEIPTS_ENDPOINTS[0]]:
         try:
-            rows = _get(ep, {"sort": "record_date"})
-            if not rows:
+            r = rows if rows is not None else _get(ep, {"sort": "record_date"})
+            if not r:
                 last_err = f"{ep}: no rows"
                 continue
-            s = rows[0]
+            s = r[0]
             classk = _pick(s, ["classification_desc"], contains=["classification", "desc"]) \
                 or _pick(s, [], contains=["desc"])
             amtk = _pick(s, ["current_month_gross_rcpt_amt", "current_month_rcpt_amt"],
@@ -253,7 +257,7 @@ def monthly_receipts() -> dict:
                 last_err = f"{ep}: could not map fields from {list(s)}"
                 continue
             out = {}
-            for row in rows:
+            for row in r:
                 if _is_total_receipts(str(row.get(classk, ""))):
                     amt = _num(row.get(amtk))
                     if amt is not None:
@@ -265,6 +269,131 @@ def monthly_receipts() -> dict:
         except Exception as e:  # noqa: BLE001
             last_err = f"{ep}: {e}"
     raise RuntimeError(f"receipts: {last_err}")
+
+
+def _receipts_table4_rows():
+    """Raw mts_table_4 rows, fetched once and reused by monthly_receipts()
+    and off_budget_receipts_monthly() so the on-budget denominator doesn't
+    double the number of HTTP calls."""
+    rows = _get(RECEIPTS_ENDPOINTS[0], {"sort": "record_date"})
+    if not rows:
+        raise RuntimeError(f"{RECEIPTS_ENDPOINTS[0]}: no rows returned")
+    return rows
+
+
+# Off-budget receipts are, by statute (2 U.S.C. 622(7)), Social Security's
+# two trust funds only — OASI and DI — not Medicare (which is on-budget
+# despite also being a trust fund). mts_table_4's own classification_desc
+# already carries unambiguous grand-total lines for both, confirmed live:
+# "Total -- Federal Old-Age and Survivors Insurance Trust Fund" and
+# "Total -- Federal Disability Insurance Trust Fund" (see
+# docs/verification-log.md). On-budget receipts = total receipts minus
+# those two lines. This is preferred over mts_table_5's "Total On-Budget" /
+# "Total Off-Budget" rows (which the task flagged for investigation): table
+# 5's own fields are all outlay-shaped (current_month_gross_outly_amt,
+# current_month_app_rcpt_amt = agency *offsetting* receipts, not total
+# federal receipts) — its "Total On-Budget" almost certainly describes
+# on-budget OUTLAYS or the on-budget deficit/surplus, not on-budget
+# RECEIPTS. verify() still probes table 5 and prints what it finds, purely
+# as a cross-check, but does not use it to build the denominator.
+_OFF_BUDGET_FUND_LABELS = (
+    "total -- federal old-age and survivors insurance trust fund",
+    "total -- federal disability insurance trust fund",
+)
+
+
+def off_budget_receipts_monthly(rows=None) -> dict | None:
+    """{(year, month): OASI + DI trust fund receipts, $} — best-effort.
+    Returns None (not an exception) if the two labelled totals can't be
+    found, so on_budget_receipts_monthly() can report "unavailable" rather
+    than silently using a wrong number."""
+    try:
+        r = rows if rows is not None else _receipts_table4_rows()
+        s = r[0]
+        classk = _pick(s, ["classification_desc"], contains=["classification", "desc"])
+        amtk = _pick(s, ["current_month_gross_rcpt_amt", "current_month_rcpt_amt"],
+                     contains=["month", "rcpt", "amt"],
+                     exclude=["fytd", "prior", "year", "outly", "dfct"])
+        if not (classk and amtk):
+            return None
+        monthly = defaultdict(float)
+        matched_labels = set()
+        for row in r:
+            desc = str(row.get(classk, "")).strip().lower()
+            if desc in _OFF_BUDGET_FUND_LABELS:
+                amt = _num(row.get(amtk))
+                if amt is not None:
+                    monthly[_ym(row["record_date"])] += amt
+                    matched_labels.add(desc)
+        # Only trust the result if BOTH labelled funds were found at least
+        # once — a partial match (e.g. OASI renamed) would understate
+        # off-budget receipts and silently corrupt on-budget receipts too.
+        if len(matched_labels) < len(_OFF_BUDGET_FUND_LABELS):
+            return None
+        return {k: v for k, v in monthly.items() if v}
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def on_budget_receipts_monthly() -> dict | None:
+    """{(year, month): on-budget total receipts, $} — best-effort.
+    = total receipts − (OASI + DI trust fund receipts). Returns None if
+    either input is unavailable, so debt_service_matrix can show
+    "unavailable" instead of a wrong number."""
+    try:
+        rows = _receipts_table4_rows()
+        total = monthly_receipts(rows)
+        off_budget = off_budget_receipts_monthly(rows)
+        if not off_budget:
+            return None
+        out = {k: total[k] - off_budget[k] for k in total.keys() & off_budget.keys()}
+        return {k: v for k, v in out.items() if v}
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _table5_on_budget_probe() -> dict:
+    """Diagnostic only (verify() cross-check, never used to build data.json):
+    dumps whatever mts_table_5's "Total On-Budget" row's three numeric
+    fields actually contain, so a live run can confirm or refute the
+    hypothesis that they represent receipts rather than outlays."""
+    out = {}
+    try:
+        rows = _get("/v1/accounting/mts/mts_table_5", {"sort": "-record_date", "page[size]": "300"}, max_pages=1)
+        if not rows:
+            return {"error": "no rows"}
+        s = rows[0]
+        classk = _pick(s, ["classification_desc"], contains=["classification", "desc"])
+        latest = s["record_date"]
+        for row in rows:
+            if row["record_date"] != latest:
+                continue
+            desc = str(row.get(classk, "")).strip().lower()
+            if desc in ("total on-budget", "total off-budget"):
+                out[row.get(classk)] = {
+                    k: row.get(k) for k in row
+                    if k.startswith("current_month_") and k != "current_month_dfct_sur_amt"
+                }
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)}
+    return out
+
+
+# --- TTM dollar sums (not ratios) — feeds debt_to_revenue ----------------
+
+def _ttm_sum(monthly: dict) -> dict:
+    """{month: trailing-12-month dollar sum}. Same window as _ttm_ratio's
+    numerator/denominator, but returns the raw annualised dollar figure
+    instead of a ratio — needed to build debt/revenue, which divides a
+    dollar debt STOCK by a dollar revenue FLOW, not two ratios."""
+    months = sorted(monthly)
+    if len(months) < TTM:
+        return {}
+    out = {}
+    for i in range(TTM - 1, len(months)):
+        window = months[i - TTM + 1: i + 1]
+        out[months[i]] = sum(monthly[m] for m in window)
+    return out
 
 
 # --- derived metric ------------------------------------------------------
@@ -304,12 +433,14 @@ def debt_service_ratio() -> dict:
 
 
 def debt_service_matrix(tax_receipts_monthly: dict | None = None) -> dict:
-    """The 3 numerator x 2 denominator diagnostic matrix used to calibrate
+    """The 3 numerator x 3 denominator diagnostic matrix used to calibrate
     against Dalio's Ch.17 book value (22%, US, March 2025 snapshot). Not used
     to build data.json — printed by --verify only. `tax_receipts_monthly` is
     optional (fetch.py supplies it from FRED W006RC1Q027SBEA, the original
     brief's narrower denominator) so this module stays FRED-independent when
-    called without it.
+    called without it. "on-budget receipts" (total minus OASI+DI trust fund
+    receipts, see on_budget_receipts_monthly) is included when it resolves;
+    shown as "unavailable" for every numerator in that column if not.
 
     Returns {(num_label, den_label): ratio_dict_or_None, ...}.
     """
@@ -322,11 +453,14 @@ def debt_service_matrix(tax_receipts_monthly: dict | None = None) -> dict:
     denominators = {"total receipts": monthly_receipts()}
     if tax_receipts_monthly:
         denominators["tax receipts only"] = tax_receipts_monthly
+    on_budget = on_budget_receipts_monthly()
+    if on_budget:
+        denominators["on-budget receipts"] = on_budget
 
     matrix = {}
     for nlabel, nvals in numerators.items():
         for dlabel, dvals in denominators.items():
-            matrix[(nlabel, dlabel)] = _ttm_ratio(nvals, dvals) if nvals else None
+            matrix[(nlabel, dlabel)] = _ttm_ratio(nvals, dvals) if (nvals and dvals) else None
     return matrix
 
 
@@ -364,7 +498,7 @@ def _dump(label, ep, amount_hint):
 
 
 def verify(tax_receipts_monthly: dict | None = None) -> bool:
-    """Dump the Treasury schemas, try the live ratio, and print the 3x2
+    """Dump the Treasury schemas, try the live ratio, and print the 3x3
     debt-service diagnostic matrix. Returns True on success (the matrix
     itself is diagnostic and never fails the run — see debt_service_matrix)."""
     print("\nVerifying Treasury Fiscal Data endpoints\n")
@@ -385,6 +519,31 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
             _dump("outlays-by-function?", ep, ["outly", "amt"])
         except Exception as e:  # noqa: BLE001
             print(f"[outlays-by-function?] {ep} FAILED: {e}")
+
+    print("\n  On-budget receipts (total minus OASI+DI trust fund receipts):")
+    try:
+        ob = on_budget_receipts_monthly()
+        if ob:
+            last = max(ob)
+            print(f"    resolved: {len(ob)} months, latest {last[0]}-{last[1]:02d} = "
+                  f"${ob[last]/1e9:.1f}B")
+        else:
+            print("    unavailable — OASI/DI trust fund total-receipts labels not both found "
+                  "(see mts_table_4 dump above for what's actually there)")
+    except Exception as e:  # noqa: BLE001
+        print(f"    FAILED: {e}")
+
+    print("\n  mts_table_5 'Total On-Budget' / 'Total Off-Budget' cross-check "
+          "(diagnostic only — investigating whether these describe receipts "
+          "or outlays; never used to build data.json):")
+    probe = _table5_on_budget_probe()
+    if "error" in probe:
+        print(f"    FAILED: {probe['error']}")
+    elif not probe:
+        print("    no 'Total On-Budget'/'Total Off-Budget' rows found in the latest period")
+    else:
+        for label, fields in probe.items():
+            print(f"    {label}: {fields}")
 
     try:
         r = debt_service_ratio()
