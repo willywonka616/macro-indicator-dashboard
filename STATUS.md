@@ -5,8 +5,11 @@ instruction this file was created under, and it stands going forward. Written
 for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
-Last updated: **2026-07-18**, by Claude (Sonnet 5), end of the session that
-built this project from scratch through to a live, auto-refreshing site.
+Last updated: **2026-07-19**, by Claude (Sonnet 5). This session closed out
+two items §3 had flagged as unverified assumptions (debt-service basis) and
+resolved a reserves discrepancy against Dalio's Ch.17 US figures that hadn't
+been caught before (§3, new subsection, and §9). See §9 for the calibration
+comparison this work was built around.
 
 ---
 
@@ -17,8 +20,10 @@ indicators (*How Countries Go Broke*, Ch. 17), US only so far.
 
 - **Live site:** https://willywonka616.github.io/macro-indicator-dashboard/
 - **Repo:** `willywonka616/macro-indicator-dashboard`, public, default branch
-  `main` (there is no separate `develop`/feature branch convention — work
-  lands on `main` directly in this project).
+  `main`. Most sessions have landed work on `main` directly; this session
+  was explicitly scoped to a feature branch (`claude/new-session-ldotj8`,
+  not yet merged — see §4/§8) rather than that being the project's normal
+  convention.
 - **Stack:** Vite + React + Tailwind v4 (via `@tailwindcss/vite`) for utility
   classes, mixed with inline styles for colour tokens (matches the legacy
   single-file dashboard's own mix — the brief said either approach was fine
@@ -48,6 +53,7 @@ scripts/
   series.py               FRED ID registry + derived-metric math
   treasury.py             Treasury Fiscal Data client (debt service, budget basis)
   imf.py                  IMF COFER via DBnomics (reserve-currency USD share)
+  gold.py                  Treasury gold holdings + DBnomics/IMF PCPS gold price (reserves incl. gold)
   requirements.txt
 data/manual.json          Dalio's Z-scores + non-automatable figures, with dates
 .github/workflows/
@@ -145,20 +151,44 @@ Bugs found and fixed, in order:
    `INTEREST EXPENSE ON GOVT ACCOUNT SERIES` (intragovernmental, paid to
    trust funds — not part of net interest to the public).
 
-**Current value: ~18% of total receipts**, which lines up with Dalio's "roughly
-a fifth of federal revenue" framing. This is presented as **live** data
-(`tag: "live"`, `src: "derived · Treasury"`).
+**RESOLVED 2026-07-19** (was flagged unverified above — see §9 for the full
+calibration comparison). Dalio's Ch.17 book value for the US is **22%**; the
+"net interest to the public" basis this file used to ship (~18%) was ~4pts
+off, and had never been checked against a named official statistic.
 
-**Unverified assumption, flagged not confirmed:** the "interest on public
-issues minus GAS" computation is *my* approximation of "net interest to the
-public." I have not cross-checked it against any single official published
-"net interest" statistic — I inferred the right categories from the
-`--verify` schema dump, not from Treasury's own definitions doc. If the
-number ever looks wrong, this is the first place to check.
+What was done: computed a 3×2 matrix (numerator ∈ {gross interest incl. GAS,
+net-to-public excl. GAS, net interest via Treasury's function-900
+classification} × denominator ∈ {tax receipts only, total receipts}) and
+printed it in the `--verify` run log every run
+(`scripts/treasury.py::debt_service_matrix`). Live result (2026-07-19 run):
 
-A **sanity band** (`5% ≤ ratio ≤ 40%`) guards the build: if a future schema
-change drives the computed ratio outside that range, the build raises and the
-site keeps last month's good data rather than shipping garbage.
+```
+numerator                          tax receipts only   total receipts
+gross (incl. GAS)                        35.0%              23.0%
+net-to-public (excl. GAS)                27.8%              17.9%
+net interest, function 900               27.8%              17.8%
+```
+
+**Gross interest / total receipts (23.0%)** is closest to Dalio's 22% and was
+adopted as the new live basis. Cross-checked against two named official
+statistics, independent of this pipeline's own math: FY2024 gross interest on
+the total public debt = **$1,126.5B** (GAO, *Schedule of Federal Debt*,
+GAO-25-107138) and FY2024 total federal receipts = **$4.9T** (CBO Monthly
+Budget Review) → **23.0%**, matching this pipeline's live TTM figure almost
+exactly. Residual vs. Dalio's 22% (~1pt) is attributed to the time-snapshot
+difference — his figure is pinned to the book's March 2025 baseline, this
+pipeline's is a rolling trailing-12-month window that currently ends 2026-06.
+
+The chosen basis is recorded in `data.json`'s `provenance.debtServiceBasis`
+(a plain-English string) and in the `debt_service_to_revenue` vital's `src`
+(`"derived · Treasury (gross interest, budget basis)"`) and the `gov_panel`
+row label (`"Government interest (gross)"`) — the switch from net-to-public
+to gross is visible in both places, not just the number.
+
+The existing **sanity band** (`5% ≤ ratio ≤ 40%`) was re-checked against the
+new gross basis rather than assumed still-correct: 23% sits comfortably
+inside it (with headroom up toward the tax-only gross figure of 35% if
+receipts data ever narrows), so it was left unchanged.
 
 ### IMF COFER via DBnomics (`scripts/imf.py`) — reserve-currency USD share
 No API key. Feeds the "World CB reserves in USD" row in the reserve-currency
@@ -190,6 +220,75 @@ number shipped).
 **Current value: live**, quarterly history from 1999, `tag: "live"`,
 `src: "IMF COFER (DBnomics)"`.
 
+### Reserves including gold at market value (`scripts/gold.py`) — RESOLVED 2026-07-19
+This is the "reserves discrepancy" §9 explains in full — flagged by a Ch.17
+calibration comparison, not by anything in an earlier version of this file.
+`TRESEGUSM052N` is *"Total Reserves EXCLUDING Gold"* by its own name — it
+structurally can't reconcile with Dalio's "FX reserves, 3% of GDP" figure.
+US reserves excl. gold alone are ~0.8% of GDP; the gap is the US's ~261.5M
+troy oz of gold, carried by Treasury at a $42.2222/oz statutory book rate
+(~$11B) instead of market value ($876.5B in the 2026-07-19 live run).
+
+Fix: `scripts/gold.py` composes Treasury's gold holdings (troy oz, monthly,
+`/v2/accounting/od/gold_reserve`) × a live gold price, valued at **market**,
+added to FRED's excl.-gold reserves, over GDP.
+
+Getting a live, no-key gold **price** took three attempts, all against
+DBnomics (`api.db.nomics.world`), because the obvious source turned out to be
+dead upstream, not just a wrong URL guess:
+1. `LBMA/gold_D/gold_D_USD_AM` (direct series path) → 404.
+2. `LBMA/gold_D` with a `dimensions` filter → also 404.
+3. A bare, unfiltered dump of `LBMA/gold_D` → **still** 404 — at this point
+   the dataset itself, not the query shape, was the problem. Confirmed via
+   web research (not guessed): LBMA moved its benchmark price tables behind
+   a members-only portal starting the week of 2025-11-24, and FRED's own
+   mirror of the same series (`GOLDAMGBD228NLBM`) was separately discontinued
+   with no replacement — DBnomics' LBMA dataset was downstream of the same
+   now-restricted source.
+4. Switched to **IMF's Primary Commodity Price System** (PCPS, indicator
+   `PGOLD`), mirrored on DBnomics under the same `IMF` provider that already
+   works for COFER. This worked — no 404 — but PCPS carries four series per
+   commodity per frequency (`.IX` index, two `.PC_*` percent-change series,
+   `.USD` the actual dollar level), and the first live run picked the wrong
+   one: `M.W00.PGOLD.IX` (~268, a rebased index), not `M.W00.PGOLD.USD`
+   (~$3,352/oz). That fed a ~10x-too-low price into the market-value calc.
+   Fixed by filtering matches down to series ending `.USD` before picking a
+   frequency.
+
+**Confirmed live (2026-07-19 run):** gold price `M.W00.PGOLD.USD` =
+$3,351.86/oz → gold market value $876.5B → **reserves incl. gold = 3.7% of
+GDP**, `tag: "live"`, reconciling closely to Dalio's 3% (residual attributed
+to the same time-snapshot gap as debt service, plus PCPS's own reporting lag
+— see the note below).
+
+**Both rows ship, separately labelled, per the task's requirement not to
+collapse two different things into one number:**
+- `"Reserves incl. gold (market)"` — the new headline `reserves_to_gdp`
+  vital, `tag: "live"` when the gold fetch succeeds.
+- `"FX reserves excl. gold"` — `TRESEGUSM052N` alone, kept as a separate
+  panel row so the FX-only figure isn't discarded.
+
+**Fallback (proven, not just written):** if either the Treasury gold-holdings
+fetch or the DBnomics price fetch fails, `gold_market_value_usd()` raises and
+`fetch.py` catches it, falling back to `data/manual.json`'s
+`reservesInclGoldFallback` (3.0%, `tag: "manual"`) rather than shipping a
+live-tagged number built on a stale price. This fired for real during
+development (both LBMA-404 attempts degraded cleanly to the manual value,
+no build breakage) before the PCPS fix made the live path actually succeed.
+
+**Known lag, not a bug:** PCPS's `PGOLD.USD` series was last observed
+**2025-06** as of the 2026-07-19 run — over a year stale relative to the run
+date, even though Treasury's gold-holdings figure is current to 2026-06.
+This is a genuine reporting lag in the IMF PCPS dataset itself (confirmed via
+the `--verify` dump, not assumed), not a parsing bug in this pipeline. Worth
+rechecking periodically — if PCPS's update cadence improves, the live gold
+price (and therefore the reserves figure) should track more current market
+prices.
+
+The chosen basis is recorded in `provenance.reservesBasis` and
+`provenance.reservesInclGoldTag`, and in the `reserves_to_gdp` vital's `src`.
+A **sanity band** (`0.5% ≤ ratio ≤ 15%`) guards the live path.
+
 ---
 
 ## 4. GitHub Actions: has it actually run, and when
@@ -203,10 +302,17 @@ job logs), not just written and assumed to work.
   manual dispatch with a `force` boolean input (bypasses the
   value-move guard, needed the first time a legitimate number moved >25%
   after a source swap).
-  **Last confirmed successful run** produced the `data.json` currently on
-  `main` (commit `65e94e3`, "data: monthly refresh"), with `debt_to_gdp=99%`,
-  `debt_service_to_revenue=18%`, `real_rates=0.6%`, `reserves_to_gdp=0.8%`,
-  and a live IMF COFER value in the reserve-currency panel.
+  **On `main`**, the last confirmed successful run produced `debt_to_gdp=99%`,
+  `debt_service_to_revenue=18%`, `real_rates=0.6%`, `reserves_to_gdp=0.8%`.
+  **This session's debt-service and reserves fixes (§3) have been verified
+  live via `workflow_dispatch` on `claude/new-session-ldotj8` only** —
+  several runs there confirm `debt_service_to_revenue=23%` and
+  `reserves_to_gdp=3.7%` end-to-end (see §9), but per this session's branch
+  policy those commits have **not been merged to `main`**, so the live site
+  (deployed from `main`) still shows the pre-fix 18%/0.8% figures as of this
+  writing. Merging `claude/new-session-ldotj8` (or opening a PR for it) is
+  the remaining step to get these values onto the live site — deliberately
+  left for explicit approval rather than done unilaterally.
   **The cron has not yet fired on its own** (only `workflow_dispatch` runs
   have happened so far, since the project is only hours old) — the schedule
   will produce its first unattended run around the 5th of next month. If
@@ -266,6 +372,10 @@ branch is inferred, not eyeballed. `provenance.currentAccountAnnualizedInput`
 in the live data.json records which branch fired, which is the fastest way
 to check.
 
+*(This is a separate, still-open item from the debt-service and reserves
+assumptions resolved this session — see §3 and §9. Nobody has re-verified
+this one yet.)*
+
 ---
 
 ## 6. What's stubbed, manual, or hardcoded — and why (per-item)
@@ -281,6 +391,7 @@ provenance badge in the UI. None of it is hidden or unlabeled.
 | **Sovereign wealth assets, "share in hard FX," gov-assets-minus-debt** | No live source identified/attempted | Static since the legacy dashboard; not revisited this session. |
 | **World trade in USD / World debt in USD / Global equity market cap** (3 of 4 reserve-currency shares) | No free, reliable API found (SWIFT-style trade data is PDF/monthly with shifting definitions; BIS debt share needs derivation from a non-trivial dataset; equity market cap needs commercial data) | Brief flagged these as hard; only "world CB reserves" (the 4th share) got automated this session via IMF COFER, per explicit user ask. |
 | **Two red flags text, all interpretation prose in `commentary.js`** | Brief required this be hand-written, never auto-generated, no LLM call | Correctly honored — it's static prose carried over from the legacy dashboard, with a few "stale-risk" comments flagging which claims are pinned to which live numbers. |
+| **`reservesInclGoldFallback` (3.0%, `data/manual.json`)** | Not stubbed by design — this is a **fallback**, only shipped if the live Treasury gold-holdings or DBnomics gold-price fetch fails (see §3's reserves subsection). The live path has been confirmed working as of the 2026-07-19 run; this exists purely so a source hiccup degrades gracefully instead of shipping a stale-priced number tagged `live`. | Not in the original brief — added this session per the task that resolved the reserves discrepancy. |
 
 **Nothing in the live-tagged data path is faked.** Every `tag: "live"` value
 traces to a real HTTP call to FRED, Treasury, or IMF/DBnomics in
@@ -304,15 +415,25 @@ the Python or JS.
   cascading off the right edge of the chart on narrow phones, this is the
   function to revisit (`src/components/Chart.jsx`, the `crises` computation
   right before the SVG render).
-- **Two assumptions flagged above, not re-flagging here** (see §3's Treasury
-  "net interest" approximation, and §5's `IEABC` annualization-detection
-  branch) — both produce sane-looking output but weren't manually
-  cross-checked against an authoritative definition.
+- **One assumption still open** (see §5's `IEABC` annualization-detection
+  branch) — produces sane-looking output but hasn't been manually
+  cross-checked against an authoritative definition. The Treasury
+  "net interest" assumption that used to be flagged alongside it was
+  resolved this session (§3, §9) — replaced with a gross-interest basis
+  cross-checked against named GAO/CBO figures.
 - **Debt/GDP now reads "held by the public" (`FYGFGDQ188S`, ~99%), not gross
   debt (`GFDEGDQ188S`, ~123%).** This is a deliberate, user-approved
   deviation from the brief's original candidate ID, not a bug — flagging it
   here only because it's the single biggest number on the page and worth
   double-checking if Dalio's own figures ever seem to disagree.
+- **IMF PCPS's `PGOLD.USD` gold-price series lags ~13 months** (last observed
+  2025-06 as of the 2026-07-19 run, see §3's reserves subsection) — a genuine
+  upstream reporting lag, not a bug in this pipeline, but worth knowing if
+  the reserves-incl-gold figure looks stale relative to a real-time gold
+  price quote.
+- **This session's fixes live on `claude/new-session-ldotj8`, not yet merged
+  to `main`** (see §4) — the live site does not yet reflect the
+  23%/3.7% debt-service and reserves figures. Merging is the next step.
 
 ---
 
@@ -321,26 +442,71 @@ the Python or JS.
 In rough priority order, based on what the brief and the user's requests
 left open:
 
-1. **Let the monthly cron actually fire once unattended** and confirm it
+1. **Merge `claude/new-session-ldotj8` to `main`** (or open a PR for it) so
+   this session's debt-service and reserves fixes actually reach the live
+   site — deliberately not done unilaterally, see §4/§7.
+2. **Let the monthly cron actually fire once unattended** and confirm it
    behaves the same as the manual `workflow_dispatch` runs did. Nobody has
    observed a real scheduled (non-manual) run yet.
-2. **Euro area** (brief's explicit step 8, and the user has referenced it as
+3. **Euro area** (brief's explicit step 8, and the user has referenced it as
    the natural next expansion): new key under `countries` in `data.json`,
    new manual entries in `data/manual.json`, ECB/Eurostat sources in a new
    fetcher module, new commentary in `commentary.js`. **No component changes
    needed** — `src/App.jsx` and everything under `src/components/` are
    already country-agnostic (the country switcher is driven by
    `Object.keys(data.countries)`).
-3. **TIC-based holder breakdown** (central bank / domestic / foreign %) —
+4. **TIC-based holder breakdown** (central bank / domestic / foreign %) —
    explicitly deferred by the brief, still fully static.
-4. **Consider automating one more reserve-currency share** if a free source
+5. **Consider automating one more reserve-currency share** if a free source
    turns up — BIS debt-in-USD is the next most plausible candidate (has an
    API, just needs a derivation), trade and equity are probably permanently
    manual without a paid data source.
-5. **Re-verify the Treasury "net interest" definition** against an
-   authoritative Treasury/CBO source rather than my inferred category split
-   (see §3) — low urgency since the output number looks right, but it's an
-   assumption, not a confirmed match to a named official statistic.
+6. **Re-verify the `IEABC` current-account annualization assumption** (§5) —
+   the one remaining unverified-but-plausible branch; low urgency since the
+   output number looks directionally sane.
+7. **Watch whether IMF PCPS's gold price catches up** to a more current
+   month than the ~13-month lag seen in the 2026-07-19 run (§3, §7) — if it
+   stays this stale, the reserves-incl-gold figure will always trail actual
+   market gold prices by over a year.
+
+---
+
+## 9. Calibration against Dalio's Ch.17 US column
+
+This session's work started from a direct comparison of this pipeline's live
+output against the actual published numbers in the US column of *How
+Countries Go Broke* Ch.17 (March 2025 snapshot). **This comparison is the
+strongest correctness check this project has** — it caught a real ~4pt
+definitional gap in debt service and a structural ~2pt gap in reserves that
+neither the sanity bands nor the local mock tests would ever have surfaced,
+because both the wrong numbers looked "sane" in isolation. The next person
+touching this pipeline should re-run this comparison whenever the fetcher
+changes, not just trust that the sanity bands are enough.
+
+| Metric | Dalio Ch.17 (US, Mar 2025) | This pipeline (2026-07-19 live run) | Match? |
+|---|---|---|---|
+| Debt held by public / GDP | ~100% | 99% (`FYGFGDQ188S`) | Matches closely, no change needed |
+| Debt service / revenue | 22% | 23.0% (gross interest incl. GAS ÷ total receipts) | **Required a definitional change** — see §3. Previously shipped 18% on a different (net-to-public) basis |
+| Reserves / GDP | 3% | 3.7% (FX reserves excl. gold + gold at market value) | **Required a new data source** — see §3. Previously shipped 0.8% because gold wasn't included at all |
+| Reserve-currency USD share (world CB reserves) | ~58% (book's framing) | 57.7% (IMF COFER via DBnomics) | Matches closely, already live before this session |
+
+**Two rows needed a definitional decision, not just a bug fix:**
+- **Debt service**: the book's 22% could only be reproduced by switching
+  which numerator (gross vs. net-to-public vs. function-900) and denominator
+  (tax receipts vs. total receipts) this pipeline used — a 3×2 matrix made
+  the six candidate combinations explicit (printed every `--verify` run,
+  `scripts/treasury.py::debt_service_matrix`), and gross-interest-over-total-
+  receipts was the only one that landed near 22% *and* matched a named
+  official statistic (GAO's gross interest figure ÷ CBO's receipts figure).
+- **Reserves**: no amount of debugging FRED's `TRESEGUSM052N` alone could
+  have closed this gap — the series is *defined* to exclude gold. Matching
+  Dalio's figure required adding an entirely new data source (Treasury gold
+  holdings × a live gold price) that didn't exist in the pipeline before this
+  session.
+
+**Two rows already matched** (debt/GDP, COFER USD share) and needed no
+change — worth noting so a future reader doesn't assume everything on the
+page was wrong before this session; only the two flagged assumptions were.
 
 ---
 
