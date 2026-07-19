@@ -291,12 +291,30 @@ def build_us(manual: dict, force: bool) -> dict:
                                   raw["GDP"][1], raw["GDP"][0])
 
     # Reserves including gold at market value — resolves STATUS.md §5. Gold
-    # holdings (Treasury) and gold price (DBnomics) are each live; if either
-    # fetch fails, fall back to the manual snapshot rather than shipping a
+    # holdings (Treasury) and gold price (DBnomics/IMF PCPS) are each live but
+    # NOT necessarily from the same month — PCPS's gold price has run ~13
+    # months behind Treasury's holdings figure (STATUS.md §3/§7). Rather than
+    # bury that in `asOf` alone, `src` names both dates explicitly whenever
+    # they differ, so the hybrid is visible on the row itself, not just to
+    # someone who checks asOf against the other reserves row. If either fetch
+    # fails, fall back to the manual snapshot rather than shipping a
     # live-tagged number built on a stale price (same pattern as IMF COFER).
     reserves_incl_gold_tag = "live"
+    gold_src_detail = "Treasury (gold) + DBnomics (price)"
     try:
-        gold_value_monthly = G.gold_market_value_usd()
+        gold_oz_monthly = G.gold_holdings_troy_oz()
+        gold_price_monthly = G.gold_price_usd_per_oz()
+        oz_asof = max(gold_oz_monthly)
+        price_asof = max(gold_price_monthly)
+        gold_value_monthly = {k: gold_oz_monthly[k] * gold_price_monthly[k]
+                               for k in gold_oz_monthly.keys() & gold_price_monthly.keys()}
+        if not gold_value_monthly:
+            raise RuntimeError("gold: no overlapping months between holdings and price")
+        if oz_asof == price_asof:
+            gold_src_detail = f"Treasury (gold) + DBnomics (price), both {oz_asof[0]}-{oz_asof[1]:02d}"
+        else:
+            gold_src_detail = (f"Treasury (gold oz {oz_asof[0]}-{oz_asof[1]:02d}) "
+                                f"+ DBnomics (price {price_asof[0]}-{price_asof[1]:02d})")
         reserves_incl_gold = S.reserves_incl_gold_pct_gdp(
             raw["TRESEGUSM052N"][1], raw["TRESEGUSM052N"][0], gold_value_monthly,
             raw["GDP"][1], raw["GDP"][0])
@@ -380,7 +398,7 @@ def build_us(manual: dict, force: bool) -> dict:
             **_vital(reserves_incl_gold, "risk",
                 "Reserves including gold at market value are still thin relative to the debt — "
                 "and most of the buffer is illiquid gold, not spendable FX.",
-                ("derived · Treasury (gold) + DBnomics (price) + FRED" if reserves_incl_gold_tag == "live"
+                (f"derived · {gold_src_detail} + FRED" if reserves_incl_gold_tag == "live"
                  else mu["reservesInclGoldFallback"]["src"]),
                 "reserves / GDP", tag=reserves_incl_gold_tag)},
     ]
@@ -408,7 +426,7 @@ def build_us(manual: dict, force: bool) -> dict:
         "label": "Reserves incl. gold (market)", "value": num(reserves_incl_gold["latest"]),
         "display": pct_display(reserves_incl_gold["latest"], 1), "unit": "of GDP",
         "tone": "risk", "tag": reserves_incl_gold_tag,
-        "src": ("derived · Treasury (gold) + DBnomics (price) + FRED" if reserves_incl_gold_tag == "live"
+        "src": (f"derived · {gold_src_detail} + FRED" if reserves_incl_gold_tag == "live"
                 else mu["reservesInclGoldFallback"]["src"]),
         "asOf": reserves_incl_gold.get("asOf"),
         "history": reserves_incl_gold.get("history", []),
