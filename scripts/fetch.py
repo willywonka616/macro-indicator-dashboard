@@ -137,13 +137,37 @@ def verify() -> int:
     else:
         print("\nAll FRED series resolved. Review units/frequency above.")
 
-    # Treasury Fiscal Data (no key) — dumps real schema + the computed ratio.
-    treasury_ok = T.verify()
+    # Treasury Fiscal Data (no key) — dumps real schema + the computed ratio,
+    # plus the debt-service calibration matrix (see debt_service_matrix).
+    # tax_receipts_monthly is the original brief's narrower denominator
+    # (W006RC1Q027SBEA), fetched here since it's FRED not Treasury — included
+    # in the matrix purely to confirm it's NOT what Dalio used.
+    tax_receipts_monthly = None
+    try:
+        units, obs = series_obs("W006RC1Q027SBEA")
+        tax_receipts_monthly = _quarterly_saar_to_monthly(obs, units)
+    except Exception as e:  # noqa: BLE001
+        print(f"(tax-receipts-only denominator unavailable for the matrix: {e})")
+    treasury_ok = T.verify(tax_receipts_monthly)
 
     # IMF COFER (no key) — non-fatal; dumps indicators + the computed USD share.
     I.verify()
 
     return 0 if (fred_ok and treasury_ok) else 1
+
+
+def _quarterly_saar_to_monthly(obs, units: str) -> dict:
+    """Convert a quarterly seasonally-adjusted-annual-rate FRED series into a
+    {(year, month): dollars} monthly dict (SAAR / 12, repeated across the
+    quarter's 3 months) so it can feed Treasury's monthly-flow TTM machinery
+    in debt_service_matrix. Diagnostic use only."""
+    out = {}
+    for d, v in obs:
+        annual = S.to_dollars(v, units)
+        q = (d.month - 1) // 3
+        for m in (q * 3 + 1, q * 3 + 2, q * 3 + 3):
+            out[(d.year, m)] = annual / 12.0
+    return out
 
 
 # --- formatting ----------------------------------------------------------
@@ -213,7 +237,11 @@ def build_us(manual: dict, force: bool) -> dict:
         "asOf": S.q_label(S.quarter_key(dobs[-1][0])),
         "history": S.quarterly_history(S.as_quarterly(dobs)),
     }
-    # Debt service vs revenue — budget basis, from Treasury (no FRED).
+    # Debt service vs revenue — gross interest (incl. GAS) / total receipts,
+    # budget basis, from Treasury (no FRED). Basis chosen 2026-07 to match
+    # Dalio's Ch.17 book value (22%); see treasury.py module docstring and
+    # STATUS.md §9. The 5-40% band still comfortably covers this basis's
+    # expected ~20-25% range (re-checked when the basis changed).
     service = T.debt_service_ratio()
     if not (5.0 <= service["latest"] <= 40.0):
         raise RuntimeError(
@@ -262,8 +290,8 @@ def build_us(manual: dict, force: bool) -> dict:
             "Debt held by the public near one year of national income; projected to keep climbing.",
             "FRED: FYGFGDQ188S", "of GDP")},
         {"key": "debt_service_to_revenue", "label": "Debt service vs income", **_vital(service, "risk",
-            "Interest alone eats roughly a fifth of federal revenue — before principal.",
-            "derived · Treasury (budget basis)", "of revenue")},
+            "Gross interest on the debt costs more than a fifth of federal revenue, closing in on a quarter — before principal.",
+            "derived · Treasury (gross interest, budget basis)", "of revenue")},
         {"key": "real_rates", "label": "Rates vs inflation & growth", **_vital(real_rate, "neutral",
             "10-year Treasury yield minus trailing-12-month CPI inflation — the real cost of borrowing Dalio watches.",
             "derived · FRED (10y − CPI)", "real 10y")},
@@ -283,7 +311,7 @@ def build_us(manual: dict, force: bool) -> dict:
             manual_row("— held by domestic players", mu["holders"]["domestic"]),
             manual_row("— held abroad", mu["holders"]["abroad"]),
             manual_row("Share in hard (foreign) FX", mu["shareHardFX"]),
-            live_row("Government interest", service, "risk", "derived · Treasury", "of revenue"),
+            live_row("Government interest (gross)", service, "risk", "derived · Treasury (gross incl. GAS)", "of revenue"),
         ],
     }
     reserves_panel = {
@@ -342,6 +370,9 @@ def build_us(manual: dict, force: bool) -> dict:
             "modelSnapshot": mu.get("modelSnapshot"),
             "manualLastChecked": mu.get("lastChecked"),
             "currentAccountAnnualizedInput": annualized,
+            "debtServiceBasis": "gross interest (incl. GAS) / total federal receipts, "
+                                 "Treasury budget basis — chosen 2026-07 to match Dalio's "
+                                 "Ch.17 US snapshot (22%); see STATUS.md",
         },
     }
     _validate(country)
