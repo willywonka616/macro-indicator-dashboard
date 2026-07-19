@@ -34,6 +34,7 @@ fallback.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import time
 from collections import defaultdict
 
@@ -42,7 +43,11 @@ import requests
 TREASURY_BASE = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service"
 GOLD_ENDPOINT = "/v2/accounting/od/gold_reserve"
 
-DBNOMICS_GOLD_SERIES = "https://api.db.nomics.world/v22/series/LBMA/gold_D/gold_D_USD_AM"
+# Note: unlike COFER (a direct dataset/series-code path works), LBMA's
+# gold_D dataset needs a `dimensions` filter against the dataset-level
+# endpoint — a direct .../gold_D/gold_D_USD_AM series-code path 404s.
+DBNOMICS_GOLD_DATASET = "https://api.db.nomics.world/v22/series/LBMA/gold_D"
+DBNOMICS_GOLD_DIMENSIONS = {"unit": ["USD"], "time": ["AM"]}
 
 
 # --- http ------------------------------------------------------------------
@@ -143,12 +148,18 @@ def gold_holdings_troy_oz() -> dict:
 
 # --- DBnomics: LBMA daily gold price, USD AM fix ----------------------------
 
+def _gold_price_docs():
+    js = _get_json(DBNOMICS_GOLD_DATASET,
+                    {"dimensions": json.dumps(DBNOMICS_GOLD_DIMENSIONS),
+                     "facets": "1", "limit": "1000", "observations": "1"})
+    return js.get("series", {}).get("docs", [])
+
+
 def gold_price_usd_per_oz() -> dict:
     """{(year, month): USD per troy oz} — last trading day of each month."""
-    js = _get_json(DBNOMICS_GOLD_SERIES, {"observations": "1"})
-    docs = js.get("series", {}).get("docs", [])
+    docs = _gold_price_docs()
     if not docs:
-        raise RuntimeError("LBMA gold_D_USD_AM: no series returned")
+        raise RuntimeError("LBMA gold_D (USD, AM): no series returned")
     doc = docs[0]
     daily = {}
     for period, val in zip(doc.get("period", []), doc.get("value", [])):
@@ -161,7 +172,7 @@ def gold_price_usd_per_oz() -> dict:
             continue
         daily[d] = v
     if not daily:
-        raise RuntimeError("LBMA gold_D_USD_AM: no usable observations")
+        raise RuntimeError("LBMA gold_D (USD, AM): no usable observations")
 
     monthly = {}
     for d in sorted(daily):  # ascending, so last day in each month wins
@@ -211,13 +222,13 @@ def verify() -> bool:
         print(f"[gold-holdings] FAILED: {e}")
 
     try:
-        js = _get_json(DBNOMICS_GOLD_SERIES, {"observations": "1"})
-        docs = js.get("series", {}).get("docs", [])
-        print(f"\n[gold-price] {DBNOMICS_GOLD_SERIES}")
+        docs = _gold_price_docs()
+        print(f"\n[gold-price] {DBNOMICS_GOLD_DATASET} dimensions={DBNOMICS_GOLD_DIMENSIONS}")
         if docs:
             d = docs[0]
             periods = d.get("period", [])
             values = d.get("value", [])
+            print(f"  series_code: {d.get('series_code')}")
             print(f"  {len(periods)} observations; latest: {periods[-1] if periods else None} = "
                   f"{values[-1] if values else None} USD/oz")
         else:
