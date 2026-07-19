@@ -4,37 +4,58 @@ Provides two budget-basis debt-service ratios, both from Treasury
 (cash/budget basis, the basis Dalio and CBO use for "interest as a share of
 revenue" — unlike FRED's NIPA/accrual basis):
 
-    NET interest to the public   /  on-budget receipts   (headline)
-    GROSS interest incl. GAS     /  on-budget receipts   (second row)
+    NET interest to the public   /  total receipts (net of refunds)   (headline)
+    GROSS interest incl. GAS     /  total receipts (net of refunds)   (second row)
 
-Definition, revised 2026-07 (see STATUS.md §9 for the full calibration and
-retraction of the prior write-up's timing attribution):
+Definition, revised 2026-07 twice in the same day (see STATUS.md §9/§12/§13
+for the full calibration history, including two retractions):
 
-`debt_service_ratio()` (the headline `debt_service_to_revenue` vital) now
-uses NET interest to the public (`net_to_public_interest_monthly()`) over
-ON-BUDGET receipts (`on_budget_receipts_monthly()`) — not gross interest
-over total receipts, the prior session's basis. Two reasons for the switch,
-both definitional, not fitted to the target number:
-  1. `debt_to_gdp` already measures debt *held by the public* — gross
-     interest also counts interest on intragovernmental Government Account
-     Series debt, which that denominator excludes. Net-to-public is the
-     figure whose numerator and denominator scope actually match.
-  2. GAS interest is credited to trust funds as additional bonds, not paid
-     in cash — it's a real future claim, but not "debt service" in the
-     sense of cash actually leaving the government today. It ships as its
-     own explicit second row instead (`gross_debt_service_ratio()`).
-Both are divided by ON-BUDGET receipts (total receipts minus OASI+DI trust
-fund receipts — see `on_budget_receipts_monthly()`), chosen after extending
-the diagnostic matrix from 3x2 to 3x3 (see `debt_service_matrix()`): net
-interest / on-budget receipts landed at 23.1%, only ~1pt from Dalio's 22%
-and the same order of match as the old gross/total-receipts basis (23.0%),
-but on the economically consistent numerator. The full 3x3 matrix is
-printed by `--verify` every run.
+`debt_service_ratio()` (the headline `debt_service_to_revenue` vital) uses
+NET interest to the public (`net_to_public_interest_monthly()`) over TOTAL
+receipts, net of refunds (`monthly_receipts()`) — not on-budget receipts,
+the immediately-prior basis, and not gross receipts, a field-selection bug
+in every basis tried before this pass.
+
+**The receipts field bug (fixed this pass, see STATUS.md §13):**
+`mts_table_4`'s "Total -- Receipts" row carries three amount fields per
+month: `current_month_gross_rcpt_amt`, `current_month_refund_amt`,
+`current_month_net_rcpt_amt` (gross − refund = net, confirmed live). Every
+previous version of this module summed the GROSS field. Checked against
+CBO's independently published FY totals, gross overshoots by ~7% in both
+FY2024 ($5.265T vs. CBO's $4.920T) and FY2025 ($5.617T vs. CBO's $5.235T);
+NET matches both to within rounding (FY2024 $4.919T, FY2025 $5.235T exact).
+"Federal revenue" in every standard published figure (CBO, OMB, Treasury
+summaries) means net-of-refunds receipts — `monthly_receipts()` and
+`off_budget_receipts_monthly()` now sum `current_month_net_rcpt_amt`.
+
+**The on-budget-vs-total denominator question (also revisited this pass):**
+the immediately-prior basis divided by ON-BUDGET receipts (total minus
+OASI+DI trust fund receipts), chosen mainly because it landed close to
+Dalio's 22% — which the receipts-field bug above made an artifact of an
+inflated (gross) total-receipts denominator, not a real match. With the
+field bug fixed, no numerator/denominator combination lands near 22% at
+Dalio's March-2025 vintage (closest: gross ÷ total, 23.9%, still ~2pt off
+— see STATUS.md §13). With "closeness to 22%" no longer a live
+consideration, TOTAL receipts is used going forward on definitional
+grounds instead: it's the denominator every standard published
+interest-to-revenue figure (CBO, OMB, GAO) actually uses, whereas the
+on-budget/off-budget split is a budget-*process* artifact (2 U.S.C. 622(7)
+governs what counts toward statutory budget-enforcement totals, not which
+revenue is economically available to pay interest — Treasury commingles
+on- and off-budget cash in the same general account). `on_budget_receipts_monthly()`
+is kept for the diagnostic matrix (`debt_service_matrix()`) but is no
+longer the shipped denominator.
+
+Both debt-service rows and `debt_to_revenue` (fetch.py) now share the same
+TOTAL, net-of-refunds receipts denominator — recorded once in
+`provenance.revenueDefinition`.
 
 `gross_interest_monthly()`, `net_to_public_interest_monthly()`, and
 `net_interest_function900_monthly()` are the three numerator candidates;
 `monthly_receipts()`, `on_budget_receipts_monthly()`, and the FRED-sourced
-tax-receipts-only series (fetch.py) are the three denominator candidates.
+tax-receipts-only series (fetch.py) are the three denominator candidates in
+the diagnostic matrix — all now net-of-refunds where they read from
+`mts_table_4`.
 
 The Fiscal Data host is not reachable from the build's dev environment, so the
 exact column names can't be introspected there. Two safeguards make that safe:
@@ -247,7 +268,15 @@ def _is_total_receipts(desc: str) -> bool:
 
 
 def monthly_receipts(rows=None) -> dict:
-    """{(year, month): total federal receipts, $} — monthly (current-month).
+    """{(year, month): total federal receipts, NET of refunds, $} — monthly
+    (current-month).
+
+    Sums `current_month_net_rcpt_amt`, not `current_month_gross_rcpt_amt`
+    (a bug in every earlier version of this function — see the module
+    docstring: gross overshoots CBO's published FY totals by ~7%, net
+    matches them almost exactly). "Federal receipts"/"federal revenue" in
+    every standard published figure (CBO, OMB, Treasury) means net of
+    refunds.
 
     If several "total receipts" rows match in a month (e.g. on/off-budget
     splits slip through), the largest is taken — the grand total.
@@ -266,9 +295,9 @@ def monthly_receipts(rows=None) -> dict:
             s = r[0]
             classk = _pick(s, ["classification_desc"], contains=["classification", "desc"]) \
                 or _pick(s, [], contains=["desc"])
-            amtk = _pick(s, ["current_month_gross_rcpt_amt", "current_month_rcpt_amt"],
+            amtk = _pick(s, ["current_month_net_rcpt_amt", "current_month_rcpt_amt"],
                          contains=["month", "rcpt", "amt"],
-                         exclude=["fytd", "prior", "year", "outly", "dfct"])
+                         exclude=["fytd", "prior", "year", "outly", "dfct", "gross", "refund"])
             if not (classk and amtk):
                 last_err = f"{ep}: could not map fields from {list(s)}"
                 continue
@@ -303,15 +332,21 @@ def _receipts_table4_rows():
 # already carries unambiguous grand-total lines for both, confirmed live:
 # "Total -- Federal Old-Age and Survivors Insurance Trust Fund" and
 # "Total -- Federal Disability Insurance Trust Fund" (see
-# docs/verification-log.md). On-budget receipts = total receipts minus
-# those two lines. This is preferred over mts_table_5's "Total On-Budget" /
-# "Total Off-Budget" rows (which the task flagged for investigation): table
-# 5's own fields are all outlay-shaped (current_month_gross_outly_amt,
-# current_month_app_rcpt_amt = agency *offsetting* receipts, not total
-# federal receipts) — its "Total On-Budget" almost certainly describes
-# on-budget OUTLAYS or the on-budget deficit/surplus, not on-budget
-# RECEIPTS. verify() still probes table 5 and prints what it finds, purely
-# as a cross-check, but does not use it to build the denominator.
+# docs/review/2026-07-19c-verification.md). On-budget receipts = total
+# receipts minus those two lines. This is preferred over mts_table_5's
+# "Total On-Budget" / "Total Off-Budget" rows (which an earlier task flagged
+# for investigation): table 5's own fields are all outlay-shaped
+# (current_month_gross_outly_amt, current_month_app_rcpt_amt = agency
+# *offsetting* receipts, not total federal receipts) — its "Total
+# On-Budget" almost certainly describes on-budget OUTLAYS or the on-budget
+# deficit/surplus, not on-budget RECEIPTS. verify() still probes table 5
+# and prints what it finds, purely as a cross-check, but does not use it to
+# build the denominator.
+#
+# NOTE (2026-07, see STATUS.md §13): on_budget_receipts_monthly() is no
+# longer the shipped debt-service/debt-to-revenue denominator — that's now
+# monthly_receipts() (TOTAL receipts). Kept here as a diagnostic-matrix
+# candidate only (debt_service_matrix(), verify()).
 _OFF_BUDGET_FUND_LABELS = (
     "total -- federal old-age and survivors insurance trust fund",
     "total -- federal disability insurance trust fund",
@@ -319,17 +354,17 @@ _OFF_BUDGET_FUND_LABELS = (
 
 
 def off_budget_receipts_monthly(rows=None) -> dict | None:
-    """{(year, month): OASI + DI trust fund receipts, $} — best-effort.
-    Returns None (not an exception) if the two labelled totals can't be
-    found, so on_budget_receipts_monthly() can report "unavailable" rather
-    than silently using a wrong number."""
+    """{(year, month): OASI + DI trust fund receipts, NET of refunds, $} —
+    best-effort. Returns None (not an exception) if the two labelled totals
+    can't be found, so on_budget_receipts_monthly() can report
+    "unavailable" rather than silently using a wrong number."""
     try:
         r = rows if rows is not None else _receipts_table4_rows()
         s = r[0]
         classk = _pick(s, ["classification_desc"], contains=["classification", "desc"])
-        amtk = _pick(s, ["current_month_gross_rcpt_amt", "current_month_rcpt_amt"],
+        amtk = _pick(s, ["current_month_net_rcpt_amt", "current_month_rcpt_amt"],
                      contains=["month", "rcpt", "amt"],
-                     exclude=["fytd", "prior", "year", "outly", "dfct"])
+                     exclude=["fytd", "prior", "year", "outly", "dfct", "gross", "refund"])
         if not (classk and amtk):
             return None
         monthly = defaultdict(float)
@@ -440,14 +475,15 @@ def _ttm_ratio(numerator: dict, denominator: dict) -> dict | None:
 
 def debt_service_ratio() -> dict:
     """Trailing-12-month NET interest to the public / trailing-12-month
-    on-budget receipts, as a percentage — the live basis for the headline
-    "debt service vs revenue" vital. See the module docstring for why net
-    (not gross) and on-budget (not total) receipts were adopted."""
-    on_budget = on_budget_receipts_monthly()
-    if not on_budget:
-        raise RuntimeError("debt_service_ratio: on-budget receipts unavailable "
-                            "(see on_budget_receipts_monthly / --verify)")
-    ratio = _ttm_ratio(net_to_public_interest_monthly(), on_budget)
+    TOTAL receipts (net of refunds), as a percentage — the live basis for
+    the headline "debt service vs revenue" vital. See the module docstring
+    for why net (not gross) interest and TOTAL, net-of-refunds receipts
+    (not gross receipts, not on-budget) were adopted."""
+    total = monthly_receipts()
+    if not total:
+        raise RuntimeError("debt_service_ratio: total receipts unavailable "
+                            "(see monthly_receipts / --verify)")
+    ratio = _ttm_ratio(net_to_public_interest_monthly(), total)
     if ratio is None:
         raise RuntimeError("debt_service_ratio: fewer than 12 overlapping months")
     return ratio
@@ -455,28 +491,29 @@ def debt_service_ratio() -> dict:
 
 def gross_debt_service_ratio() -> dict:
     """Trailing-12-month GROSS interest (incl. intragovernmental GAS) /
-    trailing-12-month on-budget receipts — the second, explicitly-labelled
-    debt-service row. Same denominator as debt_service_ratio() (one revenue
-    definition across the page, see STATUS.md §9/provenance)."""
-    on_budget = on_budget_receipts_monthly()
-    if not on_budget:
-        raise RuntimeError("gross_debt_service_ratio: on-budget receipts unavailable")
-    ratio = _ttm_ratio(gross_interest_monthly(), on_budget)
+    trailing-12-month TOTAL receipts (net of refunds) — the second,
+    explicitly-labelled debt-service row. Same denominator as
+    debt_service_ratio() (one revenue definition across the page, see
+    STATUS.md §13/provenance)."""
+    total = monthly_receipts()
+    if not total:
+        raise RuntimeError("gross_debt_service_ratio: total receipts unavailable")
+    ratio = _ttm_ratio(gross_interest_monthly(), total)
     if ratio is None:
         raise RuntimeError("gross_debt_service_ratio: fewer than 12 overlapping months")
     return ratio
 
 
 def revenue_ttm_dollars() -> dict:
-    """{(year, month): trailing-12-month on-budget receipts, $} — the raw
-    dollar flow (not a ratio), for debt_to_revenue which divides a debt
-    dollar STOCK by this revenue dollar FLOW. Same on-budget-receipts
+    """{(year, month): trailing-12-month TOTAL receipts, net of refunds, $}
+    — the raw dollar flow (not a ratio), for debt_to_revenue which divides
+    a debt dollar STOCK by this revenue dollar FLOW. Same total-receipts
     denominator as both debt-service rows (one revenue definition across
     the page)."""
-    on_budget = on_budget_receipts_monthly()
-    if not on_budget:
-        raise RuntimeError("revenue_ttm_dollars: on-budget receipts unavailable")
-    ttm = _ttm_sum(on_budget)
+    total = monthly_receipts()
+    if not total:
+        raise RuntimeError("revenue_ttm_dollars: total receipts unavailable")
+    ttm = _ttm_sum(total)
     if not ttm:
         raise RuntimeError("revenue_ttm_dollars: fewer than 12 overlapping months")
     return ttm
@@ -598,7 +635,7 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
     try:
         r = debt_service_ratio()
         print(f"\n  LIVE headline debt-service ratio (net interest to the public / "
-              f"on-budget receipts): {r['latest']}% as of {r['asOf']} "
+              f"total receipts, net of refunds): {r['latest']}% as of {r['asOf']} "
               f"({len(r['history'])} history pts)")
     except Exception as e:  # noqa: BLE001
         ok = False
@@ -607,7 +644,7 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
     try:
         rg = gross_debt_service_ratio()
         print(f"  LIVE second-row debt-service ratio (gross interest incl. GAS / "
-              f"on-budget receipts): {rg['latest']}% as of {rg['asOf']} "
+              f"total receipts, net of refunds): {rg['latest']}% as of {rg['asOf']} "
               f"({len(rg['history'])} history pts)")
     except Exception as e:  # noqa: BLE001
         ok = False
