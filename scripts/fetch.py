@@ -418,9 +418,11 @@ def build_us(manual: dict, force: bool) -> dict:
                                  "Treasury budget basis — chosen 2026-07 to match Dalio's "
                                  "Ch.17 US snapshot (22%); see STATUS.md",
             "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz) "
-                              "x live gold price (DBnomics LBMA), gold valued at MARKET not the "
-                              "$42.2222/oz statutory book rate — resolved 2026-07 to match "
-                              "Dalio's Ch.17 US snapshot (3%); see STATUS.md",
+                              "x live gold price (DBnomics: IMF PCPS, indicator PGOLD — "
+                              "DBnomics' LBMA mirror was dropped 2026-07 after LBMA moved its "
+                              "price tables behind a members-only portal), gold valued at "
+                              "MARKET not the $42.2222/oz statutory book rate — resolved "
+                              "2026-07 to match Dalio's Ch.17 US snapshot (3%); see STATUS.md",
             "reservesInclGoldTag": reserves_incl_gold_tag,
         },
     }
