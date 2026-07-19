@@ -5,14 +5,23 @@ instruction this file was created under, and it stands going forward. Written
 for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
-Last updated: **2026-07-19**, by Claude (Sonnet 5). This session closed out
-two items §3 had flagged as unverified assumptions (debt-service basis) and
-resolved a reserves discrepancy against Dalio's Ch.17 US figures that hadn't
-been caught before (§3, new subsection, and §9). See §9 for the calibration
-comparison this work was built around, and **§10 for a self-contained
-review package** built for a reviewer who can only read individual files by
-public GitHub blob URL (no Actions tab, no directory browsing, no commit
-history) — `docs/verification-log.md` and `docs/current-values.md`.
+Last updated: **2026-07-19** (later the same day, following an external
+review of §10's review package), by Claude (Sonnet 5). This pass: split
+debt-service into net (headline, to the public) and gross (incl.
+intragovernmental) rows, both now denominated in on-budget receipts instead
+of total receipts (extending the calibration matrix to 3×3 — see §3);
+added a debt/revenue row alongside debt/GDP (§3); **explicitly retracted**
+a wrong timing-drift claim from §10.2 rather than quietly editing it (see
+the retraction block inside §10.2); tried and **refuted** a hypothesis
+about Dalio's "other debt" figure (switching total-debt series to
+TCMDODNS made the gap worse, not better — reverted to TCMDO, see §9);
+corrected an overclaimed "confirmed" about IMF PCPS's gold-price staleness
+(only DBnomics' mirror was actually checked, not IMF itself — see §3); and
+made the gold-price/holdings date mismatch visible in the reserves row's
+`src`, not only in `asOf`. §9 now covers every Ch.17 book row with a
+published figure, not just the two from the first pass. See §10 for the
+review package itself (`docs/verification-log.md`,
+`docs/current-values.md`, regenerated this pass with a fresh commit SHA).
 
 ---
 
@@ -154,44 +163,85 @@ Bugs found and fixed, in order:
    `INTEREST EXPENSE ON GOVT ACCOUNT SERIES` (intragovernmental, paid to
    trust funds — not part of net interest to the public).
 
-**RESOLVED 2026-07-19** (was flagged unverified above — see §9 for the full
-calibration comparison). Dalio's Ch.17 book value for the US is **22%**; the
-"net interest to the public" basis this file used to ship (~18%) was ~4pts
-off, and had never been checked against a named official statistic.
+**RESOLVED 2026-07-19, revised again same day** after an external review of
+this exact write-up caught a real error in it — see §10.2 for the retraction
+and §9 for the full calibration comparison. Two rounds happened on the same
+day:
 
-What was done: computed a 3×2 matrix (numerator ∈ {gross interest incl. GAS,
-net-to-public excl. GAS, net interest via Treasury's function-900
-classification} × denominator ∈ {tax receipts only, total receipts}) and
-printed it in the `--verify` run log every run
-(`scripts/treasury.py::debt_service_matrix`). Live result (2026-07-19 run):
+**Round 1** adopted gross interest / total receipts (23.0%), closest of six
+candidates in a 3×2 matrix, and attributed the ~1pt residual vs. Dalio's 22%
+to a March-2025-vs-rolling-window timing difference. **That attribution was
+wrong** — the review pointed out the GAO/CBO cross-check itself used FY2024
+data (ending September 2024, *before* Dalio's snapshot) and *also* got
+23.0%, so the ratio was flat at 23% on both sides of March 2025; drift can't
+explain a gap that isn't drifting. See §10.2.
+
+**Round 2** re-examined the definition itself instead of the timing, and
+found a real numerator/denominator mismatch: `debt_to_gdp` measures debt
+*held by the public*, but gross interest also includes intragovernmental
+Government Account Series interest — a scope `debt_to_gdp` excludes. The
+matrix was extended to 3×3 by adding **on-budget receipts** (total receipts
+minus OASI+DI trust fund receipts, the statutory off-budget definition,
+2 U.S.C. 622(7)) as a third denominator, computed from `mts_table_4`'s own
+unambiguous trust-fund grand-total lines
+(`on_budget_receipts_monthly()`) — not from `mts_table_5`'s "Total
+On-Budget"/"Total Off-Budget" rows, which a live probe confirmed are outlay/
+deficit figures, not receipts (only `current_month_net_outly_amt` is
+populated on those rows, and it's negative — a monthly on-budget deficit).
+Live result (2026-07-19, second run of the day):
 
 ```
-numerator                          tax receipts only   total receipts
-gross (incl. GAS)                        35.0%              23.0%
-net-to-public (excl. GAS)                27.8%              17.9%
-net interest, function 900               27.8%              17.8%
+numerator                          on-budget receipts   tax receipts only   total receipts
+gross (incl. GAS)                          29.7%              35.0%              23.0%
+net-to-public (excl. GAS)                  23.1%              27.8%              17.9%
+net interest, function 900                 23.0%              27.8%              17.8%
 ```
 
-**Gross interest / total receipts (23.0%)** is closest to Dalio's 22% and was
-adopted as the new live basis. Cross-checked against two named official
-statistics, independent of this pipeline's own math: FY2024 gross interest on
-the total public debt = **$1,126.5B** (GAO, *Schedule of Federal Debt*,
-GAO-25-107138) and FY2024 total federal receipts = **$4.9T** (CBO Monthly
-Budget Review) → **23.0%**, matching this pipeline's live TTM figure almost
-exactly. Residual vs. Dalio's 22% (~1pt) is attributed to the time-snapshot
-difference — his figure is pinned to the book's March 2025 baseline, this
-pipeline's is a rolling trailing-12-month window that currently ends 2026-06.
+**Net-to-public / on-budget receipts (23.1%) is now the live headline basis**
+— it's the economically consistent pairing (net interest to the public,
+same "to the public" scope as the debt stock it's compared against), and it
+happens to also match Dalio's 22% about as closely as gross/total-receipts
+did (~1pt), so the switch cost nothing on fit while fixing the scope
+mismatch. **Gross interest / on-budget receipts (29.7%) ships as an
+explicit second row** ("Gross interest (incl. intragovernmental)"), not
+folded into the headline — GAS interest is a real future claim (credited to
+trust funds as bonds, not paid in cash) but isn't cash leaving the
+government today.
 
-The chosen basis is recorded in `data.json`'s `provenance.debtServiceBasis`
-(a plain-English string) and in the `debt_service_to_revenue` vital's `src`
-(`"derived · Treasury (gross interest, budget basis)"`) and the `gov_panel`
-row label (`"Government interest (gross)"`) — the switch from net-to-public
-to gross is visible in both places, not just the number.
+The **residual vs. Dalio's 22% is still ~1pt and still not fully
+explained** — see §10.2's retraction for what evidence does and doesn't
+support here. Stated plainly: this is *closer to* Dalio's figure on
+defensible definitional grounds, not a fully reconciled match.
 
-The existing **sanity band** (`5% ≤ ratio ≤ 40%`) was re-checked against the
-new gross basis rather than assumed still-correct: 23% sits comfortably
-inside it (with headroom up toward the tax-only gross figure of 35% if
-receipts data ever narrows), so it was left unchanged.
+The chosen basis is recorded in `data.json`'s `provenance.debtServiceBasis`,
+`grossDebtServiceBasis`, and a new shared `revenueDefinition` string (the
+on-budget-receipts definition, referenced by both debt-service rows and the
+new debt/revenue row — see below), and in each row's own `src`.
+
+**Two separate sanity bands**, re-set for the new bases rather than reusing
+the old shared one: net interest 10–40% (23.1% comfortably inside), gross
+interest 15–50% (29.7% comfortably inside).
+
+### Debt / revenue (new row, alongside debt / GDP)
+Dalio's Ch.17 table reports debt/GDP, but Ch.3 argues debt/revenue is the
+more meaningful figure (GDP isn't the government's to spend; receipts are).
+Added as a second row in the "Government debt" panel, not a replacement for
+the headline `debt_to_gdp` vital (which stays, since it's the figure the
+§9 calibration is actually checked against). Computed with no new series:
+`debt$ = FYGFGDQ188S (%) × GDP ($)`, divided by the same on-budget-receipts
+TTM denominator as both debt-service rows (`series.py::debt_to_revenue_pct`,
+`treasury.py::revenue_ttm_dollars`). **Live result (2026-07-19, confirmed
+end-to-end in `public/data.json`): debt/GDP 99%, debt/revenue 692%** — very
+different scales by design (hundreds of percent vs. ~100%), so the two rows
+are not visually confusable, and `Chart.jsx` scales each row's sparkline
+y-axis independently already (confirmed by reading the component: each
+`MetricRow` renders its own `<Chart data={r.history}>` instance, and
+`niceDomain()` computes min/max from that instance's own data — no shared
+axis to worry about). Sanity band 200–1200%, wide enough for real movement,
+tight enough to catch a units error (FYGFGDQ188S is a percent, GDP is
+billions SAAR — confirmed, not assumed, by reading both units strings
+`--verify` dumps). Dalio's table has no debt/revenue figure to calibrate
+against — noted in §9 rather than left blank.
 
 ### IMF COFER via DBnomics (`scripts/imf.py`) — reserve-currency USD share
 No API key. Feeds the "World CB reserves in USD" row in the reserve-currency
@@ -279,14 +329,48 @@ live-tagged number built on a stale price. This fired for real during
 development (both LBMA-404 attempts degraded cleanly to the manual value,
 no build breakage) before the PCPS fix made the live path actually succeed.
 
-**Known lag, not a bug:** PCPS's `PGOLD.USD` series was last observed
-**2025-06** as of the 2026-07-19 run — over a year stale relative to the run
-date, even though Treasury's gold-holdings figure is current to 2026-06.
-This is a genuine reporting lag in the IMF PCPS dataset itself (confirmed via
-the `--verify` dump, not assumed), not a parsing bug in this pipeline. Worth
-rechecking periodically — if PCPS's update cadence improves, the live gold
-price (and therefore the reserves figure) should track more current market
-prices.
+**Gold-price staleness: retracted claim, corrected 2026-07-19.** The prior
+write-up here said the ~13-month lag (PCPS's `PGOLD.USD` last observed
+2025-06 as of a 2026-07-19 run, vs. Treasury's gold-holdings figure current
+to 2026-06) was "a genuine reporting lag in the IMF PCPS dataset itself
+(confirmed via the `--verify` dump, not assumed)." **That claim was too
+strong and is retracted.** The `--verify` dump confirms only that
+**DBnomics** returns nothing after 2025-06 for that series — it says
+nothing about IMF's own PCPS publication schedule, because this pipeline
+has never queried IMF directly, only DBnomics' mirror of it. Confirming vs.
+assuming the *mirror* is stale is not the same as confirming vs. assuming
+*IMF itself* is stale, and the two were conflated.
+
+**What's actually known, from research (not from live introspection — IMF's
+own API isn't reachable from this sandbox either):** IMF's Primary
+Commodity Price System publishes monthly data in the first full week of the
+following month. If that cadence holds, IMF should have had June 2026 data
+available well before this pipeline's 2026-07-19 run — meaning **a stale
+DBnomics mirror is the more likely explanation**, not a stale IMF
+publication, though this is inferred from IMF's documented general cadence,
+not verified against IMF's raw feed for this specific series. **Report:
+DBnomics mirror is more likely stale than IMF itself — not confirmed
+either way by direct comparison.**
+
+**What was NOT done this session, flagged as a next step:** IMF publishes a
+modern SDMX 3.0 API directly (`api.imf.org`) that could be queried without
+going through DBnomics at all, which would let a live run compare IMF's own
+latest PGOLD observation against DBnomics' mirror directly — the strongest
+possible test of which one is actually behind. This wasn't implemented:
+adding a second gold-price integration is real scope, and the higher-value
+fix (below) was judged more urgent given the time available.
+
+**UI fix that WAS done:** regardless of which side is stale, shipping a
+`tag: "live"` reserves figure that silently mixes a 2026-06 gold-holdings
+count with a 2025-06 gold price was the more directly actionable problem —
+a reader has no way to know that from the number alone. Fixed: `src` now
+names both dates explicitly whenever they differ (e.g. `"Treasury (gold oz
+2026-06) + DBnomics (price 2025-06)"`, confirmed live in the 2026-07-19
+run — see `docs/current-values.md`), instead of a generic string that reads
+as fully current. The tag stays `"live"` rather than being downgraded,
+since both components genuinely are live data, just not from the same
+month — downgrading the tag would hide that distinction rather than
+surface it.
 
 The chosen basis is recorded in `provenance.reservesBasis` and
 `provenance.reservesInclGoldTag`, and in the `reserves_to_gdp` vital's `src`.
@@ -429,14 +513,21 @@ the Python or JS.
   deviation from the brief's original candidate ID, not a bug — flagging it
   here only because it's the single biggest number on the page and worth
   double-checking if Dalio's own figures ever seem to disagree.
-- **IMF PCPS's `PGOLD.USD` gold-price series lags ~13 months** (last observed
-  2025-06 as of the 2026-07-19 run, see §3's reserves subsection) — a genuine
-  upstream reporting lag, not a bug in this pipeline, but worth knowing if
-  the reserves-incl-gold figure looks stale relative to a real-time gold
-  price quote.
+- **The gold price DBnomics returns lags ~13 months** (last observed
+  2025-06 as of the 2026-07-19 run) behind Treasury's gold-holdings figure.
+  A prior write-up here called this "confirmed" to be an IMF PCPS upstream
+  lag — **that was too strong and has been retracted** (see §3's reserves
+  subsection): the `--verify` dump only confirms DBnomics' mirror is
+  behind, not that IMF's own publication is. Research suggests DBnomics is
+  the more likely stale link (IMF's documented cadence would have June 2026
+  data out by now), but this is not directly verified. The reserves row's
+  `src` now names both dates explicitly so the gap is visible regardless of
+  which side is actually behind.
 - **This session's fixes live on `claude/new-session-ldotj8`, not yet merged
-  to `main`** (see §4) — the live site does not yet reflect the
-  23%/3.7% debt-service and reserves figures. Merging is the next step.
+  to `main`** (see §4) — the live site does not yet reflect this session's
+  or the prior session's figures (debt service now 23.1% net/on-budget,
+  reserves 3.7%, debt/revenue 692% new, total debt 362.6%). Merging is the
+  next step.
 
 ---
 
@@ -467,53 +558,96 @@ left open:
 6. **Re-verify the `IEABC` current-account annualization assumption** (§5) —
    the one remaining unverified-but-plausible branch; low urgency since the
    output number looks directionally sane.
-7. **Watch whether IMF PCPS's gold price catches up** to a more current
-   month than the ~13-month lag seen in the 2026-07-19 run (§3, §7) — if it
-   stays this stale, the reserves-incl-gold figure will always trail actual
-   market gold prices by over a year.
+7. **Query IMF's own SDMX 3.0 API directly** (`api.imf.org`) for the latest
+   PGOLD observation and compare it against DBnomics' mirror — the direct
+   test of which side is actually stale (§3), not yet implemented. If
+   DBnomics is confirmed behind, either switch the live source to IMF
+   directly or find another live mirror.
+8. **Investigate what Dalio's "other debt" (340%) row actually scopes** (§9)
+   — TCMDO (all sectors, 362.6%) is the closer of two tried series but still
+   22.6pts over; TCMDODNS (nonfinancial only) was refuted, not confirmed.
+   Untested idea: total debt minus government debt, to avoid double-counting
+   against the debt/GDP row shown separately.
 
 ---
 
 ## 9. Calibration against Dalio's Ch.17 US column
 
-This session's work started from a direct comparison of this pipeline's live
-output against the actual published numbers in the US column of *How
-Countries Go Broke* Ch.17 (March 2025 snapshot). **This comparison is the
-strongest correctness check this project has** — it caught a real ~4pt
-definitional gap in debt service and a structural ~2pt gap in reserves that
-neither the sanity bands nor the local mock tests would ever have surfaced,
-because both the wrong numbers looked "sane" in isolation. The next person
-touching this pipeline should re-run this comparison whenever the fetcher
-changes, not just trust that the sanity bands are enough.
+This project's work has repeatedly started from a direct comparison of this
+pipeline's live output against the actual published numbers in the US
+column of *How Countries Go Broke* Ch.17 (March 2025 snapshot). **This
+comparison is the strongest correctness check this project has** — every
+real gap found so far (debt service, reserves, total debt) was invisible to
+sanity bands and local mock tests, because the wrong numbers all looked
+"sane" in isolation. Extended below (2026-07-19, second pass) to cover
+*every* book row with a published figure, not just the two flagged in the
+first pass, per an external review that pointed out a 23-point total-debt
+gap had gone unnoticed because it was never added to this table.
 
-| Metric | Dalio Ch.17 (US, Mar 2025) | This pipeline (2026-07-19 live run) | Match? |
-|---|---|---|---|
-| Debt held by public / GDP | ~100% | 99% (`FYGFGDQ188S`) | Matches closely, no change needed |
-| Debt service / revenue | 22% | 23.0% (gross interest incl. GAS ÷ total receipts) | **Required a definitional change** — see §3. Previously shipped 18% on a different (net-to-public) basis |
-| Reserves / GDP | 3% | 3.7% (FX reserves excl. gold + gold at market value) | **Required a new data source** — see §3. Previously shipped 0.8% because gold wasn't included at all |
-| Reserve-currency USD share (world CB reserves) | ~58% (book's framing) | 57.7% (IMF COFER via DBnomics) | Matches closely, already live before this session |
+| Metric | Dalio Ch.17 (US, Mar 2025) | This pipeline (2026-07-19) | Basis | Match? |
+|---|---|---|---|---|
+| Debt held by public / GDP | ~100% (99%) | 99% | live, `FYGFGDQ188S` | Matches closely |
+| Debt, 10-yr projection / GDP | 122% | 122% | **manual**, carried from `data/manual.json` (CBO) | Trivial — same figure, not independently derived |
+| Held by CB / domestic / abroad | 13% / 57% / 29% | 13% / 57% / 29% | **manual**, carried from `data/manual.json` (TIC) | Trivial — same figures, not independently derived |
+| Debt service / revenue | 22% | 23.1% (net-to-public / on-budget receipts) | live, `scripts/treasury.py` | Close but not exact — see §3, §10.2's retraction. Residual ~1pt, unexplained |
+| FX reserves / GDP | 3% | 3.7% (excl.-gold FX + gold at market) | live, `scripts/gold.py` + FRED | Close but not exact — residual ~0.7pt, attributed partly to the gold-price staleness (§3/§7) |
+| Total debt (Dalio's "other debt") / GDP | 340% | 362.6% (TCMDO, all sectors incl. financial) | live, `FRED: TCMDO` | **Does not match** — +22.6pt gap. A nonfinancial-only alternative (TCMDODNS) was tried and made it *worse* (256.7%, -83pt) — see below |
+| Current account, 3-yr avg / GDP | −4% | −3.7% | live, `IEABC` (FRED) | Matches closely |
+| World trade in USD | 52.6% | 52.6% | **manual**, carried from `data/manual.json` | Trivial — same figure |
+| World debt in USD | 80.7% | 80.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
+| Global equity market cap in USD | 65.7% | 65.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
+| World CB reserves in USD | 57.0% | 57.7% | live, IMF COFER via DBnomics | Matches closely — independently computed, not carried |
+| Debt / on-budget revenue | *(no book figure)* | 692% | live, derived (§3) | **No book value to calibrate against** — Dalio's table reports only debt/GDP; noted here rather than left blank, per the task that added this row |
 
-**Two rows needed a definitional decision, not just a bug fix:**
-- **Debt service**: the book's 22% could only be reproduced by switching
-  which numerator (gross vs. net-to-public vs. function-900) and denominator
-  (tax receipts vs. total receipts) this pipeline used — a 3×2 matrix made
-  the six candidate combinations explicit (printed every `--verify` run,
-  `scripts/treasury.py::debt_service_matrix`), and gross-interest-over-total-
-  receipts was the only one that landed near 22% *and* matched a named
-  official statistic (GAO's gross interest figure ÷ CBO's receipts figure).
+**Read the "Basis" column before trusting a "match."** Six of the twelve
+rows are `manual` — hand-carried from `data/manual.json`, which in most
+cases was originally *transcribed from this same book*. Those matching is
+not a validation of anything; it would be surprising if they didn't match.
+The rows worth trusting as genuine checks are the `live` ones — five
+numbers this pipeline actually derived from FRED/Treasury/DBnomics without
+looking at Dalio's figure first, three of which land close (debt/GDP,
+current account, COFER share) and two of which don't fully reconcile
+(debt service, reserves) despite real investigation.
+
+**Three rows needed more than a bug fix — a definitional decision or a new
+data source:**
+- **Debt service**: required deciding which numerator (gross vs.
+  net-to-public vs. function-900) and denominator (tax receipts, total
+  receipts, or on-budget receipts) this pipeline uses — a 3×3 matrix (§3)
+  made all nine candidates explicit. The current basis (net-to-public /
+  on-budget receipts) is chosen on definitional grounds, not because it's
+  the closest fit to 22% (it ties with net-function-900/on-budget, and
+  isn't meaningfully closer than the old gross/total-receipts basis was).
 - **Reserves**: no amount of debugging FRED's `TRESEGUSM052N` alone could
-  have closed this gap — the series is *defined* to exclude gold. Matching
-  Dalio's figure required adding an entirely new data source (Treasury gold
-  holdings × a live gold price) that didn't exist in the pipeline before this
-  session.
+  close this gap — the series structurally excludes gold. Required a new
+  data source (Treasury gold holdings × a live gold price).
+- **Total debt**: investigated but **not resolved**. TCMDO (all sectors) at
+  362.6% is the closer of two tried series, but still 22.6pts over Dalio's
+  340%. The hypothesis that "other debt" means nonfinancial-sectors-only
+  was tested against TCMDODNS and refuted (256.7%, further from target, not
+  closer). What Dalio's "other debt" row actually scopes remains unknown —
+  possibly a different aggregation entirely (e.g. total minus government
+  debt, to avoid double-counting the debt/GDP row above it — untested this
+  session). **Reported as an open gap, not forced to reconcile.**
 
-**Two rows already matched** (debt/GDP, COFER USD share) and needed no
-change — worth noting so a future reader doesn't assume everything on the
-page was wrong before this session; only the two flagged assumptions were.
+**Two rows already matched before this session** (debt/GDP, COFER USD
+share) and needed no change. **One row has no book figure to compare
+against** (debt/revenue) and is noted as such rather than left blank.
 
 ---
 
-## 10. Review package for a file-only reviewer (2026-07-19)
+## 10. Review package, first round (2026-07-19, commit `4c344e1`) — HISTORICAL
+
+> **This section is the first-round review package, kept for the record —
+> it is not the current state.** A review of it (the task that produced §11
+> below) caught a real error in §10.2 (now marked with an explicit
+> retraction block, not silently fixed) and prompted further changes that
+> superseded some of the numbers quoted here (the debt-service basis
+> changed from gross/total-receipts to net/on-budget-receipts; total debt
+> was investigated further). **For the current state, read §3, §9, and §11
+> instead.** This section is left as-is (other than the one retraction
+> block) so the review trail — what was claimed, what was wrong, what
+> changed — stays visible rather than being overwritten.
 
 Written for an AI assistant (or human) reviewing this project that **can
 only read individual files by public GitHub blob URL** — it cannot open the
@@ -531,6 +665,16 @@ Base commit for everything in this section: `4c344e1` (branch
 - `docs/current-values.md` — every headline number as a table, with
   `tag`/`src`/`asOf`/`unit`, instead of asking the reviewer to parse the
   ~200KB `public/data.json` by hand.
+
+> **Note:** these two files are overwritten in place on each regeneration,
+> not versioned per round — as of this edit they've been **regenerated to
+> match §11's current state** (3×3 matrix, new debt-service basis, fresh
+> SHA/timestamp), so the "3×2 matrix" and other specifics described in
+> §10.1–10.5 below no longer match what's actually in those files. §10's
+> own prose is left as the historical record of what was true and quoted
+> at the time; if you need the literal file contents from that round, they
+> are only in `git log` for `docs/verification-log.md` /
+> `docs/current-values.md` at or before commit `4c344e1`.
 
 ### 10.1 The 3×2 debt-service matrix, copied verbatim from the run log
 
@@ -583,6 +727,40 @@ other cause (a data revision, a different treatment of GAS, etc.).
 **Claim status for the attribution: ASSUMED, not verified.** The 23.0% ↔
 23.0% match between this pipeline and the independent GAO/CBO figures *is*
 verified; the *reason* for the 1pt gap to Dalio specifically is inferred.
+
+> **⚠️ RETRACTED, 2026-07-19 (same day, after external review).** The
+> timing-drift attribution two paragraphs up is **contradicted by this
+> section's own evidence** and should not be trusted. The GAO/CBO
+> cross-check above computes the **FY2024** ratio — a period ending
+> September 2024, *before* Dalio's March 2025 snapshot — and it also came
+> out to 23.0%. This pipeline's live rolling window (ending 2026-06) is
+> *also* 23.0%. The ratio is flat at 23% on both sides of March 2025, which
+> means it was already ~23% *at* March 2025 too — there is no drift for a
+> timing gap to explain. Whatever the ~1pt gap to Dalio's 22% actually is,
+> it is not this.
+>
+> This was caught precisely because the attribution was labelled ASSUMED
+> rather than asserted as fact — the epistemic hygiene worked even though
+> the inference itself didn't hold up. It is retracted here explicitly,
+> not quietly edited out, so a future reader can see both the original
+> mistake and the correction.
+>
+> **What actually changed as a result:** the debt-service basis itself was
+> revised (see §3) — from gross interest / total receipts to net interest /
+> on-budget receipts — on definitional grounds (a numerator/denominator
+> scope mismatch, not a fix for this residual). The revised basis's
+> residual (net-to-public / on-budget receipts = 23.1% vs. Dalio's 22%) is
+> almost the same size (~1pt) as this one was. **The more likely
+> explanation, unconfirmed:** a difference in Dalio's own revenue base or
+> interest scope that this pipeline hasn't identified — possibly something
+> in how he defines "revenue" that doesn't map cleanly onto any Treasury
+> MTS line item tried here (on-budget, total, or tax-only), or a different
+> treatment of what counts as "interest." **This has not been verified
+> either** — it is offered as the more evidenced guess, not a resolved
+> answer. Getting Dalio's own underlying figures (not available from public
+> data as far as this project has found) is the only way to actually close
+> this gap; barring that, it should stay marked as an open ~1pt residual,
+> not explained away by any story about timing.
 
 ### 10.3 Reserves reconciliation
 
@@ -654,7 +832,7 @@ this section.
 | 3×2 matrix values (all six cells) | **VERIFIED** — read from a real run log |
 | Gross/total-receipts (23.0%) is the closest cell to Dalio's 22% | **VERIFIED** — arithmetic on the quoted matrix |
 | 23.0% matches an independent GAO+CBO calculation | **VERIFIED** — both source figures are named, publicly citable statistics |
-| The 1pt gap to Dalio is caused by the March-2025-vs-rolling-TTM timing difference | **ASSUMED** — plausible, not independently confirmed |
+| The 1pt gap to Dalio is caused by the March-2025-vs-rolling-TTM timing difference | **ASSUMED, then REFUTED** — labelled assumed rather than verified at the time (correctly), and subsequently shown to be wrong by this section's own evidence — see §10.2's retraction block |
 | `TRESEGUSM052N` = "Total Reserves excluding Gold" | **VERIFIED** — quoted from live FRED metadata |
 | Gold holdings = 2026-06-30, ~261.5M troy oz (sum of 8 Treasury rows) | **VERIFIED** — quoted from live Treasury API response |
 | Gold price = $3,351.86/oz, dated PCPS 2025-06 | **VERIFIED** — quoted from live DBnomics/PCPS response |
@@ -662,6 +840,84 @@ this section.
 | Reserves incl. gold = 3.7% of GDP, `tag: "live"` | **VERIFIED** — read from committed `public/data.json` |
 | The 0.7pt gap to Dalio's 3% is caused by the same timing issue as debt service | **NOT CLAIMED** — see §10.4; the price/quantity time-mismatch is a distinct, larger, and unquantified factor |
 | These fixes are live on `main` / on the deployed site | **FALSE, explicitly** — see §4/§8; verified only on `claude/new-session-ldotj8` via direct `workflow_dispatch` |
+
+---
+
+## 11. Review package, second round (2026-07-19, current state)
+
+This is the **current** review package — supersedes §10's numbers (§10
+itself is kept, marked historical, not deleted). Base commit: `3ed5858`
+(branch `claude/new-session-ldotj8`). Same file-only-reviewer constraints
+as §10 (no Actions tab, no directory browsing, no `git log`); same
+`docs/verification-log.md` / `docs/current-values.md` support files,
+regenerated this pass with the fresh SHA/timestamp at their own top.
+
+### 11.1 The 3×3 debt-service matrix, copied verbatim from the run log
+```
+  Debt-service calibration matrix (Dalio Ch.17 US target: 22%, Mar 2025):
+  numerator                         on-budget receipts     tax receipts only        total receipts
+  gross (incl. GAS)                              29.7%                 35.0%                 23.0%
+  net-to-public (excl. GAS)                      23.1%                 27.8%                 17.9%
+  net interest, function 900                     23.0%                 27.8%                 17.8%
+```
+**Claim status: VERIFIED** — copied from the `workflow_dispatch` run
+attached to commit `bb1d887` (2026-07-19 18:06–18:08 UTC; the on-budget
+column and the two ratios themselves are unchanged by the two commits
+since, which only touched total-debt and commentary), pasted into
+`docs/verification-log.md` verbatim.
+
+**Combination adopted: net-to-public (excl. GAS) ÷ on-budget receipts =
+23.1%**, ships as the headline `debt_service_to_revenue`. Gross ÷ on-budget
+(29.7%) ships as the explicit second row. See §3 for the full reasoning
+(numerator/denominator scope consistency, not just closeness-to-22%) and
+§10.2's retraction block for what changed since round one.
+
+### 11.2 What reconciles, what doesn't — updated residuals
+
+| Row | Dalio | Live | Residual | Status |
+|---|---|---|---|---|
+| Debt service (net/on-budget) | 22% | 23.1% | +1.0pt | Not reconciled — cause unknown, see §10.2 retraction |
+| Reserves (incl. gold) | 3% | 3.7% | +0.7pt | Not reconciled — gold price/quantity date mismatch is a real, unquantified contributor, see §3 |
+| Total debt (TCMDO) | 340% | 362.6% | +22.6pt | Not reconciled — TCMDODNS hypothesis tested and refuted (256.7%, further off), see §9 |
+| Debt/GDP | ~100% | 99% | ~0pt | Reconciles |
+| Current account | −4% | −3.7% | ~0.3pt | Reconciles |
+| COFER USD share | 57.0% | 57.7% | 0.7pt | Reconciles (closely) |
+| Debt/revenue | *n/a* | 692% | *n/a* | No book figure to compare |
+
+**Three of seven live-derived rows don't fully reconcile.** That's stated
+plainly, not smoothed into "close enough" — each has a named, specific
+open question (§3, §9) rather than a hand-wave.
+
+### 11.3 What was checked and found NOT to hold — the two refutations this round
+
+1. **Timing-drift explanation for the debt-service residual** (§10.2):
+   refuted by the review's own point that the GAO/CBO FY2024 cross-check
+   predates Dalio's snapshot and still shows 23%, so there's no drift to
+   attribute the gap to. Retracted explicitly (§10.2's retraction block),
+   not silently removed.
+2. **Nonfinancial-sectors-only total debt (TCMDODNS)** (§9): tried on the
+   hypothesis that it would close the gap to Dalio's 340% "other debt"
+   figure. Live result: 256.7%, an 83pt gap — worse than TCMDO's 22.6pt
+   gap, not better. Reverted; the hypothesis is refuted, not just unproven.
+
+Both refutations exist in this file because a specific, falsifiable claim
+was made and then actually checked against live data, rather than assumed
+correct because it sounded plausible. That's the pattern worth continuing.
+
+### 11.4 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| 3×3 matrix values (all nine cells) | **VERIFIED** — read from a real run log |
+| Net-to-public/on-budget (23.1%) is the numerator/denominator-consistent choice | **VERIFIED** — debt_to_gdp's own scope (held by the public) is a documented fact about FYGFGDQ188S, matched against net_to_public_interest_monthly's documented scope |
+| 23.1% is close to Dalio's 22% | **VERIFIED** — arithmetic on the quoted matrix |
+| The remaining ~1pt gap is caused by a revenue-base or interest-scope difference in Dalio's own methodology | **ASSUMED, not verified** — offered as the more evidenced guess after retracting the timing explanation; not confirmed |
+| TCMDODNS is a worse match than TCMDO for Dalio's "other debt" | **VERIFIED** — both read from the same live run's `--verify` diagnostic dump |
+| DBnomics' gold-price mirror is more likely stale than IMF's own PCPS publication | **ASSUMED, not verified** — inferred from IMF's documented ~1-week publication cadence, not from directly querying IMF's own API |
+| Gold price/holdings date mismatch is now visible in `src` | **VERIFIED** — read from committed `public/data.json`: `"Treasury (gold oz 2026-06) + DBnomics (price 2025-06)"` |
+| Debt/revenue = 692%, `tag: "live"` | **VERIFIED** — read from committed `public/data.json` |
+| Debt/revenue and debt/GDP are visually distinguishable | **VERIFIED** — different scales (692% vs 99%) and `Chart.jsx`'s `niceDomain()` is confirmed (by reading the component) to compute each row's y-axis independently from that row's own history |
+| These fixes are live on `main` / the deployed site | **FALSE, explicitly** — still only on `claude/new-session-ldotj8`, same as §10's finding; unchanged this round |
 
 ---
 
