@@ -1,24 +1,40 @@
 """Treasury Fiscal Data API client (free, no API key).
 
-Provides the budget-basis debt-service ratio:
+Provides two budget-basis debt-service ratios, both from Treasury
+(cash/budget basis, the basis Dalio and CBO use for "interest as a share of
+revenue" — unlike FRED's NIPA/accrual basis):
 
-    interest on the public debt  /  total federal receipts
+    NET interest to the public   /  on-budget receipts   (headline)
+    GROSS interest incl. GAS     /  on-budget receipts   (second row)
 
-Both come from Treasury (cash/budget basis), which is the basis Dalio and CBO
-use for "interest as a share of revenue" — unlike the FRED NIPA (accrual) basis.
+Definition, revised 2026-07 (see STATUS.md §9 for the full calibration and
+retraction of the prior write-up's timing attribution):
 
-Definition (resolved 2026-07 against Dalio's Ch.17 US table, see STATUS.md §9):
-the live ratio uses GROSS interest expense on the total public debt outstanding
-(public issues + intragovernmental Government Account Series), matching GAO's
-"Schedule of Federal Debt" interest concept — NOT interest on debt held by the
-public alone, and NOT the CBO/OMB "net interest, budget function 900" concept.
-Cross-checked against real FY2024 figures:
-  gross interest $1,126.5B (GAO GAO-25-107138) / receipts $4.9T (CBO) ≈ 23.0%,
-  vs. Dalio's book value of 22% — closest of three candidate definitions tried.
-`gross_interest_monthly()` is what feeds the live ratio; `net_to_public_interest_monthly()`
-(the previous basis) and `net_interest_function900_monthly()` (best-effort,
-CBO/OMB's function-900 concept) are kept for the diagnostic matrix printed by
-`--verify` and are not used to build data.json.
+`debt_service_ratio()` (the headline `debt_service_to_revenue` vital) now
+uses NET interest to the public (`net_to_public_interest_monthly()`) over
+ON-BUDGET receipts (`on_budget_receipts_monthly()`) — not gross interest
+over total receipts, the prior session's basis. Two reasons for the switch,
+both definitional, not fitted to the target number:
+  1. `debt_to_gdp` already measures debt *held by the public* — gross
+     interest also counts interest on intragovernmental Government Account
+     Series debt, which that denominator excludes. Net-to-public is the
+     figure whose numerator and denominator scope actually match.
+  2. GAS interest is credited to trust funds as additional bonds, not paid
+     in cash — it's a real future claim, but not "debt service" in the
+     sense of cash actually leaving the government today. It ships as its
+     own explicit second row instead (`gross_debt_service_ratio()`).
+Both are divided by ON-BUDGET receipts (total receipts minus OASI+DI trust
+fund receipts — see `on_budget_receipts_monthly()`), chosen after extending
+the diagnostic matrix from 3x2 to 3x3 (see `debt_service_matrix()`): net
+interest / on-budget receipts landed at 23.1%, only ~1pt from Dalio's 22%
+and the same order of match as the old gross/total-receipts basis (23.0%),
+but on the economically consistent numerator. The full 3x3 matrix is
+printed by `--verify` every run.
+
+`gross_interest_monthly()`, `net_to_public_interest_monthly()`, and
+`net_interest_function900_monthly()` are the three numerator candidates;
+`monthly_receipts()`, `on_budget_receipts_monthly()`, and the FRED-sourced
+tax-receipts-only series (fetch.py) are the three denominator candidates.
 
 The Fiscal Data host is not reachable from the build's dev environment, so the
 exact column names can't be introspected there. Two safeguards make that safe:
@@ -423,13 +439,47 @@ def _ttm_ratio(numerator: dict, denominator: dict) -> dict | None:
 
 
 def debt_service_ratio() -> dict:
-    """Trailing-12-month GROSS interest / trailing-12-month total receipts, as
-    a percentage — the live basis for "debt service vs revenue". See the
-    module docstring for why gross (not net-to-public) was adopted."""
-    ratio = _ttm_ratio(gross_interest_monthly(), monthly_receipts())
+    """Trailing-12-month NET interest to the public / trailing-12-month
+    on-budget receipts, as a percentage — the live basis for the headline
+    "debt service vs revenue" vital. See the module docstring for why net
+    (not gross) and on-budget (not total) receipts were adopted."""
+    on_budget = on_budget_receipts_monthly()
+    if not on_budget:
+        raise RuntimeError("debt_service_ratio: on-budget receipts unavailable "
+                            "(see on_budget_receipts_monthly / --verify)")
+    ratio = _ttm_ratio(net_to_public_interest_monthly(), on_budget)
     if ratio is None:
         raise RuntimeError("debt_service_ratio: fewer than 12 overlapping months")
     return ratio
+
+
+def gross_debt_service_ratio() -> dict:
+    """Trailing-12-month GROSS interest (incl. intragovernmental GAS) /
+    trailing-12-month on-budget receipts — the second, explicitly-labelled
+    debt-service row. Same denominator as debt_service_ratio() (one revenue
+    definition across the page, see STATUS.md §9/provenance)."""
+    on_budget = on_budget_receipts_monthly()
+    if not on_budget:
+        raise RuntimeError("gross_debt_service_ratio: on-budget receipts unavailable")
+    ratio = _ttm_ratio(gross_interest_monthly(), on_budget)
+    if ratio is None:
+        raise RuntimeError("gross_debt_service_ratio: fewer than 12 overlapping months")
+    return ratio
+
+
+def revenue_ttm_dollars() -> dict:
+    """{(year, month): trailing-12-month on-budget receipts, $} — the raw
+    dollar flow (not a ratio), for debt_to_revenue which divides a debt
+    dollar STOCK by this revenue dollar FLOW. Same on-budget-receipts
+    denominator as both debt-service rows (one revenue definition across
+    the page)."""
+    on_budget = on_budget_receipts_monthly()
+    if not on_budget:
+        raise RuntimeError("revenue_ttm_dollars: on-budget receipts unavailable")
+    ttm = _ttm_sum(on_budget)
+    if not ttm:
+        raise RuntimeError("revenue_ttm_dollars: fewer than 12 overlapping months")
+    return ttm
 
 
 def debt_service_matrix(tax_receipts_monthly: dict | None = None) -> dict:
@@ -547,11 +597,21 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
 
     try:
         r = debt_service_ratio()
-        print(f"\n  LIVE debt-service ratio (gross interest / total receipts): "
-              f"{r['latest']}% as of {r['asOf']} ({len(r['history'])} history pts)")
+        print(f"\n  LIVE headline debt-service ratio (net interest to the public / "
+              f"on-budget receipts): {r['latest']}% as of {r['asOf']} "
+              f"({len(r['history'])} history pts)")
     except Exception as e:  # noqa: BLE001
         ok = False
-        print(f"\n  ratio computation FAILED: {e}")
+        print(f"\n  headline ratio computation FAILED: {e}")
+
+    try:
+        rg = gross_debt_service_ratio()
+        print(f"  LIVE second-row debt-service ratio (gross interest incl. GAS / "
+              f"on-budget receipts): {rg['latest']}% as of {rg['asOf']} "
+              f"({len(rg['history'])} history pts)")
+    except Exception as e:  # noqa: BLE001
+        ok = False
+        print(f"  gross-row ratio computation FAILED: {e}")
 
     print("\n  Debt-service calibration matrix (Dalio Ch.17 US target: 22%, Mar 2025):")
     try:
