@@ -23,6 +23,20 @@ published figure, not just the two from the first pass. See §10 for the
 review package itself (`docs/verification-log.md`,
 `docs/current-values.md`, regenerated this pass with a fresh commit SHA).
 
+**Later the same day, a third pass (§12):** ran a diagnostic — not a
+feature, ships nothing on its own — recomputing the debt-service matrix as
+a **monthly** series at Dalio's stated March-2025 vintage, extended with a
+4th denominator (CBO's Jan-2025 baseline projected receipts). Finding:
+**gross interest ÷ total receipts** (not the shipped net-to-public /
+on-budget basis) is the construction that best reproduces *both* of
+Dalio's independent anchors — the 22% interest figure (22.3% at his
+vintage, drifting to 23.0% today, genuine measured drift on this cell) and
+his own previously-unused ~580% debt-to-revenue figure (542%, closest of
+four denominators tested, vs. on-budget's 714%). This is a
+basis-*identification* finding, not a basis change — §12 records it as a
+recommendation for the next task, and revises §10.2's retraction (real
+drift does exist, just not where the first retraction looked).
+
 ---
 
 ## 1. What's built and working
@@ -597,7 +611,7 @@ gap had gone unnoticed because it was never added to this table.
 | World debt in USD | 80.7% | 80.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
 | Global equity market cap in USD | 65.7% | 65.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
 | World CB reserves in USD | 57.0% | 57.7% | live, IMF COFER via DBnomics | Matches closely — independently computed, not carried |
-| Debt / on-budget revenue | *(no book figure)* | 692% | live, derived (§3) | **No book value to calibrate against** — Dalio's table reports only debt/GDP; noted here rather than left blank, per the task that added this row |
+| Debt / revenue | ~580% (Mar 2025, stated); ~700% (his 10-yr projection) | 692% (debt / **on-budget** revenue, shipped basis) | live, derived (§3, §12) | **Does not match well on the shipped basis** — +112pt. §12's drift test shows debt / **total** receipts (542%, realised) and debt / **CBO-projected** receipts (530%) both land much closer (-38pt / -50pt) — on-budget and tax-only are the two denominators his 580% clearly rules out, not the two closest to it. See §12; not forced to reconcile, recorded as an open question for the next basis-decision task |
 
 **Read the "Basis" column before trusting a "match."** Six of the twelve
 rows are `manual` — hand-carried from `data/manual.json`, which in most
@@ -618,6 +632,12 @@ data source:**
   on-budget receipts) is chosen on definitional grounds, not because it's
   the closest fit to 22% (it ties with net-function-900/on-budget, and
   isn't meaningfully closer than the old gross/total-receipts basis was).
+  **§12's later drift test (a monthly recomputation at Dalio's stated
+  vintage, extended with a 4th denominator) identifies gross ÷ total
+  receipts — not net ÷ on-budget — as the construction that best
+  reproduces both of Dalio's independent anchors (22% interest, 580%
+  debt/revenue) simultaneously.** That's an identification finding, not
+  yet a basis change — see §12 for why those are kept separate.
 - **Reserves**: no amount of debugging FRED's `TRESEGUSM052N` alone could
   close this gap — the series structurally excludes gold. Required a new
   data source (Treasury gold holdings × a live gold price).
@@ -631,8 +651,10 @@ data source:**
   session). **Reported as an open gap, not forced to reconcile.**
 
 **Two rows already matched before this session** (debt/GDP, COFER USD
-share) and needed no change. **One row has no book figure to compare
-against** (debt/revenue) and is noted as such rather than left blank.
+share) and needed no change. **Debt/revenue now has a book anchor** (§12
+found Dalio's own stated ~580%/~700% figures) — the shipped on-budget basis
+doesn't match it well, but a realised-total-receipts basis would come much
+closer; see §12 for the full identification.
 
 ---
 
@@ -761,6 +783,23 @@ verified; the *reason* for the 1pt gap to Dalio specifically is inferred.
 > data as far as this project has found) is the only way to actually close
 > this gap; barring that, it should stay marked as an open ~1pt residual,
 > not explained away by any story about timing.
+>
+> **⚠️ ADDENDUM, same day, §12's drift test.** The paragraph above says the
+> gap is "not this" (timing) and reaches for a revenue-base/interest-scope
+> guess instead. §12 replaces that guess with a direct monthly
+> recomputation and finds the picture is more specific than either the
+> original claim or its retraction: **on the gross ÷ total-receipts cell
+> specifically** (not net ÷ on-budget, the basis this pipeline actually
+> ships), there **is** real measured drift — 22.3% at Mar-2025 rising to
+> 23.0% today — which is consistent with, not contradicted by, the GAO/CBO
+> FY2024 figure two paragraphs up: FY2024 ended September 2024, sits
+> earlier on the same climbing trajectory, and both this run and that
+> static figure land in the same 22–23% band, not on opposite sides of it.
+> The original retraction's *narrow* claim — "there is no drift in the
+> data this project has looked at" — undersold it: the drift is real, on
+> a cell nobody had directly measured monthly at the time. Left as-is
+> above per the "retract explicitly, don't edit" convention; see §12 for
+> the full measurement and what it changes.
 
 ### 10.3 Reserves reconciliation
 
@@ -918,6 +957,234 @@ correct because it sounded plausible. That's the pattern worth continuing.
 | Debt/revenue = 692%, `tag: "live"` | **VERIFIED** — read from committed `public/data.json` |
 | Debt/revenue and debt/GDP are visually distinguishable | **VERIFIED** — different scales (692% vs 99%) and `Chart.jsx`'s `niceDomain()` is confirmed (by reading the component) to compute each row's y-axis independently from that row's own history |
 | These fixes are live on `main` / the deployed site | **FALSE, explicitly** — still only on `claude/new-session-ldotj8`, same as §10's finding; unchanged this round |
+
+---
+
+## 12. Drift test — matrix recomputed at Dalio's stated vintage (2026-07-19, third pass)
+
+Per `TASKdrifttest.md`: run *before* selecting the debt-service basis, as a
+diagnostic — nothing ships from it except what's recorded here. Three facts
+read directly out of the book made this decisive: the vintage is stated
+("as of this writing in March 2025"), not guessed; Dalio publishes his own
+debt-to-revenue figure (~580%, ~700% in ten years) as a second, independent
+calibration anchor; and footnote 20 says he uses CBO projections as a
+baseline where possible. `scripts/drift_test.py` (temporary — removed this
+pass, see below) recomputed the 3×3 matrix as a **monthly** series,
+2023-01→present, reusing `treasury.py`/`series.py`'s numerator and
+denominator definitions **unchanged**, extended with a 4th denominator:
+CBO's January 2025 baseline projected total receipts, by fiscal year. Full
+run output: `docs/verification-log.md`, "Drift test" section.
+
+### 12.1 CBO figures used, and why direct CBO access wasn't possible
+
+Direct network access to `www.cbo.gov`, `api.fiscaldata.treasury.gov`, and
+`api.stlouisfed.org` from this session's dev sandbox is blocked at the org
+egress-policy level — confirmed via `/root/.ccr/README.md`'s own
+diagnostic endpoint, which logged `gateway answered 403 to CONNECT (policy
+denial)` for all three hosts. Per that same doc, policy denials are
+reported, not retried or routed around. (Treasury/FRED access still works
+*inside* GitHub Actions, which is how every other live figure in this
+project is fetched — only this session's own sandbox is blocked; CBO's own
+site is blocked everywhere the same way, including from Actions, so there
+was no path to it this session.)
+
+CBO's January 2025 baseline figures below are therefore sourced from
+secondary web reporting (WebSearch), cross-checked for internal arithmetic
+consistency where possible, per the task's own built-in caveat that
+"these figures were derived from secondary summaries, not CBO's own
+tables":
+
+- **FY2025: $5,163B — VERIFIED (secondary, cross-checked).** Two
+  independent search results state "$5.235T actual, $72B (1%) above the
+  $5.163T baseline projection" — 5.235 − 0.072 = 5.163 exactly, internally
+  consistent, and matches the task brief's own stated ~$5.163T.
+- **FY2026: $5,524B — ASSUMED.** Derived from "revenues increase by $361B
+  (7%) in 2026" (361/5163 = 6.99%, consistent with "7%"), not independently
+  confirmed against a primary table.
+- **FY2023/FY2024: no separate CBO figure used.** For already-closed
+  fiscal years, the Jan-2025 baseline just carries the realised Treasury
+  actual — so `drift_test.py` falls back to the same `monthly_receipts()`
+  actuals used for the "total receipts" column for those months. This
+  fallback is itself a finding: the CBO-projected column is only
+  *informative* (different from realised total receipts) from FY2025
+  (Oct 2024) on.
+- **Discarded:** a WebSearch synthesis that produced a full FY2023–2030
+  table (2023: $4,441B, 2024: $5,082B, 2025: $5,485B, …) — rejected
+  because it contradicts the two cross-checked figures above (FY2025
+  should be $5,163B not $5,485B; FY2024 actual is well-documented near
+  $4.92T, not $5,082B) and reads as a search-model fabrication rather than
+  a quoted table. Not used anywhere in this section.
+
+### 12.2 The matrix at his vintage — Mar-2025 vs. today
+
+3 numerators × 4 denominators, TTM ratio, read at Mar-2025 and at the
+latest available month (full min/max/slope/crossings in
+`docs/verification-log.md`):
+
+| Numerator | Denominator | Mar-2025 | Today | Crosses 22% in 2024-01→2025-06? |
+|---|---|---|---|---|
+| gross (incl. GAS) | on-budget | 29.4% | 29.7% (2026-06) | No — closest 26.1% |
+| gross (incl. GAS) | **total receipts** | **22.3%** | **23.0%** (2026-06) | **Yes — 2024-12, 2025-04** |
+| gross (incl. GAS) | **CBO Jan-2025 projected** | **21.8%** | 24.9% (2026-06) | Yes — 2025-04 |
+| gross (incl. GAS) | tax only | 37.6% | 35.0% (2026-03) | No — closest 33.4% |
+| net-to-public | on-budget (shipped) | 23.4% | 23.1% (2026-06) | Yes — 2024-07 |
+| net-to-public | total receipts | 17.8% | 17.9% (2026-06) | No — closest 17.8% |
+| net-to-public | CBO Jan-2025 projected | 17.4% | 19.4% (2026-06) | No — closest 18.9% |
+| net-to-public | tax only | 29.9% | 27.8% (2026-03) | No — closest 25.8% |
+| net interest, fn900 | on-budget | 23.2% | 23.0% (2026-06) | Yes — 2024-08 |
+| net interest, fn900 | total receipts | 17.6% | 17.8% (2026-06) | No — closest 17.6% |
+| net interest, fn900 | CBO Jan-2025 projected | 17.2% | 19.3% (2026-06) | No — closest 18.8% |
+| net interest, fn900 | tax only | 29.7% | 27.8% (2026-03) | No — closest 25.5% |
+
+**Claim status: VERIFIED** — every cell above is copied from the live run
+in `docs/verification-log.md`.
+
+**Regime, per the task's slope guardrail:** the whole-window (2023-01→now)
+slope on every cell is steep (+2.2 to +3.6 pt/yr — the 2022–2023 rate-hike
+cycle driving interest costs up fast), but the gross/total-receipts and
+gross/CBO-projected cells specifically move much more slowly near the
+22–23% mark itself (22.3%→23.0% over ~15 months, a *local* rate closer to
++0.6 pt/yr) — closer to a noisy plateau in the 22–23% band than to a clean
+trend still climbing through it. A 22% crossing in a flat regime is
+stronger evidence than the same crossing in a still-steep one; this one is
+in the flatter regime, which is why it's treated as a real finding below,
+not noise.
+
+### 12.3 debt_to_revenue against Dalio's ~580% / ~700% anchor
+
+Debt held by the public, 2025-Q1 (Mar-2025): **$28.93T** — matches the
+task's own stated ~$28.9T estimate almost exactly. **Claim status:
+VERIFIED** (computed live from `FYGFGDQ188S` × `GDP`, both FRED).
+
+| Denominator | TTM $ at 2025-Q1 | Debt/revenue at 2025-Q1 | vs. Dalio's ~580% |
+|---|---|---|---|
+| on-budget receipts (shipped) | $4.05T | 714% | +134pt |
+| **total receipts** | **$5.34T** | **542%** | **−38pt (closest)** |
+| CBO Jan-2025 projected receipts | $5.46T | 530% | −50pt |
+| tax receipts only | $3.17T | 912% | +332pt |
+
+This independently confirms the task's own hypothesis in `TASKdrifttest.md`
+§2/§3 that 580% identifies his denominator as **total receipts**, not
+on-budget (our on-budget figure, 714%, is close to the task's own rough
+~780% on-budget estimate — both clearly too high) and not tax-only (way
+too high). **Claim status: VERIFIED** for the ranking (total/CBO-projected
+closest, on-budget/tax-only clearly ruled out); the exact ~38–50pt residual
+to 580% itself is not explained — possibly his $28.9T or his receipts
+figure being a rounder snapshot than this pipeline's precise TTM
+computation, not investigated further this pass.
+
+One coincidence flagged, not trusted: at 2026-Q1 ("today"), CBO-projected
+receipts happens to give 589% — *closer* to 580% than it was at Mar-2025
+(530%). This is very likely noise, not signal: it's the FY2026 projection
+(a year-plus past its own forecast horizon) drifting against realised
+GDP/debt growth, exactly the "denominator moves independently of the real
+fiscal position" failure mode `TASKdrifttest.md` warned a CBO-projected
+denominator would have. It is not used as evidence for anything here.
+
+### 12.4 Two hypotheses tested, both hold up
+
+**"gross ÷ CBO-projected receipts ≈ 22% at his vintage"** (the task's
+"trailing numerator, projected denominator" hypothesis, footnote 20):
+FY2024 gross interest (actual, summed from live data) = **$1,133.0B**
+(task's estimate: ~$1,126.5B) over CBO's Jan-2025 FY2025-projected receipts
+$5,163B = **21.9%** (task's estimate: ~21.8%) — both this FY-total
+construction and the monthly-TTM-ending-Mar-2025 construction (21.8%,
+§12.2) land in the same place. **Claim status: VERIFIED**, matching the
+task's own hypothesis closely.
+
+**"gross ÷ total receipts ≈ 22% at Mar-2025, ≈23% today"** (the task's
+outcome table's "drift confirmed" row): 22.3% → 23.0%, matching that
+row's stated pattern almost exactly. **Claim status: VERIFIED.**
+
+**Both hypotheses hold simultaneously** because CBO's Jan-2025 FY2025
+projection ($5,163B) and realised trailing receipts around that period
+were close to each other — the two denominators hadn't yet diverged much
+at his own vintage. **A single consistent basis — gross interest ÷ total
+receipts, realised — reproduces both of Dalio's independent anchors**: the
+22% interest figure (22.3% at Mar-2025) *and* the 580% debt/revenue figure
+(542%, the closest of four denominators tested) with the same denominator.
+Neither net-to-public nor on-budget reproduces either anchor as well (net
+never gets close to 22% on any receipts-only denominator except on-budget,
+and on-budget overshoots 580% by 134pt). Per the task's outcome-reading
+table, this most closely matches: *"gross÷total ≈ 22% at Mar-2025, ≈23%
+today → Drift confirmed for that cell."*
+
+**What this does and doesn't decide.** Per `TASKdrifttest.md`: "Identifying
+how Dalio built his number is not a reason to build ours the same way."
+That caveat is specifically about a *forecast-based* denominator moving
+independently of the real fiscal position (§12.3's "today" coincidence is
+a live example of exactly that risk) — it does **not** apply to gross ÷
+**total receipts**, which is fully realised data, refreshes monthly like
+every other row, and has no forecast-staleness problem. So the caveat that
+would block adopting the identified basis doesn't apply here. That said,
+**this task is diagnostic only and ships nothing** (per its own header) —
+whether to actually change `debt_service_to_revenue`'s shipped basis from
+net-to-public/on-budget to gross/total-receipts is a decision for the next
+task, informed by this finding, not decided by it. Recorded here as a
+clear recommendation, not implemented in `treasury.py`/`fetch.py` this
+pass.
+
+### 12.5 Known partial results, checked against real data
+
+| Task's stated estimate | This run's computed value |
+|---|---|
+| Net interest / total receipts, Mar-2025 ≈ 18.9% | **17.8%** |
+| Net interest / total receipts, today ≈ 17.9% | **17.9%** (exact match) |
+| FY2024 gross interest ≈ $1,126.5B | **$1,133.0B** (0.6% off) |
+| CBO FY2025-projected receipts ≈ $5.163T | **$5.163T** (as sourced, §12.1) |
+| Debt held by public, Mar-2025 ≈ $28.9T | **$28.93T** (essentially exact) |
+
+The Mar-2025 net/total figure (17.8% vs. the task's rough ~18.9% estimate)
+is the one visible miss — a 1.1pt gap, plausibly because the task's own
+estimate was built from "secondary summaries, not CBO's own tables" (its
+own stated caveat). Not investigated further; flagged rather than silently
+accepted, per the task's own instruction to "suspect the series before the
+estimate — but investigate."
+
+### 12.6 Two conflicting book figures for interest-to-income — recorded as a limit on the calibration target itself
+
+Ch. 3 states the US borrows ~20% of its income each year to cover interest;
+Ch. 17's table states 22%. Same vintage (~March 2025), ~2 points apart in
+the book itself. Per the task: the 20% figure reads as a forward-looking
+decade average, a different quantity from the table's current-reading 22%
+— **not a second target to tune to**, but a ceiling on how precisely any
+pipeline can be expected to reproduce "the" Dalio figure, since the book
+does not present a single unambiguous number even internally. Recorded
+here as a known limitation of the calibration target, not of this
+pipeline. **Claim status: VERIFIED** (both figures are directly read from
+the task brief's quotation of the book; this project has not independently
+obtained the book text).
+
+### 12.7 Limitations acknowledged, not resolved
+
+- **Data revisions**: FRED and Treasury restate history, so today's value
+  *for* March 2025 is not necessarily what was visible *in* March 2025.
+  Not eliminated. A vintage-aware cross-check (FRED's ALFRED archive) was
+  considered but not attempted this pass — the task says not to block on
+  it, and this pass was already large in scope; flagged as a next step.
+- **The ~38–50pt residual on debt/revenue** (§12.3) between the
+  closest-matching denominator (total receipts, 542%) and Dalio's stated
+  580% is unexplained. Reported, not forced to reconcile.
+- **`scripts/drift_test.py` and `.github/workflows/drift-test.yml` are
+  removed** immediately after this pass (commit follows this one) — per
+  the task's framing ("a diagnostic, not a feature… nothing ships from it
+  except findings"), the reusable artifact is this file and
+  `docs/verification-log.md`, not a permanent script.
+
+### 12.8 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| The full 3×4 monthly matrix values | **VERIFIED** — read from a real run log |
+| CBO Jan-2025 FY2025 baseline = $5,163B | **VERIFIED (secondary, cross-checked)** — two independent sources, internally consistent arithmetic |
+| CBO Jan-2025 FY2026 baseline = $5,524B | **ASSUMED** — derived from a percentage-change statement, not a primary table |
+| Debt held by public, Mar-2025 ≈ $28.9T | **VERIFIED** — computed live, matches the task's estimate |
+| gross ÷ total receipts ≈ 22% (Mar-2025) → ≈23% (today) | **VERIFIED** — read from the live run |
+| gross ÷ total receipts also reproduces the 580% debt/revenue anchor most closely | **VERIFIED** — read from the live run, ranked against the other three denominators |
+| A single consistent basis (gross/total) reproduces both of Dalio's anchors | **VERIFIED**, within the residuals stated above (not exact) |
+| The §10.2 timing-drift retraction was too broad — real drift exists on the gross/total cell | **VERIFIED** — direct monthly recomputation, not inference |
+| The next task should adopt gross/total-receipts as the shipped basis | **RECOMMENDATION, not a verified fact** — a decision this task explicitly defers, offered with the evidence above |
+| Direct CBO/FRED/Treasury access is blocked from this session's sandbox (not from Actions) | **VERIFIED** — quoted from the proxy's own diagnostic endpoint |
 
 ---
 

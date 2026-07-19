@@ -1,16 +1,19 @@
 # Verification log — live Actions run output, pasted verbatim
 
-> **Base commit:** `0d1c43f` (HEAD of `claude/new-session-ldotj8` at write
+> **Base commit:** `7599e19` (HEAD of `claude/new-session-ldotj8` at write
 > time)
-> **Written:** 2026-07-19T18:22:06Z UTC
+> **Written:** 2026-07-19T20:40:00Z UTC
 > If `claude/new-session-ldotj8`'s HEAD commit is newer than the SHA above,
 > newer run output may exist that this file doesn't reflect — check the
 > commit history.
 
-**Regenerated this pass** (previous version covered the 3×2 matrix and the
-gross/total-receipts debt-service basis; this version covers the 3×3
-matrix, the net/on-budget basis, and the total-debt TCMDO-vs-TCMDODNS
-comparison — see STATUS.md §3/§9/§11 for the narrative).
+**Appended this pass** (everything up to and including "Prior investigation
+history" is unchanged from the previous write, covering the 3×3 matrix, the
+net/on-budget basis, and the total-debt TCMDO-vs-TCMDODNS comparison — see
+STATUS.md §3/§9/§11). New this pass: the "Drift test" section below,
+covering the monthly-resolution 3×4 matrix recomputed at Dalio's stated
+March-2025 vintage, plus a 4th (CBO-projected) denominator — see
+STATUS.md §12 for the narrative and the basis-identification conclusion.
 
 **Why this file exists:** a reviewer working only from public blob URLs
 cannot open the Actions tab, cannot see job logs, and may be served a
@@ -296,6 +299,107 @@ that the run above completed without any `RuntimeError` firing — the
 `Wrote public/data.json` line in the transcript only prints after all four
 checks pass; an abort would show a Python traceback and no `Wrote
 public/data.json` line instead.
+
+---
+
+## Drift test: matrix recomputed at Dalio's stated vintage (Mar-2025), monthly, 2023-01 → present
+
+Per `TASKdrifttest.md`: a diagnostic, not a feature — nothing ships from it
+except the findings recorded here and in STATUS.md §12. Runs
+`scripts/drift_test.py` (temporary, removed after this pass — see STATUS.md
+§12), which reuses `treasury.py`/`series.py`'s numerator and denominator
+definitions unchanged, extended with a 4th denominator: CBO's January 2025
+baseline projected total receipts (by fiscal year, applied as a flat FY/12
+monthly step — FY2025 $5,163B, FY2026 $5,524B; sourcing/confidence for
+those two figures is in the script's module docstring, quoted below).
+Copied verbatim from the `push`-triggered run attached to commit `7599e19`
+(`https://github.com/willywonka616/macro-indicator-dashboard/actions/runs/29702780297`,
+job `88234569970`, 2026-07-19 20:34–20:35 UTC), with only per-line ISO
+timestamps stripped.
+
+```
+==============================================================================
+DRIFT TEST — matrix recomputed at book vintage (Mar-2025) + monthly, 2023-01..present
+Run at 2026-07-19T20:34:49.173651+00:00
+==============================================================================
+
+CBO Jan-2025 baseline FY totals used (see module docstring for sourcing/confidence):
+  FY2025: $5163.0B
+  FY2026: $5524.0B
+
+--- 3 numerators x 4 denominators, monthly TTM ratio, 2023-01 -> present ---
+
+gross (incl. GAS):
+  on-budget receipts
+    Mar-2025: 29.4%   today (2026-06): 29.7%   min: 19.1%  max: 29.7%   slope: +3.11 pt/yr
+    does not cross 22% in 2024-01..2025-06 — closest approach: 26.1% at 2024-01
+  total receipts
+    Mar-2025: 22.3%   today (2026-06): 23.0%   min: 15.0%  max: 23.0%   slope: +2.33 pt/yr
+    crosses 22% in 2024-01..2025-06 at: 2024-12, 2025-04
+  CBO Jan-2025 projected receipts
+    Mar-2025: 21.8%   today (2026-06): 24.9%   min: 15.0%  max: 24.9%   slope: +2.88 pt/yr
+    crosses 22% in 2024-01..2025-06 at: 2025-04
+  tax receipts only
+    Mar-2025: 37.6%   today (2026-03): 35.0%   min: 24.3%  max: 37.6%   slope: +3.38 pt/yr
+    does not cross 22% in 2024-01..2025-06 — closest approach: 33.4% at 2024-01
+
+net-to-public (excl. GAS):
+  on-budget receipts
+    Mar-2025: 23.4%   today (2026-06): 23.1%   min: 13.2%  max: 23.4%   slope: +2.91 pt/yr
+    crosses 22% in 2024-01..2025-06 at: 2024-07
+  total receipts
+    Mar-2025: 17.8%   today (2026-06): 17.9%   min: 10.4%  max: 17.9%   slope: +2.20 pt/yr
+    does not cross 22% in 2024-01..2025-06 — closest approach: 17.8% at 2025-03
+  CBO Jan-2025 projected receipts
+    Mar-2025: 17.4%   today (2026-06): 19.4%   min: 10.4%  max: 19.4%   slope: +2.63 pt/yr
+    does not cross 22% in 2024-01..2025-06 — closest approach: 18.9% at 2025-04
+  tax receipts only
+    Mar-2025: 29.9%   today (2026-03): 27.8%   min: 16.7%  max: 29.9%   slope: +3.50 pt/yr
+    does not cross 22% in 2024-01..2025-06 — closest approach: 25.8% at 2024-01
+
+net interest, fn900:
+  on-budget receipts
+    Mar-2025: 23.2%   today (2026-06): 23.0%   min: 13.0%  max: 23.2%   slope: +2.94 pt/yr
+    crosses 22% in 2024-01..2025-06 at: 2024-08
+  total receipts
+    Mar-2025: 17.6%   today (2026-06): 17.8%   min: 10.2%  max: 17.8%   slope: +2.22 pt/yr
+    does not cross 22% in 2024-01..2025-06 — closest approach: 17.6% at 2025-03
+  CBO Jan-2025 projected receipts
+    Mar-2025: 17.2%   today (2026-06): 19.3%   min: 10.2%  max: 19.3%   slope: +2.65 pt/yr
+    does not cross 22% in 2024-01..2025-06 — closest approach: 18.8% at 2025-04
+  tax receipts only
+    Mar-2025: 29.7%   today (2026-03): 27.8%   min: 16.5%  max: 29.7%   slope: +3.55 pt/yr
+    does not cross 22% in 2024-01..2025-06 — closest approach: 25.5% at 2024-01
+
+--- debt_to_revenue, quarterly, against Dalio's ~580% (Mar-2025) / ~700% (10yr) anchor ---
+
+  on-budget receipts                               latest (2026-Q1): 692%
+  total receipts                                   latest (2026-Q1): 536%
+  CBO Jan-2025 projected receipts                  latest (2026-Q1): 589%
+  tax receipts only                                latest (2026-Q1): 873%
+
+  Debt held by public, 2025-Q1: $28.93T (task's stated estimate: ~$28.9T)
+    on-budget receipts: TTM $4.05T -> debt/revenue 714%
+    total receipts: TTM $5.34T -> debt/revenue 542%
+    CBO Jan-2025 projected receipts: TTM $5.46T -> debt/revenue 530%
+    tax receipts only: TTM $3.17T -> debt/revenue 912%
+
+--- known partial result cross-check (net interest / total receipts, TTM) ---
+  Mar-2025: 17.8% (task's stated estimate: ~18.9%)
+  today (2026-06): 17.9% (task's stated estimate: ~17.9%)
+
+--- FY2024 gross interest / CBO FY2025-projected receipts hypothesis ---
+  FY2024 gross interest (actual, summed): $1133.0B (task's stated estimate: ~$1,126.5B)
+  / CBO Jan-2025 FY2025 projected receipts $5163.0B = 21.9% (task's stated estimate: ~21.8%)
+
+Done.
+```
+
+**Claim status: VERIFIED** — copied from the actual job log of the run
+named above, fetched via the GitHub API, mechanically stripped of
+timestamps only. See STATUS.md §12 for the reading of these numbers
+(which outcome-table row from `TASKdrifttest.md` they match, and the
+basis-identification conclusion).
 
 ---
 
