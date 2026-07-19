@@ -167,16 +167,19 @@ def net_to_public_interest_monthly(rows=None) -> dict:
     return {k: v for k, v in monthly.items() if v}
 
 
-# Best-effort: CBO/OMB's "net interest" is budget function 900, a distinct
-# concept (gross interest minus interest received, incl. intragovernmental
-# interest income) reported in MTS's outlays-by-function table, not in
-# interest_expense. Endpoint guessed from the mts_table_N naming convention
-# used elsewhere in this file — unconfirmed until a live --verify dump shows
-# whether it resolves. Diagnostic only; never used to build data.json, and
-# never allowed to fail the run.
+# CBO/OMB's "net interest" is budget function 900, a distinct concept (gross
+# interest minus interest received, incl. intragovernmental interest income)
+# reported in MTS's outlays-by-function table, not in interest_expense.
+# mts_table_9 is CONFIRMED live (2026-07-19 run): it's genuinely "Summary of
+# Receipts and Outlays by Function", with a "Net Interest" classification_desc
+# row ($104.49B for 2026-06, current_month_rcpt_outly_amt). mts_table_5 is
+# kept as a fallback for robustness but is a different table (outlays by
+# agency) with no function breakdown, so it won't match "net interest" — it's
+# dead code in practice unless table_9 changes shape. Diagnostic only; never
+# used to build data.json, and never allowed to fail the run.
 FUNCTION_OUTLAYS_ENDPOINTS = [
     "/v1/accounting/mts/mts_table_9",  # Summary of Receipts and Outlays by Function
-    "/v1/accounting/mts/mts_table_5",  # Outlays of the U.S. Government (fallback guess)
+    "/v1/accounting/mts/mts_table_5",  # Outlays of the U.S. Government (fallback, likely unreachable)
 ]
 
 

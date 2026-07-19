@@ -19,6 +19,11 @@
     "cboProjection": { "display": "122%", "unit": "of GDP", "tone": "risk", "src": "CBO · forward" },
     "sovereignWealth": { "display": "None", "tone": "risk", "src": "—" },
     "shareHardFX": { "display": "No", "tone": "mitig", "src": "—" },
+    "reservesInclGoldFallback": {
+      "display": "3.0%", "value": 3.0, "unit": "of GDP", "tone": "risk",
+      "src": "manual · Dalio Ch.17 (gold at market)",
+      "note": "Fallback only, used if the live Treasury gold-holdings or DBnomics gold-price fetch fails. Matches Dalio's book figure directly since it's the reconciliation target."
+    },
     "reserveCurrency": {
       "note": "Dalio's single biggest risk mitigator. Dollar dominance across trade, debt, equities and reserves is what holds overall risk down — and what the US is undermining. Only the reserve series has long public history (IMF COFER, from 1999).",
       "trade": { "value": 52.6, "display": "52.6%", "tone": "mitig", "src": "SWIFT / BIS · from ~2012" },

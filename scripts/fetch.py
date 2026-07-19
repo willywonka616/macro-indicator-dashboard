@@ -33,6 +33,7 @@ import requests
 import series as S
 import treasury as T
 import imf as I
+import gold as G
 
 FRED = "https://api.stlouisfed.org/fred"
 ROOT = Path(__file__).resolve().parent.parent
@@ -153,6 +154,10 @@ def verify() -> int:
     # IMF COFER (no key) — non-fatal; dumps indicators + the computed USD share.
     I.verify()
 
+    # Gold holdings (Treasury) + gold price (DBnomics) — non-fatal; dumps both
+    # schemas + the computed market value.
+    G.verify()
+
     return 0 if (fred_ok and treasury_ok) else 1
 
 
@@ -251,6 +256,29 @@ def build_us(manual: dict, force: bool) -> dict:
         )
     reserves = S.reserves_pct_gdp(raw["TRESEGUSM052N"][1], raw["TRESEGUSM052N"][0],
                                   raw["GDP"][1], raw["GDP"][0])
+
+    # Reserves including gold at market value — resolves STATUS.md §5. Gold
+    # holdings (Treasury) and gold price (DBnomics) are each live; if either
+    # fetch fails, fall back to the manual snapshot rather than shipping a
+    # live-tagged number built on a stale price (same pattern as IMF COFER).
+    reserves_incl_gold_tag = "live"
+    try:
+        gold_value_monthly = G.gold_market_value_usd()
+        reserves_incl_gold = S.reserves_incl_gold_pct_gdp(
+            raw["TRESEGUSM052N"][1], raw["TRESEGUSM052N"][0], gold_value_monthly,
+            raw["GDP"][1], raw["GDP"][0])
+        if not (0.5 <= reserves_incl_gold["latest"] <= 15.0):
+            raise RuntimeError(
+                f"validation: reserves-incl-gold {reserves_incl_gold['latest']}% is "
+                "outside the sane 0.5-15% band — likely a wrong field mapping. "
+                "Check the gold schema dumped by --verify before trusting it."
+            )
+    except Exception as e:  # noqa: BLE001
+        print(f"Gold-inclusive reserves unavailable, using manual value: {e}")
+        reserves_incl_gold_tag = "manual"
+        gf = mu["reservesInclGoldFallback"]
+        reserves_incl_gold = {"latest": gf["value"], "asOf": mu.get("lastChecked"), "history": []}
+
     total_debt = S.total_debt_pct_gdp(raw["TCMDO"][1], raw["TCMDO"][0],
                                       raw["GDP"][1], raw["GDP"][0])
     ca_units = raw["IEABC"][0]
@@ -262,7 +290,7 @@ def build_us(manual: dict, force: bool) -> dict:
     # --- move guards on the positive-level ratios ---
     _check_move("debt_to_gdp", debt["latest"], prev, force)
     _check_move("debt_service_to_revenue", service["latest"], prev, force)
-    _check_move("reserves_to_gdp", reserves["latest"], prev, force)
+    _check_move("reserves_to_gdp", reserves_incl_gold["latest"], prev, force)
 
     def live_row(label, metric, tone, src, unit, decimals=None):
         return {
@@ -295,9 +323,13 @@ def build_us(manual: dict, force: bool) -> dict:
         {"key": "real_rates", "label": "Rates vs inflation & growth", **_vital(real_rate, "neutral",
             "10-year Treasury yield minus trailing-12-month CPI inflation — the real cost of borrowing Dalio watches.",
             "derived · FRED (10y − CPI)", "real 10y")},
-        {"key": "reserves_to_gdp", "label": "Debt & service vs savings", **_vital(reserves, "risk",
-            "Almost no liquid buffer (no sovereign wealth), so little protection if demand for the debt drops.",
-            "derived · FRED / IMF", "reserves / GDP")},
+        {"key": "reserves_to_gdp", "label": "Debt & service vs savings",
+            **_vital(reserves_incl_gold, "risk",
+                "Reserves including gold at market value are still thin relative to the debt — "
+                "and most of the buffer is illiquid gold, not spendable FX.",
+                ("derived · Treasury (gold) + DBnomics (price) + FRED" if reserves_incl_gold_tag == "live"
+                 else mu["reservesInclGoldFallback"]["src"]),
+                "reserves / GDP", tag=reserves_incl_gold_tag)},
     ]
 
     gov_panel = {
@@ -314,11 +346,23 @@ def build_us(manual: dict, force: bool) -> dict:
             live_row("Government interest (gross)", service, "risk", "derived · Treasury (gross incl. GAS)", "of revenue"),
         ],
     }
+    reserves_incl_gold_row = {
+        "label": "Reserves incl. gold (market)", "value": num(reserves_incl_gold["latest"]),
+        "display": pct_display(reserves_incl_gold["latest"], 1), "unit": "of GDP",
+        "tone": "risk", "tag": reserves_incl_gold_tag,
+        "src": ("derived · Treasury (gold) + DBnomics (price) + FRED" if reserves_incl_gold_tag == "live"
+                else mu["reservesInclGoldFallback"]["src"]),
+        "asOf": reserves_incl_gold.get("asOf"),
+        "history": reserves_incl_gold.get("history", []),
+    }
     reserves_panel = {
         "eyebrow": "Liquid reserves", "tag": "live",
-        "note": "The cushion a country can draw on before it must default or print. The US has very little.",
+        "note": "The cushion a country can draw on before it must default or print. Gold is a "
+                "hard-asset hedge, not spendable liquidity in the same way FX reserves are — "
+                "Dalio tracks both, so both are shown here rather than picking one.",
         "rows": [
-            live_row("FX reserves", reserves, "risk", "IMF / FRED", "of GDP"),
+            reserves_incl_gold_row,
+            live_row("FX reserves excl. gold", reserves, "risk", "FRED: TRESEGUSM052N", "of GDP"),
             manual_row("Sovereign wealth assets", mu["sovereignWealth"]),
         ],
     }
@@ -373,17 +417,22 @@ def build_us(manual: dict, force: bool) -> dict:
             "debtServiceBasis": "gross interest (incl. GAS) / total federal receipts, "
                                  "Treasury budget basis — chosen 2026-07 to match Dalio's "
                                  "Ch.17 US snapshot (22%); see STATUS.md",
+            "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz) "
+                              "x live gold price (DBnomics LBMA), gold valued at MARKET not the "
+                              "$42.2222/oz statutory book rate — resolved 2026-07 to match "
+                              "Dalio's Ch.17 US snapshot (3%); see STATUS.md",
+            "reservesInclGoldTag": reserves_incl_gold_tag,
         },
     }
     _validate(country)
     return country
 
 
-def _vital(metric, tone, read, src, unit):
+def _vital(metric, tone, read, src, unit, tag="live"):
     return {
         "value": num(metric["latest"]), "display": pct_display(metric["latest"]),
-        "unit": unit, "tone": tone, "read": read, "tag": "live",
-        "src": src, "asOf": metric["asOf"], "history": metric["history"],
+        "unit": unit, "tone": tone, "read": read, "tag": tag,
+        "src": src, "asOf": metric.get("asOf"), "history": metric.get("history", []),
     }
 
 

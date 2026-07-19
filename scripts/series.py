@@ -114,7 +114,7 @@ def _latest(qseries: dict):
 
 
 def reserves_pct_gdp(reserves_obs, reserves_units, gdp_obs, gdp_units):
-    """Total reserves (excl. gold) as a percentage of nominal GDP."""
+    """Total reserves EXCLUDING gold as a percentage of nominal GDP."""
     res_m = as_monthly(reserves_obs)
     # collapse monthly reserves to quarterly (last month of quarter present)
     res_q = {}
@@ -126,6 +126,35 @@ def reserves_pct_gdp(reserves_obs, reserves_units, gdp_obs, gdp_units):
         denom = to_dollars(gdp[k], gdp_units)
         if denom:
             ratio[k] = to_dollars(res_q[k], reserves_units) / denom * 100.0
+    latest, asof = _latest(ratio)
+    return {"latest": round(latest, 1), "asOf": asof, "history": quarterly_history(ratio)}
+
+
+def reserves_incl_gold_pct_gdp(reserves_obs, reserves_units, gold_value_usd_monthly,
+                               gdp_obs, gdp_units):
+    """Total reserves INCLUDING gold at market value, as a percentage of GDP.
+
+    `gold_value_usd_monthly` is a pre-computed {(y,m): USD} dict from
+    gold.gold_market_value_usd() — gold holdings (troy oz) x a live price.
+    Reconciles to Dalio's Ch.17 US figure (3% of GDP); reserves excl. gold
+    alone (reserves_pct_gdp, above) understates this because the US holds a
+    large gold stock that FRED's TRESEGUSM052N series excludes by definition.
+    """
+    res_m = as_monthly(reserves_obs)
+    combined_m = {}
+    for k in res_m.keys() & gold_value_usd_monthly.keys():
+        combined_m[k] = to_dollars(res_m[k], reserves_units) + gold_value_usd_monthly[k]
+    res_q = {}
+    for (y, m), v in combined_m.items():
+        res_q[(y, (m - 1) // 3 + 1)] = v
+    gdp = as_quarterly(gdp_obs)
+    ratio = {}
+    for k in res_q.keys() & gdp.keys():
+        denom = to_dollars(gdp[k], gdp_units)
+        if denom:
+            ratio[k] = res_q[k] / denom * 100.0
+    if not ratio:
+        raise RuntimeError("reserves_incl_gold_pct_gdp: no overlapping quarters")
     latest, asof = _latest(ratio)
     return {"latest": round(latest, 1), "asOf": asof, "history": quarterly_history(ratio)}
 
