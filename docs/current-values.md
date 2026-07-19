@@ -1,12 +1,17 @@
 # Current headline values — reviewable summary
 
-> **Base commit:** `4c344e13cb6d0bb30ca432944ec2c9092c9fb4cf` (HEAD of
-> `claude/new-session-ldotj8` at write time)
-> **Written:** 2026-07-19T12:07:39Z UTC
+> **Base commit:** `0d1c43f` (HEAD of `claude/new-session-ldotj8` at write
+> time)
+> **Written:** 2026-07-19T18:22:06Z UTC
 > If `claude/new-session-ldotj8`'s HEAD commit is newer than the SHA above,
 > this file may be stale relative to `public/data.json` — check the commit
 > history for a newer `docs/current-values.md`, or treat the live
 > `public/data.json` as authoritative and this file as a summary only.
+
+**Regenerated this pass** — `public/data.json` was committed as `3ed5858`
+by the same Actions run this file's companion, `docs/verification-log.md`,
+documents. Previous version of this file predates the net/gross
+debt-service split and the debt/revenue row.
 
 `public/data.json` is ~200KB (mostly `history[]` arrays) and impractical to
 review directly. This file is a hand-extracted summary of every headline
@@ -15,16 +20,21 @@ by re-deriving or re-computing anything. Every row below traces to a `key`
 or panel row in `public/data.json`; nothing here is invented.
 
 **Claim status: VERIFIED** — extracted by parsing the actual committed
-`public/data.json` at the base commit above, not from memory or a mock.
+`public/data.json` at commit `3ed5858`, not from memory or a mock.
 
 ## Top-level vitals (`countries.US.vitals[]`)
 
 | key | label | value | display | unit | tone | tag | src | asOf |
 |---|---|---|---|---|---|---|---|---|
 | `debt_to_gdp` | Debt vs income | 98.71 | 99% | of GDP | risk | live | `FRED: FYGFGDQ188S` | 2026-Q1 |
-| `debt_service_to_revenue` | Debt service vs income | 23.0 | 23% | of revenue | risk | live | `derived · Treasury (gross interest, budget basis)` | 2026-06 |
+| `debt_service_to_revenue` | Debt service vs income | 23.1 | 23% | of revenue | risk | live | `derived · Treasury (net interest, on-budget receipts)` | 2026-06 |
 | `real_rates` | Rates vs inflation & growth | 0.62 | 0.6% | real 10y | neutral | live | `derived · FRED (10y − CPI)` | 2026-Q2 |
-| `reserves_to_gdp` | Debt & service vs savings | 3.7 | 3.7% | reserves / GDP | risk | live | `derived · Treasury (gold) + DBnomics (price) + FRED` | 2025-Q2 |
+| `reserves_to_gdp` | Debt & service vs savings | 3.7 | 3.7% | reserves / GDP | risk | live | `derived · Treasury (gold oz 2026-06) + DBnomics (price 2025-06) + FRED` | 2025-Q2 |
+
+Note `debt_service_to_revenue`'s basis and `src` changed this pass — it now
+reports **net interest to the public / on-budget receipts** (23.1%), not
+gross interest / total receipts (the prior pass's 23.0%). See STATUS.md §3
+for why.
 
 ## Panel: "Government debt"
 
@@ -32,34 +42,48 @@ or panel row in `public/data.json`; nothing here is invented.
 |---|---|---|---|---|---|---|---|
 | Gov assets − gov debt | — | −96% | of GDP | risk | manual | `derived` | — |
 | Government debt (held by public) | 98.71 | 99% | of GDP | risk | live | `FRED: FYGFGDQ188S` | 2026-Q1 |
+| **Debt vs on-budget revenue** *(new this pass)* | 691.9 | **692%** | of revenue | risk | **live** | `derived · FYGFGDQ188S x GDP / Treasury (on-budget receipts, TTM)` | 2026-Q1 |
 | Debt, 10-yr projection | — | 122% | of GDP | risk | manual | `CBO · forward` | — |
 | — held by central bank | — | 13% | — | neutral | manual | `TIC / FRED` | — |
 | — held by domestic players | — | 57% | — | neutral | manual | `TIC` | — |
 | — held abroad | — | 29% | — | caution | manual | `TIC` | — |
 | Share in hard (foreign) FX | — | No | — | mitig | manual | `—` | — |
-| Government interest (gross) | 23.0 | 23% | of revenue | risk | live | `derived · Treasury (gross incl. GAS)` | 2026-06 |
+| **Net interest (to the public)** *(relabelled)* | 23.1 | **23%** | of revenue | risk | live | `derived · Treasury (net interest, on-budget receipts)` | 2026-06 |
+| **Gross interest (incl. intragovernmental)** *(new second row)* | 29.7 | **30%** | of revenue | caution | live | `derived · Treasury (gross incl. GAS, on-budget receipts)` | 2026-06 |
+
+Note "Debt vs on-budget revenue" (692%) and "Government debt (held by
+public)" (99%) are on deliberately different scales — hundreds of percent
+vs. ~100% — so they read as clearly distinct rows, not a possible typo of
+each other. Each row's sparkline y-axis is computed independently by
+`Chart.jsx` from that row's own `history[]` (confirmed by reading the
+component, not assumed).
 
 ## Panel: "Liquid reserves" — both reserves rows
 
 | label | value | display | unit | tone | tag | src | asOf |
 |---|---|---|---|---|---|---|---|
-| **Reserves incl. gold (market)** | 3.7 | **3.7%** | of GDP | risk | **live** | `derived · Treasury (gold) + DBnomics (price) + FRED` | 2025-Q2 |
+| **Reserves incl. gold (market)** | 3.7 | **3.7%** | of GDP | risk | **live** | `derived · Treasury (gold oz 2026-06) + DBnomics (price 2025-06) + FRED` | 2025-Q2 |
 | **FX reserves excl. gold** | 0.8 | **0.8%** | of GDP | risk | **live** | `FRED: TRESEGUSM052N` | 2026-Q1 |
 | Sovereign wealth assets | — | None | — | risk | manual | `—` | — |
 
-Note the two reserves rows have **different `asOf` dates** (2025-Q2 vs
-2026-Q1) because the incl.-gold figure is bottlenecked by IMF PCPS's gold
-price, which lags ~13 months behind the excl.-gold FRED series alone — see
-`docs/verification-log.md` and STATUS.md §3 for detail. This is a real,
-un-smoothed inconsistency, not a display bug.
+`src` on the incl.-gold row now names both component dates explicitly
+(`"gold oz 2026-06) + DBnomics (price 2025-06)"`) — new this pass. Previous
+version of this row said only `"Treasury (gold) + DBnomics (price)"`, which
+read as fully current even though the two components are ~13 months apart.
+See STATUS.md §3/§7.
 
 ## Panel: "Broader health"
 
 | label | value | display | unit | tone | tag | src | asOf |
 |---|---|---|---|---|---|---|---|
-| Total debt (all sectors) | 362.6 | 363% | of GDP | caution | live | `FRED Z.1` | 2026-Q1 |
+| Total debt (all sectors) | 362.6 | 363% | of GDP | caution | live | `FRED: TCMDO (Z.1)` | 2026-Q1 |
 | Current account, 3-yr avg | −3.7 | −3.7% | of GDP | caution | live | `BEA / FRED` | 2026-Q1 |
 | Real 10-year rate (10y − CPI) | 0.62 | 0.6% | real, 10y | neutral | live | `derived · FRED (DGS10 − CPI)` | 2026-Q2 |
+
+"Total debt (all sectors)" stayed on TCMDO this pass — a nonfinancial-only
+alternative (TCMDODNS) was tried and reverted after live data showed it
+made the gap to Dalio's Ch.17 figure (340%) worse, not better (256.7% vs.
+TCMDO's 362.6%). See STATUS.md §9.
 
 ## Panel: "Reserve-currency status"
 
@@ -77,11 +101,20 @@ un-smoothed inconsistency, not a display bug.
   "modelSnapshot": "2025-03-01",
   "manualLastChecked": "2026-07-18",
   "currentAccountAnnualizedInput": false,
-  "debtServiceBasis": "gross interest (incl. GAS) / total federal receipts, Treasury budget basis — chosen 2026-07 to match Dalio's Ch.17 US snapshot (22%); see STATUS.md",
+  "revenueDefinition": "on-budget receipts (Treasury MTS total receipts minus OASI+DI trust fund receipts, the statutory off-budget definition, 2 U.S.C. 622(7)) — the ONE revenue denominator shared by all three revenue-denominated rows below (net interest, gross interest, debt/revenue). Chosen 2026-07 after extending the debt-service matrix to 3 numerators x 3 denominators; net interest / on-budget receipts landed at 23.1%, ~1pt from Dalio's Ch.17 22% — see STATUS.md §9.",
+  "debtServiceBasis": "NET interest to the public (excl. intragovernmental GAS) / on-budget receipts — headline `debt_service_to_revenue`. Revised 2026-07 from the prior gross/total-receipts basis: net-to-public is the numerator whose scope actually matches debt_to_gdp (debt held by the public); gross interest incl. GAS ships as its own separate row instead. See STATUS.md §9.",
+  "grossDebtServiceBasis": "GROSS interest (incl. intragovernmental Government Account Series) / on-budget receipts — the explicit second debt-service row, same denominator as the net headline (see revenueDefinition).",
+  "debtToRevenueBasis": "Debt held by the public ($, FYGFGDQ188S x GDP) / on-budget receipts (TTM, $) — same denominator as both debt-service rows. Dalio's Ch.17 table reports only debt/GDP, not debt/revenue, so there's no book figure to calibrate this row against; debt_to_gdp remains the headline.",
   "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz) x live gold price (DBnomics: IMF PCPS, indicator PGOLD — DBnomics' LBMA mirror was dropped 2026-07 after LBMA moved its price tables behind a members-only portal), gold valued at MARKET not the $42.2222/oz statutory book rate — resolved 2026-07 to match Dalio's Ch.17 US snapshot (3%); see STATUS.md",
   "reservesInclGoldTag": "live"
 }
 ```
+
+`revenueDefinition`, `grossDebtServiceBasis`, and `debtToRevenueBasis` are
+new this pass — the "one revenue definition across the page" requirement:
+all three revenue-denominated rows (net interest, gross interest,
+debt/revenue) divide by the same on-budget-receipts figure, recorded once
+here rather than duplicated per-row with room to drift out of sync.
 
 ## Reading this table
 

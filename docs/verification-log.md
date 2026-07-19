@@ -1,29 +1,34 @@
 # Verification log — live Actions run output, pasted verbatim
 
-> **Base commit:** `4c344e13cb6d0bb30ca432944ec2c9092c9fb4cf` (HEAD of
-> `claude/new-session-ldotj8` at write time)
-> **Written:** 2026-07-19T12:07:39Z UTC
+> **Base commit:** `0d1c43f` (HEAD of `claude/new-session-ldotj8` at write
+> time)
+> **Written:** 2026-07-19T18:22:06Z UTC
 > If `claude/new-session-ldotj8`'s HEAD commit is newer than the SHA above,
 > newer run output may exist that this file doesn't reflect — check the
 > commit history.
 
+**Regenerated this pass** (previous version covered the 3×2 matrix and the
+gross/total-receipts debt-service basis; this version covers the 3×3
+matrix, the net/on-budget basis, and the total-debt TCMDO-vs-TCMDODNS
+comparison — see STATUS.md §3/§9/§11 for the narrative).
+
 **Why this file exists:** a reviewer working only from public blob URLs
-cannot open the Actions tab, cannot see job logs, and may be served a cached
-copy of any file. Every number this project claims as "live" has to be
-provable from a file actually committed to the repo, or it isn't provable at
-all to that reviewer. This file is the run output itself, not a summary of
-it.
+cannot open the Actions tab, cannot see job logs, and may be served a
+cached copy of any file. Every number this project claims as "live" has to
+be provable from a file actually committed to the repo, or it isn't
+provable at all to that reviewer. This file is the run output itself, not
+a summary of it.
 
 **Claim status: VERIFIED.** Everything below is copied from the actual job
 log of a real `workflow_dispatch` run of `update-data.yml`
 (`https://github.com/willywonka616/macro-indicator-dashboard/actions`, run
-attached to commit `4c344e1`, 2026-07-19 12:03–12:05 UTC), fetched via the
-GitHub API and pasted with only two mechanical edits: per-line ISO
-timestamps and terminal ANSI color codes stripped (they add no information
-and hurt readability), and one very long list (every series code in the IMF
-PCPS dataset — ~1000 entries, one line) trimmed to just the `PGOLD`-related
-entries with an explicit note where that happened. Nothing was reworded,
-reordered, or summarized beyond that.
+attached to commit `0825467`, committed data as `3ed5858`, 2026-07-19
+18:13–18:16 UTC), fetched via the GitHub API and pasted with only two
+mechanical edits: per-line ISO timestamps and terminal ANSI color codes
+stripped (they add no information and hurt readability), and one very long
+line (every series code in the IMF PCPS dataset — 1000 entries, one line)
+trimmed to just the `PGOLD`-related entries with an explicit note where
+that happened. Nothing else was reworded, reordered, or summarized.
 
 ---
 
@@ -160,13 +165,25 @@ Verifying Treasury Fiscal Data endpoints
     Total Surplus (+) or Deficit (-) = null
     Total On-Budget = null
 
-  LIVE debt-service ratio (gross interest / total receipts): 23.0% as of 2026-06 (42 history pts)
+  On-budget receipts (total minus OASI+DI trust fund receipts):
+    resolved: 136 months, latest 2026-06 = $442.8B
+
+  mts_table_5 'Total On-Budget' / 'Total Off-Budget' cross-check (diagnostic only — investigating whether these describe receipts or outlays; never used to build data.json):
+    Total On-Budget: {'current_month_gross_outly_amt': 'null', 'current_month_app_rcpt_amt': 'null', 'current_month_net_outly_amt': '-128723862571.22'}
+    Total Off-Budget: {'current_month_gross_outly_amt': 'null', 'current_month_app_rcpt_amt': 'null', 'current_month_net_outly_amt': '8418586984.85'}
+
+  LIVE headline debt-service ratio (net interest to the public / on-budget receipts): 23.1% as of 2026-06 (42 history pts)
+  LIVE second-row debt-service ratio (gross interest incl. GAS / on-budget receipts): 29.7% as of 2026-06 (42 history pts)
 
   Debt-service calibration matrix (Dalio Ch.17 US target: 22%, Mar 2025):
-  numerator                          tax receipts only        total receipts
-  gross (incl. GAS)                              35.0%                 23.0%
-  net-to-public (excl. GAS)                      27.8%                 17.9%
-  net interest, function 900                     27.8%                 17.8%
+  numerator                         on-budget receipts     tax receipts only        total receipts
+  gross (incl. GAS)                              29.7%                 35.0%                 23.0%
+  net-to-public (excl. GAS)                      23.1%                 27.8%                 17.9%
+  net interest, function 900                     23.0%                 27.8%                 17.8%
+
+Total-debt series comparison (Dalio Ch.17 US 'other debt' target: 340%):
+  TCMDO: 362.6% of GDP as of 2026-01-01 (GDP as of 2026-01-01) <- used for 'Total debt' row
+  TCMDODNS: 256.7% of GDP as of 2026-01-01 (GDP as of 2026-01-01) (diagnostic only, not used — see series.py)
 
 Verifying IMF COFER via DBnomics (non-fatal — manual fallback on failure)
 
@@ -211,7 +228,7 @@ env:
   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.13/x64/lib
   FRED_API_KEY: ***
 
-Wrote public/data.json — generatedAt 2026-07-19T12:04:56Z
+Wrote public/data.json — generatedAt 2026-07-19T18:15:56Z
   debt_to_gdp                     99%  (2026-Q1, 225 pts)
   debt_service_to_revenue         23%  (2026-06, 42 pts)
   real_rates                     0.6%  (2026-Q2, 258 pts)
@@ -235,75 +252,63 @@ env:
   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.13/x64
   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.13/x64/lib
 
-[claude/new-session-ldotj8 4c344e1] data: monthly refresh (2026-07-19)
- 1 file changed, 2 insertions(+), 2 deletions(-)
+[claude/new-session-ldotj8 3ed5858] data: monthly refresh (2026-07-19)
+ 1 file changed, 759 insertions(+), 400 deletions(-)
 ```
 
-*(Note: the log's own `[gold-price]` heading and the "Verifying gold
-sources" banner above it still say "DBnomics LBMA price" — that's a stale
-label in `scripts/gold.py`'s print statements left over from before the
-source switch to IMF PCPS; it prints a fixed string, not a re-derived one,
-so it didn't get updated when the actual URL did. The **behavior** is
-correct — it hits `IMF/PCPS`, as the URL on the next line shows — only the
-human-readable log label is out of date. Filed as a loose end, not hidden.)*
-
----
-
-## Prior failures — gold price source discovery (why PCPS, not LBMA)
-
-These are not from the run above — they're from earlier `workflow_dispatch`
-runs against earlier commits on this same branch, kept here because the
-task instructions ask for failures to be included, not just the final
-success. Quoted verbatim from the job log of the run immediately following
-commit `95160ea` ("Fix LBMA gold price fetch: dump bare dataset, filter
-client-side") — a bare, unfiltered request to DBnomics' `LBMA/gold_D`
-dataset, no `dimensions` filter, no series code:
-
-```
-[gold-price] FAILED: request to https://api.db.nomics.world/v22/series/LBMA/gold_D failed after 4 tries: 404 Client Error: NOT FOUND for url: https://api.db.nomics.world/v22/series/LBMA/gold_D?limit=1000&observations=1
-
-  gold market value computation FAILED: request to https://api.db.nomics.world/v22/series/LBMA/gold_D failed after 4 tries: 404 Client Error: NOT FOUND for url: https://api.db.nomics.world/v22/series/LBMA/gold_D?limit=1000&observations=1
-```
-
-and, from the `--force` build step of that same run, the fallback firing
-correctly:
-
-```
-Gold-inclusive reserves unavailable, using manual value: request to https://api.db.nomics.world/v22/series/LBMA/gold_D failed after 4 tries: 404 Client Error: NOT FOUND for url: https://api.db.nomics.world/v22/series/LBMA/gold_D?limit=1000&observations=1
-```
-
-Two earlier attempts against `LBMA/gold_D` also 404'd (a direct
-`.../gold_D/gold_D_USD_AM` series-code path, and a dataset-level request
-with a `dimensions` filter) — those failures are described, not quoted
-verbatim, in `STATUS.md` §3 and in the commit message of `95160ea`, because
-the exact log text from those two runs was not captured into this file.
-**This is stated plainly rather than reconstructed**: don't trust a verbatim
-block for those two if one appears anywhere else — only the bare-dump
-failure above and the final PCPS success are backed by an exact pasted log.
+*(Note: the "Verifying gold sources" banner and `[gold-price]` label above
+still say "DBnomics LBMA price" in the source code's print strings — a
+leftover label from before the switch to IMF PCPS that prints a fixed
+string rather than a re-derived one. The **behavior** is correct — it hits
+`IMF/PCPS`, as the URL on the very next line shows — only the human-readable
+banner text is stale. Filed as a loose end, not hidden; see STATUS.md §3.)*
 
 ---
 
 ## Sanity-band checks (from source, not from a run log — the bands never
 tripped, so there is no "band fired" line to quote)
 
-Both live derived values landed inside their bands on the run above, so
-`fetch.py` never printed a band-violation message — there is nothing to
-paste verbatim for a check that passed silently. The bands themselves, read
-directly from `scripts/fetch.py`:
+All four live derived values (net debt-service, gross debt-service,
+reserves-incl-gold, debt/revenue) landed inside their bands on the run
+above, so `fetch.py` never printed a band-violation message. The bands
+themselves, read directly from `scripts/fetch.py` at commit `0d1c43f`:
 
 ```python
 service = T.debt_service_ratio()
-if not (5.0 <= service["latest"] <= 40.0):
-    raise RuntimeError(...)   # would abort the build; did not fire (23.0% is inside)
-...
+if not (10.0 <= service["latest"] <= 40.0):
+    raise RuntimeError(...)   # did not fire (23.1% is inside)
+
+gross_service = T.gross_debt_service_ratio()
+if not (15.0 <= gross_service["latest"] <= 50.0):
+    raise RuntimeError(...)   # did not fire (29.7% is inside)
+
 if not (0.5 <= reserves_incl_gold["latest"] <= 15.0):
-    raise RuntimeError(...)   # would abort the build; did not fire (3.7% is inside)
+    raise RuntimeError(...)   # did not fire (3.7% is inside)
+
+debt_to_revenue = S.debt_to_revenue_pct(...)
+if not (200.0 <= debt_to_revenue["latest"] <= 1200.0):
+    raise RuntimeError(...)   # did not fire (691.9% is inside)
 ```
 
 **Claim status: VERIFIED** that these are the exact lines in
-`scripts/fetch.py` at commit `4c344e1` (read directly from the file, not
-recalled) and that the run above completed without either `RuntimeError`
-firing (the `Wrote public/data.json` line in the transcript above only
-prints after both checks pass — an abort would show a Python traceback and
-no `Wrote public/data.json` line instead, which is not what the transcript
-shows).
+`scripts/fetch.py` at commit `0d1c43f` (read directly from the file) and
+that the run above completed without any `RuntimeError` firing — the
+`Wrote public/data.json` line in the transcript only prints after all four
+checks pass; an abort would show a Python traceback and no `Wrote
+public/data.json` line instead.
+
+---
+
+## Prior investigation history (condensed — full detail in STATUS.md)
+
+Two earlier rounds of live investigation aren't re-pasted verbatim here to
+keep this file focused on the current state; they're documented with their
+own evidence in STATUS.md:
+- **STATUS.md §3** (gold price source): three failed DBnomics/LBMA URL
+  attempts (all genuine 404s, root-caused to LBMA restricting its public
+  data in late 2025), then the switch to IMF PCPS, then a PGOLD-variant
+  selection bug (picked the `.IX` index instead of `.USD` level on the
+  first live PCPS attempt) and its fix.
+- **STATUS.md §9/§11** (total debt): the TCMDODNS hypothesis, tried and
+  refuted this pass (256.7% vs. TCMDO's 362.6%, further from Dalio's 340%
+  target, not closer) — the comparison itself is in the run output above.
