@@ -172,6 +172,35 @@ def total_debt_pct_gdp(tcmdo_obs, tcmdo_units, gdp_obs, gdp_units):
     return {"latest": round(latest, 1), "asOf": asof, "history": quarterly_history(ratio)}
 
 
+def debt_to_revenue_pct(debt_pct_obs, gdp_obs, gdp_units, revenue_ttm_dollars):
+    """Debt held by the public, as a percentage of trailing-12-month
+    on-budget receipts — Dalio's Ch.3 preferred framing (debt against what
+    government can actually collect, not against GDP, which it can't
+    spend). No new series: debt$ = FYGFGDQ188S (%) x GDP ($); the quarterly
+    debt stock is divided by revenue_ttm_dollars, a monthly {(y,m): $} TTM
+    sum from treasury.py (collapsed to quarterly, last month of quarter) —
+    the same trailing-12-month smoothing the debt-service rows use, since
+    receipts swing far more with the tax calendar than GDP or the debt
+    stock do. Same on-budget-receipts denominator as both debt-service
+    rows (see provenance.revenueDefinition).
+    """
+    debt_pct_q = as_quarterly(debt_pct_obs)
+    gdp_q = as_quarterly(gdp_obs)
+    rev_q = {}
+    for (y, m), v in revenue_ttm_dollars.items():
+        rev_q[(y, (m - 1) // 3 + 1)] = v
+    ratio = {}
+    for k in debt_pct_q.keys() & gdp_q.keys() & rev_q.keys():
+        gdp_usd = to_dollars(gdp_q[k], gdp_units)
+        debt_usd = debt_pct_q[k] / 100.0 * gdp_usd
+        if rev_q[k]:
+            ratio[k] = debt_usd / rev_q[k] * 100.0
+    if not ratio:
+        raise RuntimeError("debt_to_revenue_pct: no overlapping quarters")
+    latest, asof = _latest(ratio)
+    return {"latest": round(latest, 1), "asOf": asof, "history": quarterly_history(ratio)}
+
+
 def current_account_pct_gdp_3yr(ca_obs, ca_units, gdp_obs, gdp_units, annualized_ca: bool):
     """Current account as % of GDP, 3-year (12-quarter) trailing average.
 

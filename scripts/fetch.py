@@ -242,16 +242,26 @@ def build_us(manual: dict, force: bool) -> dict:
         "asOf": S.q_label(S.quarter_key(dobs[-1][0])),
         "history": S.quarterly_history(S.as_quarterly(dobs)),
     }
-    # Debt service vs revenue — gross interest (incl. GAS) / total receipts,
-    # budget basis, from Treasury (no FRED). Basis chosen 2026-07 to match
-    # Dalio's Ch.17 book value (22%); see treasury.py module docstring and
-    # STATUS.md §9. The 5-40% band still comfortably covers this basis's
-    # expected ~20-25% range (re-checked when the basis changed).
+    # Debt service, split net/gross — both on-budget receipts, budget basis,
+    # from Treasury (no FRED). Basis revised 2026-07 against Dalio's Ch.17
+    # book value (22%); see treasury.py module docstring and STATUS.md §9.
+    # Headline = NET interest to the public (pairs with debt_to_gdp, which
+    # is also debt *held by the public*); second row = GROSS incl.
+    # intragovernmental GAS interest. Separate sanity bands: net lands
+    # ~20-27%, gross ~25-35% (both live-confirmed), so the bands are set
+    # with headroom around each rather than sharing one range.
     service = T.debt_service_ratio()
-    if not (5.0 <= service["latest"] <= 40.0):
+    if not (10.0 <= service["latest"] <= 40.0):
         raise RuntimeError(
-            f"validation: Treasury debt-service ratio {service['latest']}% is "
-            "outside the sane 5-40% band — likely a wrong field/column mapping. "
+            f"validation: net debt-service ratio {service['latest']}% is "
+            "outside the sane 10-40% band — likely a wrong field/column mapping. "
+            "Check the Treasury schema dumped by --verify before trusting it."
+        )
+    gross_service = T.gross_debt_service_ratio()
+    if not (15.0 <= gross_service["latest"] <= 50.0):
+        raise RuntimeError(
+            f"validation: gross debt-service ratio {gross_service['latest']}% is "
+            "outside the sane 15-50% band — likely a wrong field/column mapping. "
             "Check the Treasury schema dumped by --verify before trusting it."
         )
     reserves = S.reserves_pct_gdp(raw["TRESEGUSM052N"][1], raw["TRESEGUSM052N"][0],
@@ -287,6 +297,24 @@ def build_us(manual: dict, force: bool) -> dict:
                                                  raw["GDP"][1], raw["GDP"][0], annualized)
     real_rate = S.real_10y_rate(raw["DGS10"][1], raw["CPIAUCSL"][1])
 
+    # Debt held by the public / on-budget receipts (TTM) — alongside
+    # debt_to_gdp, not replacing it (Dalio's Ch.17 table itself reports
+    # debt/GDP; debt/revenue is his Ch.3 preferred framing, added here as a
+    # second row). No new series: debt$ = FYGFGDQ188S (%) x GDP ($), same
+    # on-budget-receipts denominator as both debt-service rows. Expected
+    # magnitude is a bug-detector, not a target — roughly $30T debt against
+    # a few trillion of on-budget receipts is several hundred percent; the
+    # band is wide (200-1200%) to allow real movement while still catching
+    # an order-of-magnitude unit error.
+    debt_to_revenue = S.debt_to_revenue_pct(raw["FYGFGDQ188S"][1], raw["GDP"][1], raw["GDP"][0],
+                                            T.revenue_ttm_dollars())
+    if not (200.0 <= debt_to_revenue["latest"] <= 1200.0):
+        raise RuntimeError(
+            f"validation: debt-to-revenue {debt_to_revenue['latest']}% is "
+            "outside the sane 200-1200% band — likely a units/scale error "
+            "(FYGFGDQ188S is a percent, GDP is billions SAAR — check both)."
+        )
+
     # --- move guards on the positive-level ratios ---
     _check_move("debt_to_gdp", debt["latest"], prev, force)
     _check_move("debt_service_to_revenue", service["latest"], prev, force)
@@ -318,8 +346,10 @@ def build_us(manual: dict, force: bool) -> dict:
             "Debt held by the public near one year of national income; projected to keep climbing.",
             "FRED: FYGFGDQ188S", "of GDP")},
         {"key": "debt_service_to_revenue", "label": "Debt service vs income", **_vital(service, "risk",
-            "Gross interest on the debt costs more than a fifth of federal revenue, closing in on a quarter — before principal.",
-            "derived · Treasury (gross interest, budget basis)", "of revenue")},
+            "Net interest to the public — cash actually leaving the government today — costs "
+            "about a quarter of on-budget revenue. Gross interest, including bonds credited to "
+            "trust funds, runs higher still (see the panel below).",
+            "derived · Treasury (net interest, on-budget receipts)", "of revenue")},
         {"key": "real_rates", "label": "Rates vs inflation & growth", **_vital(real_rate, "neutral",
             "10-year Treasury yield minus trailing-12-month CPI inflation — the real cost of borrowing Dalio watches.",
             "derived · FRED (10y − CPI)", "real 10y")},
@@ -334,16 +364,21 @@ def build_us(manual: dict, force: bool) -> dict:
 
     gov_panel = {
         "eyebrow": "Government debt", "tag": "live",
-        "note": "Very large debt with little liquid backing. Who holds it matters: foreign holders can leave faster than domestic ones.",
+        "note": "Very large debt with little liquid backing. Who holds it matters: foreign holders can leave faster than domestic ones. Two debt-service rows below: net is what's actually leaving the government in cash today; gross adds interest credited to trust funds as bonds — a real claim, but not yet a cash outflow.",
         "rows": [
             manual_row("Gov assets − gov debt", mu["govAssetsMinusDebt"]),
             live_row("Government debt (held by public)", debt, "risk", "FRED: FYGFGDQ188S", "of GDP"),
+            live_row("Debt vs on-budget revenue", debt_to_revenue, "risk",
+                     "derived · FYGFGDQ188S x GDP / Treasury (on-budget receipts, TTM)", "of revenue", decimals=0),
             manual_row("Debt, 10-yr projection", mu["cboProjection"]),
             manual_row("— held by central bank", mu["holders"]["centralBank"]),
             manual_row("— held by domestic players", mu["holders"]["domestic"]),
             manual_row("— held abroad", mu["holders"]["abroad"]),
             manual_row("Share in hard (foreign) FX", mu["shareHardFX"]),
-            live_row("Government interest (gross)", service, "risk", "derived · Treasury (gross incl. GAS)", "of revenue"),
+            live_row("Net interest (to the public)", service, "risk",
+                     "derived · Treasury (net interest, on-budget receipts)", "of revenue"),
+            live_row("Gross interest (incl. intragovernmental)", gross_service, "caution",
+                     "derived · Treasury (gross incl. GAS, on-budget receipts)", "of revenue"),
         ],
     }
     reserves_incl_gold_row = {
@@ -414,9 +449,29 @@ def build_us(manual: dict, force: bool) -> dict:
             "modelSnapshot": mu.get("modelSnapshot"),
             "manualLastChecked": mu.get("lastChecked"),
             "currentAccountAnnualizedInput": annualized,
-            "debtServiceBasis": "gross interest (incl. GAS) / total federal receipts, "
-                                 "Treasury budget basis — chosen 2026-07 to match Dalio's "
-                                 "Ch.17 US snapshot (22%); see STATUS.md",
+            "revenueDefinition": "on-budget receipts (Treasury MTS total receipts minus OASI+DI "
+                                  "trust fund receipts, the statutory off-budget definition, "
+                                  "2 U.S.C. 622(7)) — the ONE revenue denominator shared by all "
+                                  "three revenue-denominated rows below (net interest, gross "
+                                  "interest, debt/revenue). Chosen 2026-07 after extending the "
+                                  "debt-service matrix to 3 numerators x 3 denominators; net "
+                                  "interest / on-budget receipts landed at 23.1%, ~1pt from "
+                                  "Dalio's Ch.17 22% — see STATUS.md §9.",
+            "debtServiceBasis": "NET interest to the public (excl. intragovernmental GAS) / "
+                                 "on-budget receipts — headline `debt_service_to_revenue`. "
+                                 "Revised 2026-07 from the prior gross/total-receipts basis: "
+                                 "net-to-public is the numerator whose scope actually matches "
+                                 "debt_to_gdp (debt held by the public); gross interest incl. "
+                                 "GAS ships as its own separate row instead. See STATUS.md §9.",
+            "grossDebtServiceBasis": "GROSS interest (incl. intragovernmental Government "
+                                      "Account Series) / on-budget receipts — the explicit "
+                                      "second debt-service row, same denominator as the net "
+                                      "headline (see revenueDefinition).",
+            "debtToRevenueBasis": "Debt held by the public ($, FYGFGDQ188S x GDP) / on-budget "
+                                   "receipts (TTM, $) — same denominator as both debt-service "
+                                   "rows. Dalio's Ch.17 table reports only debt/GDP, not "
+                                   "debt/revenue, so there's no book figure to calibrate this "
+                                   "row against; debt_to_gdp remains the headline.",
             "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz) "
                               "x live gold price (DBnomics: IMF PCPS, indicator PGOLD — "
                               "DBnomics' LBMA mirror was dropped 2026-07 after LBMA moved its "
