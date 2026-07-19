@@ -20,10 +20,25 @@ preference before implementing):
      recorded so a future session can pick the investigation back up instead
      of re-deriving it composed if a good current source turns up.
   2. What's actually used: Treasury's own gold holdings (fine troy ounces,
-     monthly) x a live gold price (DBnomics LBMA daily fix), combined with
-     FRED's excl.-gold reserves and GDP. Both endpoints are exercised by
-     verify() so a schema change is visible in the run log, same as every
-     other integration in this project.
+     monthly) x a live gold price, combined with FRED's excl.-gold reserves
+     and GDP. Both endpoints are exercised by verify() so a schema change is
+     visible in the run log, same as every other integration in this
+     project.
+
+Gold-price source history (2026-07): DBnomics' LBMA/gold_D dataset — the
+obvious first choice, and what this module used originally — now 404s on
+every shape tried (series-code path, dataset-level with a `dimensions`
+filter, and a bare unfiltered dump). Root cause, confirmed via web research
+rather than guessed: LBMA moved its benchmark price tables behind a
+members-only portal starting the week of 2025-11-24, and FRED's own
+GOLDAMGBD228NLBM series (the same LBMA fix) was separately discontinued
+with no replacement — DBnomics' LBMA mirror is downstream of the same
+now-restricted source, not a URL-shape problem. Switched to IMF's Primary
+Commodity Price System (PCPS, indicator code PGOLD — world gold price
+benchmark, USD/troy oz, monthly), mirrored on DBnomics the same way COFER
+is, which keeps the pipeline on http-only, no-key sources dumped defensively
+(bare fetch + client-side filter by series_code, since PCPS's exact
+dimension names haven't been confirmed live yet — see verify()).
 
 Best-effort by design: gold_market_value_usd() raises on any problem, and the
 caller (fetch.py) falls back to a manual value rather than shipping a
@@ -42,12 +57,14 @@ import requests
 TREASURY_BASE = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service"
 GOLD_ENDPOINT = "/v2/accounting/od/gold_reserve"
 
-# Note: unlike COFER (a direct dataset/series-code path works), guessing an
-# exact LBMA series-code or `dimensions` filter shape has 404'd twice live.
-# Instead we dump the bare, unfiltered dataset (small — LBMA gold_D has only
-# a handful of series: USD/GBP/EUR x AM/PM fix) and filter client-side by
-# series_code, the same defensive pattern used for COFER.
-DBNOMICS_GOLD_DATASET = "https://api.db.nomics.world/v22/series/LBMA/gold_D"
+# IMF Primary Commodity Price System via DBnomics — same aggregator, same
+# provider (IMF) as the working COFER integration. Exact dimension names for
+# PCPS are unconfirmed, so we don't filter server-side; the bare dump is
+# small enough (~200 series: ~15 commodities x a handful of frequencies) to
+# fetch whole and filter client-side by series_code, same defensive pattern
+# that resolved COFER.
+DBNOMICS_GOLD_DATASET = "https://api.db.nomics.world/v22/series/IMF/PCPS"
+GOLD_INDICATOR_HINT = "pgold"
 
 
 # --- http ------------------------------------------------------------------
@@ -146,46 +163,53 @@ def gold_holdings_troy_oz() -> dict:
     return {k: v for k, v in monthly.items() if v}
 
 
-# --- DBnomics: LBMA daily gold price, USD AM fix ----------------------------
+# --- DBnomics: IMF PCPS gold price (PGOLD) ----------------------------------
 
 def _all_gold_price_docs():
-    """Bare, unfiltered dump of every series in the LBMA gold_D dataset."""
+    """Bare, unfiltered dump of every series in the IMF PCPS dataset."""
     js = _get_json(DBNOMICS_GOLD_DATASET, {"limit": "1000", "observations": "1"})
     return js.get("series", {}).get("docs", [])
 
 
 def _gold_price_docs():
-    """USD AM-fix series, found by filtering the bare dump client-side
-    rather than guessing a series-code or dimensions-filter URL shape."""
+    """PGOLD series, found by filtering the bare dump client-side rather
+    than guessing PCPS's dimension names. Prefers a monthly (M.*) series
+    code if more than one PGOLD variant comes back (e.g. annual, quarterly)."""
     docs = _all_gold_price_docs()
     matches = [d for d in docs
-               if "usd" in str(d.get("series_code", "")).lower()
-               and "am" in str(d.get("series_code", "")).lower()]
-    return matches or docs  # fall back to whatever's there if none match
+               if GOLD_INDICATOR_HINT in str(d.get("series_code", "")).lower()]
+    if not matches:
+        return docs  # nothing matched — let the caller see the raw dump via verify()
+    monthly = [d for d in matches if str(d.get("series_code", "")).upper().startswith("M.")]
+    return monthly or matches
+
+
+def _period_to_ym(period: str):
+    """DBnomics periods are 'YYYY-MM-DD' (daily) or 'YYYY-MM' (monthly)."""
+    parts = period.split("-")
+    if len(parts) >= 2:
+        return int(parts[0]), int(parts[1])
+    raise ValueError(f"unrecognised period: {period!r}")
 
 
 def gold_price_usd_per_oz() -> dict:
-    """{(year, month): USD per troy oz} — last trading day of each month."""
+    """{(year, month): USD per troy oz}."""
     docs = _gold_price_docs()
     if not docs:
-        raise RuntimeError("LBMA gold_D (USD, AM): no series returned")
+        raise RuntimeError("IMF PCPS (PGOLD): no series returned")
     doc = docs[0]
-    daily = {}
+    monthly = {}
     for period, val in zip(doc.get("period", []), doc.get("value", [])):
         if val is None or period is None:
             continue
         try:
-            d = dt.date.fromisoformat(period)
+            ym = _period_to_ym(period)
             v = float(val)
         except (TypeError, ValueError):
             continue
-        daily[d] = v
-    if not daily:
-        raise RuntimeError("LBMA gold_D (USD, AM): no usable observations")
-
-    monthly = {}
-    for d in sorted(daily):  # ascending, so last day in each month wins
-        monthly[(d.year, d.month)] = daily[d]
+        monthly[ym] = v  # observations are ascending, so a later dup wins
+    if not monthly:
+        raise RuntimeError("IMF PCPS (PGOLD): no usable observations")
     return monthly
 
 
