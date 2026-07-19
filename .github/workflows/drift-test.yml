@@ -1,0 +1,31 @@
+name: Drift test (diagnostic, one-off)
+
+# ONE-OFF diagnostic for "settle the drift question" (see TASKdrifttest.md).
+# Runs scripts/drift_test.py, which is not part of the build and ships
+# nothing — findings go into STATUS.md / docs/verification-log.md by hand.
+# This workflow and scripts/drift_test.py are removed once the findings are
+# recorded.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  drift-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run drift test
+        working-directory: scripts
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: python drift_test.py
