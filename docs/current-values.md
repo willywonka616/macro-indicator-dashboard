@@ -1,14 +1,21 @@
 # Current headline values — reviewable summary
 
-> **Base commit:** `0d1c43f` (HEAD of `claude/new-session-ldotj8` at write
+> **Base commit:** `6427d61` (HEAD of `claude/new-session-ldotj8` at write
 > time)
-> **Written:** 2026-07-19T18:22:06Z UTC
+> **Written:** 2026-07-19T20:49:52Z UTC
 > If `claude/new-session-ldotj8`'s HEAD commit is newer than the SHA above,
 > this file may be stale relative to `public/data.json` — check the commit
 > history for a newer `docs/current-values.md`, or treat the live
 > `public/data.json` as authoritative and this file as a summary only.
 
-**Regenerated this pass** — `public/data.json` was committed as `3ed5858`
+**Stamp-only refresh this pass** — `public/data.json` itself has not
+changed since commit `3ed5858` (the intervening commits added the §12
+drift-test diagnostic and its findings, then removed the diagnostic
+script/workflow — neither touched `public/data.json`), so every value
+below is still current; only the base-commit/timestamp header above is
+updated, to match true HEAD rather than an earlier commit on this branch.
+
+**Regenerated 2026-07-19T18:22:06Z** — `public/data.json` was committed as `3ed5858`
 by the same Actions run this file's companion, `docs/verification-log.md`,
 documents. Previous version of this file predates the net/gross
 debt-service split and the debt/revenue row.

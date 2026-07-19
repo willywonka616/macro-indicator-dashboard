@@ -1,13 +1,19 @@
 # Verification log — live Actions run output, pasted verbatim
 
-> **Base commit:** `7599e19` (HEAD of `claude/new-session-ldotj8` at write
+> **Base commit:** `6427d61` (HEAD of `claude/new-session-ldotj8` at write
 > time)
-> **Written:** 2026-07-19T20:40:00Z UTC
+> **Written:** 2026-07-19T20:49:52Z UTC
 > If `claude/new-session-ldotj8`'s HEAD commit is newer than the SHA above,
 > newer run output may exist that this file doesn't reflect — check the
 > commit history.
 
-**Appended this pass** (everything up to and including "Prior investigation
+**Stamp-only refresh this pass** — no new run since the drift-test run
+quoted below (commit `7599e19`); the two commits since then
+(`7ff77c5` §12 findings, `6427d61` diagnostic-script removal) only added
+prose and deleted files, so nothing below is out of date — only the
+header stamp above is updated to match true HEAD.
+
+**Appended previously** (everything up to and including "Prior investigation
 history" is unchanged from the previous write, covering the 3×3 matrix, the
 net/on-budget basis, and the total-debt TCMDO-vs-TCMDODNS comparison — see
 STATUS.md §3/§9/§11). New this pass: the "Drift test" section below,
