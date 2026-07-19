@@ -34,7 +34,6 @@ fallback.
 from __future__ import annotations
 
 import datetime as dt
-import json
 import time
 from collections import defaultdict
 
@@ -43,11 +42,12 @@ import requests
 TREASURY_BASE = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service"
 GOLD_ENDPOINT = "/v2/accounting/od/gold_reserve"
 
-# Note: unlike COFER (a direct dataset/series-code path works), LBMA's
-# gold_D dataset needs a `dimensions` filter against the dataset-level
-# endpoint — a direct .../gold_D/gold_D_USD_AM series-code path 404s.
+# Note: unlike COFER (a direct dataset/series-code path works), guessing an
+# exact LBMA series-code or `dimensions` filter shape has 404'd twice live.
+# Instead we dump the bare, unfiltered dataset (small — LBMA gold_D has only
+# a handful of series: USD/GBP/EUR x AM/PM fix) and filter client-side by
+# series_code, the same defensive pattern used for COFER.
 DBNOMICS_GOLD_DATASET = "https://api.db.nomics.world/v22/series/LBMA/gold_D"
-DBNOMICS_GOLD_DIMENSIONS = {"unit": ["USD"], "time": ["AM"]}
 
 
 # --- http ------------------------------------------------------------------
@@ -148,11 +148,20 @@ def gold_holdings_troy_oz() -> dict:
 
 # --- DBnomics: LBMA daily gold price, USD AM fix ----------------------------
 
-def _gold_price_docs():
-    js = _get_json(DBNOMICS_GOLD_DATASET,
-                    {"dimensions": json.dumps(DBNOMICS_GOLD_DIMENSIONS),
-                     "facets": "1", "limit": "1000", "observations": "1"})
+def _all_gold_price_docs():
+    """Bare, unfiltered dump of every series in the LBMA gold_D dataset."""
+    js = _get_json(DBNOMICS_GOLD_DATASET, {"limit": "1000", "observations": "1"})
     return js.get("series", {}).get("docs", [])
+
+
+def _gold_price_docs():
+    """USD AM-fix series, found by filtering the bare dump client-side
+    rather than guessing a series-code or dimensions-filter URL shape."""
+    docs = _all_gold_price_docs()
+    matches = [d for d in docs
+               if "usd" in str(d.get("series_code", "")).lower()
+               and "am" in str(d.get("series_code", "")).lower()]
+    return matches or docs  # fall back to whatever's there if none match
 
 
 def gold_price_usd_per_oz() -> dict:
@@ -222,13 +231,15 @@ def verify() -> bool:
         print(f"[gold-holdings] FAILED: {e}")
 
     try:
+        all_docs = _all_gold_price_docs()
+        print(f"\n[gold-price] {DBNOMICS_GOLD_DATASET} (bare dump)")
+        print(f"  all series_codes in dataset: {[d.get('series_code') for d in all_docs]}")
         docs = _gold_price_docs()
-        print(f"\n[gold-price] {DBNOMICS_GOLD_DATASET} dimensions={DBNOMICS_GOLD_DIMENSIONS}")
         if docs:
             d = docs[0]
             periods = d.get("period", [])
             values = d.get("value", [])
-            print(f"  series_code: {d.get('series_code')}")
+            print(f"  selected series_code: {d.get('series_code')}")
             print(f"  {len(periods)} observations; latest: {periods[-1] if periods else None} = "
                   f"{values[-1] if values else None} USD/oz")
         else:
