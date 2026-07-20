@@ -1625,8 +1625,38 @@ the panel note above them. "Net interest (to the public)" now carries
 interest" carries *"The leading indicator — the gap is obligation
 accruing before it's an outflow"*. Same mechanism used for the gold
 staleness note (§14.3). **Claim status: VERIFIED** — code change,
-confirmed via the local mock test; a live-browser check follows before
-this is called done (§14.9).
+confirmed via the local mock test, and by an actual Playwright screenshot
+against a real `npm run build` + `vite preview`, once the production run
+that follows (commit `9bace30`) put real `note` values into
+`public/data.json`: both the net/gross captions and the gold-staleness
+warning render exactly as written, in the right place, correctly styled.
+Not just asserted — screenshots taken, read back, and matched against the
+intended text before this was called done.
+
+### 14.7 Merge / PR, and watching the cron
+
+Per the task: once the above was settled, get this branch off of
+feature-branch-only and stop the live site serving pre-fix figures. Opted
+for a **pull request rather than a direct merge** — this branch touches
+the shipped debt-service basis (a real, user-visible number change) and
+merging to `main` triggers the Pages deploy workflow immediately; a PR is
+the same practical outcome (reviewable, mergeable when ready) without
+taking that action unilaterally. Opened:
+**https://github.com/willywonka616/macro-indicator-dashboard/pull/1**
+(`claude/new-session-ldotj8` → `main`, 46 commits). Test plan in the PR
+description covers the local mock test, live Actions runs, the production
+build, and the manual browser verification (§14.6) — all done. **Not**
+done: merging it — left for explicit approval, per this project's
+standing instruction not to merge without it.
+
+**Watching the cron**: `update-data.yml`'s schedule (`0 6 5 * *`, the 5th
+of each month) hasn't fired unattended even once in this project's
+history — every run so far has been a manual `workflow_dispatch`. The
+next scheduled firing is 2026-08-05, over two weeks from this pass.
+**Not observed this session** — flagged here as the one remaining
+unproven piece of the pipeline, per the task, rather than silently
+assumed to work because the manual-dispatch path does. Left as an open
+item rather than fabricating a monitoring setup nobody asked for.
 
 ### 14.8 Verified vs. assumed — this round's new claims
 
@@ -1641,7 +1671,10 @@ this is called done (§14.9).
 | Non-government-debt hypothesis for "other debt" (263.9%) is eliminated | **VERIFIED** — live run |
 | `IEABC` uses the non-annualized branch | **VERIFIED** — read from two independent already-committed files |
 | `gold.py`'s verify banner now names IMF PCPS, not DBnomics LBMA | **VERIFIED** — code change |
-| Commentary prose needed no numeric changes; row-level framing added | **VERIFIED** — code change, mock-tested |
+| Commentary prose needed no numeric changes; row-level framing added | **VERIFIED** — code change, mock-tested, and confirmed by real-browser screenshot |
+| The row-level `note` and gold-staleness warning render correctly in a real build | **VERIFIED** — Playwright screenshot against `npm run build` + `vite preview` with the live post-fix `public/data.json` |
+| Pull request #1 opened, `claude/new-session-ldotj8` → `main`, 46 commits | **VERIFIED** — `https://github.com/willywonka616/macro-indicator-dashboard/pull/1` |
+| The unattended monthly cron (5th of the month) has fired successfully at least once | **NOT VERIFIED, not yet true** — every run to date has been a manual `workflow_dispatch`; next scheduled firing is 2026-08-05 |
 
 ---
 
