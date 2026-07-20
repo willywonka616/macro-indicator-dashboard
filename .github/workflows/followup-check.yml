@@ -13,6 +13,7 @@ on:
     paths:
       - "scripts/dated_matrix_check.py"
       - "scripts/gold_imf_codelist_check.py"
+      - "scripts/gold_imf_codelist_check2.py"
       - ".github/workflows/followup-check.yml"
 
 permissions:
@@ -31,12 +32,21 @@ jobs:
       - name: Install deps
         run: pip install -r scripts/requirements.txt
 
-      - name: Run dated matrix check
-        working-directory: scripts
-        env:
-          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
-        run: python dated_matrix_check.py
+      # Skipped: already captured (run 29724019051) - both grids obtained
+      # cleanly. Re-enable if this needs a full re-run for another reason.
+      # - name: Run dated matrix check
+      #   working-directory: scripts
+      #   env:
+      #     FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+      #   run: python dated_matrix_check.py
 
-      - name: Run gold IMF codelist check
+      # Skipped: superseded by gold_imf_codelist_check2.py, which queries
+      # PCPS's own CL_PCPS_INDICATOR/CL_PCPS_COMMODITY codelists directly
+      # instead of a generic gold-keyword scan across unrelated codelists.
+      # - name: Run gold IMF codelist check
+      #   working-directory: scripts
+      #   run: python gold_imf_codelist_check.py
+
+      - name: Run gold IMF codelist check v2 (PCPS-specific codelists)
         working-directory: scripts
-        run: python gold_imf_codelist_check.py
+        run: python gold_imf_codelist_check2.py
