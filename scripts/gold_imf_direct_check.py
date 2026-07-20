@@ -13,17 +13,50 @@ import json
 
 import requests
 
-URL = "https://api.imf.org/external/sdmx/3.0/data/dataflow/IMF.RES/PCPS/~/M.W00.PGOLD.USD"
+BASE = "https://api.imf.org/external/sdmx/3.0/data/dataflow/IMF.RES/PCPS/~/"
+
+# First attempt's key ("M.W00.PGOLD.USD", DBnomics' own freq.country.indicator.unit
+# convention) returned dimensions.series=[COUNTRY,INDICATOR,DATA_TRANSFORMATION,
+# FREQUENCY] with NO observations — that's IMF's own native key order, different
+# from DBnomics'. Try keys built in IMF's own declared order instead.
+KEY_CANDIDATES = [
+    "W00.PGOLD.USD.M",
+    "W00.PGOLD..M",
+    "W00.PGOLD.IX.M",
+    "W00.PGOLD.USD.A",
+]
+
+
+def try_key(key):
+    url = BASE + key
+    print(f"\nGET {url}")
+    r = requests.get(url, params={"c[TIME_PERIOD]": "ge:2023-01"}, timeout=30)
+    print(f"status: {r.status_code}")
+    if r.status_code != 200:
+        print(f"body: {r.text[:500]}")
+        return None
+    return r
 
 
 def main():
-    print(f"GET {URL}")
-    r = requests.get(URL, params={"c[TIME_PERIOD]": "ge:2024-01"}, timeout=30)
-    print(f"status: {r.status_code}")
-    if r.status_code != 200:
-        print(f"body: {r.text[:2000]}")
-        return
-    d = r.json()
+    for key in KEY_CANDIDATES:
+        r = try_key(key)
+        if r is None:
+            continue
+        d = r.json()
+        data = d.get("data", {})
+        datasets = data.get("dataSets", [])
+        series = datasets[0].get("series", {}) if datasets else {}
+        if series:
+            print(f"  MATCH: key {key!r} has {len(series)} series")
+            parse_and_print(d)
+            return
+        else:
+            print(f"  key {key!r}: 200 but no series (empty dataSets)")
+    print("\nNo key candidate returned actual observations.")
+
+
+def parse_and_print(d):
     data = d.get("data", {})
     structures = data.get("structures", [])
     if not structures:
@@ -57,10 +90,6 @@ def main():
         print(f"  {period} = {value}")
     if all_points:
         print(f"\nLatest observation via direct IMF API: {all_points[-1]}")
-
-    # also dump the dataflow-level annotations again for the record
-    print("\n--- raw response, first 4000 chars (for the record) ---")
-    print(r.text[:4000])
 
 
 if __name__ == "__main__":
