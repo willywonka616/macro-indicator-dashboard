@@ -44,6 +44,41 @@ Best-effort by design: gold_market_value_usd() raises on any problem, and the
 caller (fetch.py) falls back to a manual value rather than shipping a
 live-tagged number built on a stale price, same pattern as imf.py's COFER
 fallback.
+
+**Search for a fresher price (2026-07, TASKgoldpricefreshness.md): all five
+candidates tried, none currently usable, order as specified:**
+  1. FRED (`series/search?search_text=gold price`, plus `LBMA gold`/`gold
+     fixing`/`gold spot`) — zero results for any actual spot/fixing series.
+     `GOLDAMGBD228NLBM`/`GOLDPMGBD228NLBM` (the old LBMA fixings) now
+     return a hard 400, not just "discontinued with history" — the IDs are
+     gone outright. The only current, on-cadence hits are a volatility
+     index (GVZCLS) and PPI/import/export price INDICES (base-year,
+     e.g. `IQ12260`), none of them a $/oz spot price.
+  2. World Bank Pink Sheet via DBnomics (provider `WB`) — the real dataset
+     (`commodity_prices`) exists and has a gold series (`FGOLD-1W`), but
+     it's annual with `2030` (a *projected* out-year) as its "latest"
+     point, not the monthly Pink Sheet. See docs/review/2026-07-20c.
+  3. Bundesbank, both directly (api.statistiken.bundesbank.de, three
+     guessed series keys — all 404) and via DBnomics (provider `BUBA`):
+     found the real gold series (`BBEX3`, D-Mark Frankfurt fixing) after
+     a full-catalog + server-side search, but it stops at end-1998 —
+     pre-euro, permanently discontinued, not a stale-but-alive feed.
+  4. Nasdaq Data Link (ex-Quandl), LBMA/GOLD, no-key attempt — blocked by
+     an Incapsula anti-bot WAF (403, JS challenge page), same failure mode
+     Stooq hit below. Would need a paid API key (a new GitHub secret) to
+     even test properly; not pursued without that being requested.
+  5. Stooq daily XAUUSD CSV, no key — a bare request 404s; with a
+     browser User-Agent it returns 200 but the body is a client-side
+     SHA-256 proof-of-work anti-bot challenge, not the CSV. Not reachable
+     via a plain HTTP client.
+
+No source switch made — DBnomics-mirrored IMF PCPS remains primary, manual
+value remains the fallback, unchanged. What DID change: fetch.py now runs a
+freshness check on the fetched price (see series.py's `require_fresh`)
+before trusting it as live, so a frozen PCPS feed like the current one
+(stuck at 2025-06) correctly degrades to the manual value instead of
+shipping as falsely "live" — closing the actual gap this task opened with,
+even without a fresher source to switch to.
 """
 
 from __future__ import annotations
