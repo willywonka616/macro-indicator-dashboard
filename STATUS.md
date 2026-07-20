@@ -644,15 +644,16 @@ gap had gone unnoticed because it was never added to this table.
 | Debt held by public / GDP | ~100% (99%) | 99% | live, `FYGFGDQ188S` | Matches closely |
 | Debt, 10-yr projection / GDP | 122% | 122% | **manual**, carried from `data/manual.json` (CBO) | Trivial — same figure, not independently derived |
 | Held by CB / domestic / abroad | 13% / 57% / 29% | 13% / 57% / 29% | **manual**, carried from `data/manual.json` (TIC) | Trivial — same figures, not independently derived |
-| Debt service / revenue | 22% | 19.6% (net-to-public / **total** receipts, net of refunds) | live, `scripts/treasury.py` | **Further off than before** (-2.4pt vs. the prior on-budget basis's +1.1pt) — see §13: the prior basis's closeness to 22% was an artifact of a gross-vs-net receipts bug; corrected, no realised-data basis reproduces 22% closely (closest: gross/total at 23.9% @ Mar-2025, ~2pt off, within the book's own Ch.3-vs-Ch.17 20%/22% spread) |
+| Debt service / revenue | 22% (Ch.17 table); **~20% (Ch.3 prose, "the US is also borrowing ~20% of its income each year to cover interest expenses")** | 19.6% (net-to-public / **total** receipts, net of refunds) | live, `scripts/treasury.py` | **Matches the Ch.3 figure** (−0.4pt) — **does not match Ch.17's 22%** (−2.4pt). The book gives two figures for this ratio, ~2pt apart, in the same March-2025 vintage; exact reproduction of both is impossible. This pipeline reproduces the one computed on the standard (net-to-public / total, net-of-refunds) definition — see §14.1 for the recomputed matrix confirming no realised basis reproduces 22% |
 | FX reserves / GDP | 3% | 3.7% (excl.-gold FX + gold at market) | live, `scripts/gold.py` + FRED | Close but not exact — residual ~0.7pt, attributed partly to the gold-price staleness (§3/§7) |
-| Total debt (Dalio's "other debt") / GDP | 340% | 362.6% (TCMDO, all sectors incl. financial) | live, `FRED: TCMDO` | **Does not match** — +22.6pt gap. A nonfinancial-only alternative (TCMDODNS) was tried and made it *worse* (256.7%, -83pt) — see below |
+| Total debt (Dalio's "other debt") / GDP | 340% | 362.6% (TCMDO, all sectors incl. financial) | live, `FRED: TCMDO` | **Does not match** — +22.6pt gap. Two alternative readings tried and **both eliminated**: nonfinancial-sectors-only (TCMDODNS, 256.7%, −83pt) and non-government debt (TCMDO minus government's own ~99%, 263.9%, −76pt) — both further from 340% than TCMDO itself. See §14.4 |
 | Current account, 3-yr avg / GDP | −4% | −3.7% | live, `IEABC` (FRED) | Matches closely |
 | World trade in USD | 52.6% | 52.6% | **manual**, carried from `data/manual.json` | Trivial — same figure |
 | World debt in USD | 80.7% | 80.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
 | Global equity market cap in USD | 65.7% | 65.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
 | World CB reserves in USD | 57.0% | 57.7% | live, IMF COFER via DBnomics | Matches closely — independently computed, not carried |
-| Debt / revenue | ~580% (Mar 2025, stated); ~700% (his 10-yr projection) | 576% (2026-Q1, shipped); **580% at 2025-Q1 (Mar-2025, his own vintage)** | live, derived (§3, §12, §13) | **Matches almost exactly at his vintage** — see §13: switching to TOTAL receipts, net of refunds (the corrected, shipped basis) puts debt/revenue at $28.93T / $4.99T TTM = 580% for 2025-Q1, essentially identical to his stated figure. Strongest confirmation yet that TOTAL, net-of-refunds receipts is his denominator |
+| Debt / revenue | ~580% (Mar 2025, stated) | 576% (2026-Q1, shipped); **580% at 2025-Q1 (Mar-2025, his own vintage)** | live, derived (§3, §12, §13) | **Matches almost exactly at his vintage** — see §13: switching to TOTAL receipts, net of refunds (the corrected, shipped basis) puts debt/revenue at $28.93T / $4.99T TTM = 580% for 2025-Q1, essentially identical to his stated figure. Strongest confirmation yet that TOTAL, net-of-refunds receipts is his denominator |
+| Debt / revenue, 10-yr projection | ~700% (his stated forward projection) | *(not yet checkable)* | *n/a* | **Forward anchor, recorded not verified** — this pipeline has no 10-year debt/revenue projection to compare (only Dalio's own manual `cboProjection` figure exists, and that's for debt/GDP, not debt/revenue). Noted here so the anchor isn't lost, not claimed as checked |
 
 **Read the "Basis" column before trusting a "match."** Six of the twelve
 rows are `manual` — hand-carried from `data/manual.json`, which in most
@@ -683,13 +684,17 @@ data source:**
   close this gap — the series structurally excludes gold. Required a new
   data source (Treasury gold holdings × a live gold price).
 - **Total debt**: investigated but **not resolved**. TCMDO (all sectors) at
-  362.6% is the closer of two tried series, but still 22.6pts over Dalio's
-  340%. The hypothesis that "other debt" means nonfinancial-sectors-only
-  was tested against TCMDODNS and refuted (256.7%, further from target, not
-  closer). What Dalio's "other debt" row actually scopes remains unknown —
-  possibly a different aggregation entirely (e.g. total minus government
-  debt, to avoid double-counting the debt/GDP row above it — untested this
-  session). **Reported as an open gap, not forced to reconcile.**
+  362.6% is the closest of three tried readings, still 22.6pts over Dalio's
+  340%. Two alternative hypotheses tested and **both eliminated**:
+  nonfinancial-sectors-only (TCMDODNS, refuted this session — 256.7%,
+  further from target) and non-government debt, i.e. TCMDO minus the
+  government's own ~99% (tested §14.4 — 263.9%, also further from target,
+  not closer). What Dalio's "other debt" row actually scopes remains
+  unknown; a household+corporate-debt-specifically aggregation (summed
+  from separate FRED series rather than derived by subtraction) is a
+  candidate for a future session but wasn't attempted here. **Reported as
+  an open gap with two hypotheses now eliminated, not forced to
+  reconcile.**
 
 **Two rows already matched before this session** (debt/GDP, COFER USD
 share) and needed no change. **Debt/revenue now has a book anchor and
