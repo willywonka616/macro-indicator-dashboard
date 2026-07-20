@@ -368,13 +368,16 @@ def build_us(manual: dict, force: bool) -> dict:
     _check_move("debt_service_to_revenue", service["latest"], prev, force)
     _check_move("reserves_to_gdp", reserves_incl_gold["latest"], prev, force)
 
-    def live_row(label, metric, tone, src, unit, decimals=None):
-        return {
+    def live_row(label, metric, tone, src, unit, decimals=None, note=None):
+        row = {
             "label": label, "value": num(metric["latest"]),
             "display": pct_display(metric["latest"], decimals), "unit": unit,
             "tone": tone, "tag": "live", "src": src, "asOf": metric["asOf"],
             "history": metric["history"],
         }
+        if note:
+            row["note"] = note
+        return row
 
     def manual_row(label, spec, tag="manual"):
         row = {"label": label, "display": spec["display"], "unit": spec.get("unit", ""),
@@ -425,9 +428,11 @@ def build_us(manual: dict, force: bool) -> dict:
             manual_row("— held abroad", mu["holders"]["abroad"]),
             manual_row("Share in hard (foreign) FX", mu["shareHardFX"]),
             live_row("Net interest (to the public)", service, "risk",
-                     "derived · Treasury (net interest, total receipts net of refunds)", "of revenue"),
+                     "derived · Treasury (net interest, total receipts net of refunds)", "of revenue",
+                     note="The current situation — cash leaving the government today"),
             live_row("Gross interest (incl. intragovernmental)", gross_service, "caution",
-                     "derived · Treasury (gross incl. GAS, total receipts net of refunds)", "of revenue"),
+                     "derived · Treasury (gross incl. GAS, total receipts net of refunds)", "of revenue",
+                     note="The leading indicator — the gap is obligation accruing before it's an outflow"),
         ],
     }
     reserves_incl_gold_row = {
