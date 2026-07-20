@@ -308,6 +308,7 @@ def build_us(manual: dict, force: bool) -> dict:
     # live-tagged number built on a stale price (same pattern as IMF COFER).
     reserves_incl_gold_tag = "live"
     gold_src_detail = "Treasury (gold) + DBnomics (price)"
+    gold_stale_note = None
     try:
         gold_oz_monthly = G.gold_holdings_troy_oz()
         gold_price_monthly = G.gold_price_usd_per_oz()
@@ -322,6 +323,15 @@ def build_us(manual: dict, force: bool) -> dict:
         else:
             gold_src_detail = (f"Treasury (gold oz {oz_asof[0]}-{oz_asof[1]:02d}) "
                                 f"+ DBnomics (price {price_asof[0]}-{price_asof[1]:02d})")
+            # Visible on the row itself, not only inferable from src/asOf —
+            # see STATUS.md §14.3 (root cause: IMF PCPS upstream, not the
+            # DBnomics mirror, as far as this project could confirm live).
+            lag_months = (oz_asof[0] - price_asof[0]) * 12 + (oz_asof[1] - price_asof[1])
+            if lag_months >= 2:
+                gold_stale_note = (
+                    f"⚠ gold priced as of {price_asof[0]}-{price_asof[1]:02d} "
+                    f"({lag_months} months old) — market value may be off if gold has moved since"
+                )
         reserves_incl_gold = S.reserves_incl_gold_pct_gdp(
             raw["TRESEGUSM052N"][1], raw["TRESEGUSM052N"][0], gold_value_monthly,
             raw["GDP"][1], raw["GDP"][0])
@@ -444,6 +454,8 @@ def build_us(manual: dict, force: bool) -> dict:
         "asOf": reserves_incl_gold.get("asOf"),
         "history": reserves_incl_gold.get("history", []),
     }
+    if gold_stale_note:
+        reserves_incl_gold_row["note"] = gold_stale_note
     reserves_panel = {
         "eyebrow": "Liquid reserves", "tag": "live",
         "note": "The cushion a country can draw on before it must default or print. Gold is a "
