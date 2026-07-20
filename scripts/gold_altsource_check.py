@@ -23,12 +23,12 @@ import io
 import requests
 
 
-def _get(url, params=None, tries=4, **kw):
+def _get(url, params=None, tries=2, timeout=20, **kw):
     import time
     last = None
     for i in range(tries):
         try:
-            r = requests.get(url, params=params, timeout=45, **kw)
+            r = requests.get(url, params=params, timeout=timeout, **kw)
             r.raise_for_status()
             return r
         except requests.exceptions.RequestException as e:  # noqa: PERF203
@@ -56,64 +56,39 @@ def check_worldbank_dbnomics():
         print(f"  provider list FAILED: {e}")
         wb_codes = ["WB"]  # try the obvious guess anyway
 
-    for code in wb_codes or ["WB"]:
+    try:
+        r = _get(f"https://api.db.nomics.world/v22/datasets/WB")
+        js = r.json()
+        datasets = js.get("datasets", {}).get("docs", [])
+        print(f"\n  provider WB: {len(datasets)} datasets")
+        hits = [d for d in datasets
+                if any(t in str(d.get("name", "")).lower() for t in
+                       ("pink sheet", "commodity", "gem", "global economic monitor"))]
+        for d in hits:
+            print(f"    candidate dataset: {d.get('code')} — {d.get('name')}")
+    except Exception as e:  # noqa: BLE001
+        print(f"  provider WB dataset list FAILED: {e}")
+
+    # Query the two real dataset codes directly (confirmed to exist from the
+    # listing above: "GEM" and "commodity_prices" — "Commodity Prices:
+    # History and Projections", the actual Pink-Sheet-shaped one), q=gold
+    # only, small limit — no unfiltered fallback dump (a bare dump of GEM
+    # timed out this diagnostic's first attempt; not worth retrying broad).
+    for ds in ("commodity_prices", "GEM"):
         try:
-            r = _get(f"https://api.db.nomics.world/v22/datasets/{code}")
+            r = _get(f"https://api.db.nomics.world/v22/series/WB/{ds}",
+                     params={"limit": "40", "observations": "1", "q": "gold"})
             js = r.json()
-            datasets = js.get("datasets", {}).get("docs", [])
-            print(f"\n  provider {code}: {len(datasets)} datasets")
-            hits = [d for d in datasets
-                    if any(t in str(d.get("name", "")).lower() for t in
-                           ("pink sheet", "commodity", "gem", "global economic monitor"))]
-            for d in hits:
-                print(f"    candidate dataset: {d.get('code')} — {d.get('name')}")
-            if not hits:
-                names = [(d.get("code"), d.get("name")) for d in datasets][:40]
-                print(f"    no obvious commodity/pink-sheet dataset name; sample: {names}")
+            docs = js.get("series", {}).get("docs", [])
+            print(f"\n  WB/{ds} q=gold -> {len(docs)} series")
+            for d in docs[:15]:
+                periods = d.get("period", [])
+                values = d.get("value", [])
+                print(f"    {d.get('series_code')} ({d.get('series_name')}): "
+                      f"{len(periods)} obs, latest {periods[-1] if periods else None} = "
+                      f"{values[-1] if values else None}")
         except Exception as e:  # noqa: BLE001
-            print(f"  provider {code} dataset list FAILED: {e}")
-            continue
-
-        # Try every dataset actually listed under this provider (not guessed
-        # codes) — round 1 found the real dataset list includes "GEM" and
-        # "commodity_prices" ("Commodity Prices: History and Projections"),
-        # neither of which matches the guessed GEM-COMMODITY/PINK/CMO codes.
-        try:
-            r = _get(f"https://api.db.nomics.world/v22/datasets/{code}")
-            ds_codes = [d.get("code") for d in
-                        r.json().get("datasets", {}).get("docs", [])]
-        except Exception as e:  # noqa: BLE001
-            print(f"    (re-)listing datasets FAILED: {e}; falling back to guesses")
-            ds_codes = ["GEM", "commodity_prices"]
-
-        for ds in ds_codes:
-            for q in ("gold", None):
-                try:
-                    params = {"limit": "1000", "observations": "1"}
-                    if q:
-                        params["q"] = q
-                    r = _get(f"https://api.db.nomics.world/v22/series/{code}/{ds}",
-                             params=params)
-                    js = r.json()
-                    docs = js.get("series", {}).get("docs", [])
-                    print(f"    {code}/{ds} q={q} -> {len(docs)} series")
-                    gold_docs = [d for d in docs
-                                 if "gold" in str(d.get("series_name", "")).lower()
-                                 or "gold" in str(d.get("series_code", "")).lower()]
-                    for d in gold_docs[:8]:
-                        periods = d.get("period", [])
-                        values = d.get("value", [])
-                        print(f"      {d.get('series_code')} ({d.get('series_name')}): "
-                              f"{len(periods)} obs, latest {periods[-1] if periods else None} = "
-                              f"{values[-1] if values else None}")
-                    if q is None and not gold_docs and docs:
-                        names = [(d.get("series_code"), d.get("series_name"))
-                                 for d in docs][:20]
-                        print(f"      no gold match; sample series in {ds}: {names}")
-                    if docs:
-                        break  # q=gold worked, no need for the unfiltered dump
-                except Exception as e:  # noqa: BLE001
-                    print(f"    {code}/{ds} q={q} FAILED: {e}")
+            print(f"  WB/{ds} q=gold FAILED: {e}")
 
 
 # --- 2. Stooq daily CSV for XAUUSD ------------------------------------------
