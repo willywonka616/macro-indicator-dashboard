@@ -236,8 +236,8 @@ def verify() -> bool:
     """Dump both endpoints' schema + latest values, and try the computation.
     Non-fatal: always returns True (a source hiccup must not red the run —
     the build falls back to the manual value)."""
-    print("\nVerifying gold sources (Treasury holdings + DBnomics LBMA price; "
-          "non-fatal — manual fallback on failure)\n")
+    print("\nVerifying gold sources (Treasury holdings + DBnomics-mirrored "
+          "IMF PCPS price; non-fatal — manual fallback on failure)\n")
     try:
         rows = _treasury_gold_rows()
         s = rows[0]
