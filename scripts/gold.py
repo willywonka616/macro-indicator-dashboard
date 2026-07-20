@@ -54,6 +54,8 @@ from collections import defaultdict
 
 import requests
 
+import series as S
+
 TREASURY_BASE = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service"
 GOLD_ENDPOINT = "/v2/accounting/od/gold_reserve"
 
@@ -256,6 +258,9 @@ def verify() -> bool:
         print(f"  latest {latest} rows:")
         for r in [r for r in rows if r["record_date"] == latest][:10]:
             print(f"    {r}")
+        f = S.freshness("gold holdings (Treasury oz)", latest, S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
+        fresh_s = "STALE" if f["stale"] else "ok"
+        print(f"  freshness: {f['age_days']}d old, {f['max_age_days']}d threshold, {fresh_s}")
     except Exception as e:  # noqa: BLE001
         print(f"[gold-holdings] FAILED: {e}")
 
@@ -271,6 +276,12 @@ def verify() -> bool:
             print(f"  selected series_code: {d.get('series_code')}")
             print(f"  {len(periods)} observations; latest: {periods[-1] if periods else None} = "
                   f"{values[-1] if values else None} USD/oz")
+            if periods:
+                max_days = S.FRESHNESS_DAYS_BY_FREQ["Monthly"]
+                f = S.freshness("gold price (DBnomics PCPS)", periods[-1], max_days)
+                fresh_s = "STALE" if f["stale"] else "ok"
+                print(f"  freshness: {f['age_days']}d old, {max_days}d threshold, {fresh_s} "
+                      f"{'— this is the frozen series, see STATUS.md §16' if f['stale'] else ''}")
         else:
             print("  no series returned")
     except Exception as e:  # noqa: BLE001

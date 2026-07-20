@@ -75,6 +75,8 @@ from collections import defaultdict
 
 import requests
 
+import series as S
+
 BASE = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service"
 
 # Gross interest on the public debt (marketable + government account series).
@@ -632,20 +634,27 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
         for label, fields in probe.items():
             print(f"    {label}: {fields}")
 
+    max_days = S.FRESHNESS_DAYS_BY_FREQ["Monthly"]
     try:
         r = debt_service_ratio()
+        f = S.freshness("net debt-service ratio", r["asOf"], max_days)
+        fresh_s = "STALE" if f["stale"] else "ok"
         print(f"\n  LIVE headline debt-service ratio (net interest to the public / "
               f"total receipts, net of refunds): {r['latest']}% as of {r['asOf']} "
-              f"({len(r['history'])} history pts)")
+              f"({len(r['history'])} history pts) — freshness: {f['age_days']}d old, "
+              f"{max_days}d threshold, {fresh_s}")
     except Exception as e:  # noqa: BLE001
         ok = False
         print(f"\n  headline ratio computation FAILED: {e}")
 
     try:
         rg = gross_debt_service_ratio()
+        f = S.freshness("gross debt-service ratio", rg["asOf"], max_days)
+        fresh_s = "STALE" if f["stale"] else "ok"
         print(f"  LIVE second-row debt-service ratio (gross interest incl. GAS / "
               f"total receipts, net of refunds): {rg['latest']}% as of {rg['asOf']} "
-              f"({len(rg['history'])} history pts)")
+              f"({len(rg['history'])} history pts) — freshness: {f['age_days']}d old, "
+              f"{max_days}d threshold, {fresh_s}")
     except Exception as e:  # noqa: BLE001
         ok = False
         print(f"  gross-row ratio computation FAILED: {e}")

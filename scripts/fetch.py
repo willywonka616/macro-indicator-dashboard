@@ -110,10 +110,12 @@ def search_suggestions(text: str, n: int = 3):
 
 def verify() -> int:
     print(f"Verifying {len(S.FRED_SERIES)} FRED series against the live API\n")
-    header = f"{'ID':<18} {'OK':<3} {'FREQ':<10} {'UNITS':<28} {'START':<12} TITLE"
+    header = (f"{'ID':<18} {'OK':<3} {'FREQ':<10} {'UNITS':<28} {'START':<12} "
+              f"{'LATEST OBS':<12} {'AGE':>6} {'MAX':>6} {'FRESH':<7} TITLE")
     print(header)
     print("-" * len(header))
     failures = []
+    stale = []
     for sid, expect in S.FRED_SERIES.items():
         try:
             m = series_meta(sid)
@@ -121,7 +123,16 @@ def verify() -> int:
             units = (m.get("units", "") or "")[:27]
             start = m.get("observation_start", "")
             title = (m.get("title", "") or "")[:40]
-            print(f"{sid:<18} {'yes':<3} {freq:<10} {units:<28} {start:<12} {title}")
+            end = m.get("observation_end", "")
+            freq_name = expect["freq"]
+            max_days = S.FRESHNESS_DAYS_BY_FREQ.get(freq_name, 60)
+            f = S.freshness(sid, end, max_days) if end else None
+            age_s = f"{f['age_days']}d" if f else "?"
+            fresh_s = ("STALE" if f["stale"] else "ok") if f else "?"
+            print(f"{sid:<18} {'yes':<3} {freq:<10} {units:<28} {start:<12} "
+                  f"{end:<12} {age_s:>6} {max_days:>5}d {fresh_s:<7} {title}")
+            if f and f["stale"]:
+                stale.append((sid, f))
         except Exception as e:
             failures.append((sid, expect, str(e)))
             print(f"{sid:<18} {'NO':<3} -- FAILED: {e}")
@@ -137,6 +148,13 @@ def verify() -> int:
         print("\nFix the IDs in scripts/series.py, then re-run --verify.")
     else:
         print("\nAll FRED series resolved. Review units/frequency above.")
+
+    if stale:
+        print(f"\n{len(stale)} FRED series FAILED the freshness guard (would fail a real "
+              f"build, not just --verify):")
+        for sid, f in stale:
+            print(f"  {sid}: latest obs {f['period']}, {f['age_days']}d old, "
+                  f"exceeds {f['max_age_days']}d threshold")
 
     # Treasury Fiscal Data (no key) — dumps real schema + the computed ratio,
     # plus the debt-service calibration matrix (see debt_service_matrix).
@@ -258,6 +276,12 @@ def build_us(manual: dict, force: bool) -> dict:
     for sid in need:
         units, obs = series_obs(sid)  # raises loudly on empty/404
         raw[sid] = (units, obs)
+        # Freshness guard (TASKgoldpricefreshness.md): a dead source can
+        # still return a plausible in-band NUMBER — this checks the DATE,
+        # so a frozen series fails loudly here instead of silently shipping
+        # as "live" (see S.require_fresh's docstring and STATUS.md).
+        max_days = S.FRESHNESS_DAYS_BY_FREQ.get(S.FRED_SERIES[sid]["freq"], 60)
+        S.require_fresh(sid, obs[-1][0], max_days)
 
     # --- live + derived metrics ---
     du, dobs = raw["FYGFGDQ188S"]
@@ -287,6 +311,7 @@ def build_us(manual: dict, force: bool) -> dict:
             "outside the sane 10-40% band — likely a wrong field/column mapping. "
             "Check the Treasury schema dumped by --verify before trusting it."
         )
+    S.require_fresh("Treasury net debt-service ratio", service["asOf"], S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
     gross_service = T.gross_debt_service_ratio()
     if not (15.0 <= gross_service["latest"] <= 50.0):
         raise RuntimeError(
@@ -294,6 +319,7 @@ def build_us(manual: dict, force: bool) -> dict:
             "outside the sane 15-50% band — likely a wrong field/column mapping. "
             "Check the Treasury schema dumped by --verify before trusting it."
         )
+    S.require_fresh("Treasury gross debt-service ratio", gross_service["asOf"], S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
     reserves = S.reserves_pct_gdp(raw["TRESEGUSM052N"][1], raw["TRESEGUSM052N"][0],
                                   raw["GDP"][1], raw["GDP"][0])
 
@@ -314,6 +340,14 @@ def build_us(manual: dict, force: bool) -> dict:
         gold_price_monthly = G.gold_price_usd_per_oz()
         oz_asof = max(gold_oz_monthly)
         price_asof = max(gold_price_monthly)
+        # Freshness guard: gold oz (Treasury) is normally current; gold
+        # price (DBnomics-mirrored IMF PCPS) has been frozen since 2025-06
+        # (STATUS.md §14.3/§16) — this is the mechanism that now correctly
+        # refuses to ship that stale price as "live" rather than relying on
+        # the staleness `note` alone. Raising here is caught below, same as
+        # any other gold-fetch failure, and falls back to the manual value.
+        S.require_fresh("gold holdings (Treasury oz)", oz_asof, S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
+        S.require_fresh("gold price (DBnomics PCPS)", price_asof, S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
         gold_value_monthly = {k: gold_oz_monthly[k] * gold_price_monthly[k]
                                for k in gold_oz_monthly.keys() & gold_price_monthly.keys()}
         if not gold_value_monthly:
@@ -346,6 +380,7 @@ def build_us(manual: dict, force: bool) -> dict:
         reserves_incl_gold_tag = "manual"
         gf = mu["reservesInclGoldFallback"]
         reserves_incl_gold = {"latest": gf["value"], "asOf": mu.get("lastChecked"), "history": []}
+        gold_stale_note = gf.get("note")
 
     total_debt = S.total_debt_pct_gdp(raw["TCMDO"][1], raw["TCMDO"][0],
                                       raw["GDP"][1], raw["GDP"][0])
@@ -479,6 +514,7 @@ def build_us(manual: dict, force: bool) -> dict:
     # World CB reserves in USD: live from IMF COFER, else fall back to manual.
     try:
         cofer = I.cofer_usd_share()
+        S.require_fresh("IMF COFER USD share", cofer["asOf"], S.COFER_FRESH_DAYS)
         cb_reserves_row = {
             "label": "World CB reserves in USD", "value": num(cofer["latest"]),
             "display": pct_display(cofer["latest"], 1), "unit": "", "tone": "mitig",

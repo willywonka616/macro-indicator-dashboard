@@ -17,6 +17,8 @@ scale each series happens to use.
 
 from __future__ import annotations
 
+import datetime as _dt
+
 # --- registry ------------------------------------------------------------
 
 # FRED series actively used by the fetcher. --verify checks each one every run.
@@ -85,6 +87,82 @@ def q_decimal(qkey) -> float:
 def q_label(qkey) -> str:
     y, q = qkey
     return f"{y}-Q{q}"
+
+
+# --- freshness guard -------------------------------------------------------
+
+# A dead/frozen source still returns a plausible NUMBER — the sanity bands
+# elsewhere in this pipeline check magnitude, not date, so a stale-but-in-band
+# value (like the gold price stuck at 2025-06 for a year+) sails through
+# every other guard silently. This checks dates instead. Thresholds are set
+# per cadence with real headroom above the source's normal publication lag
+# (so a routine delay never trips it) but well short of "the source died
+# months ago" (so that DOES trip it). See TASKgoldpricefreshness.md.
+FRESHNESS_DAYS_BY_FREQ = {
+    "Daily": 20,      # FRED daily series (DGS10): a few business days' lag is normal
+    "Monthly": 60,     # a monthly series is normally current within 30-45 days
+    "Quarterly": 150,  # ~5 months — covers normal release lag with headroom
+    "Annual": 400,
+}
+
+# IMF COFER publishes quarterly but is documented as running "a quarter or
+# two" behind even when healthy (imf.py's own docstring) — a longer
+# legitimate lag than the generic Quarterly threshold above allows for, so
+# it gets its own explicit threshold rather than being exempted outright
+# (TASKgoldpricefreshness.md: "set the threshold to match" the known lag,
+# don't just skip the check).
+COFER_FRESH_DAYS = 270
+
+
+def _period_to_date(period) -> _dt.date:
+    """Normalise any of this pipeline's 'asOf'/period representations to a
+    date, for freshness comparisons: a real date, a (year, month) tuple, or
+    a string — 'YYYY-MM', 'YYYY-Qn', or 'YYYY'."""
+    if isinstance(period, _dt.date):
+        return period
+    if isinstance(period, tuple) and len(period) == 2:
+        y, m = period
+        return _dt.date(y, m, 1)
+    s = str(period)
+    if "-Q" in s:
+        y, q = s.split("-Q")
+        return _dt.date(int(y), (int(q) - 1) * 3 + 1, 1)
+    if len(s) == 7 and s[4] == "-":
+        y, m = s.split("-")
+        return _dt.date(int(y), int(m), 1)
+    if len(s) == 4 and s.isdigit():
+        return _dt.date(int(s), 1, 1)
+    return _dt.date.fromisoformat(s)
+
+
+def freshness(label: str, period, max_age_days: int, today: _dt.date | None = None) -> dict:
+    """{"label", "period", "date", "age_days", "max_age_days", "stale"} —
+    used both to print an at-a-glance freshness line in --verify and to
+    decide whether to raise via require_fresh below."""
+    today = today or _dt.date.today()
+    d = _period_to_date(period)
+    age = (today - d).days
+    return {"label": label, "period": str(period), "date": d, "age_days": age,
+            "max_age_days": max_age_days, "stale": age > max_age_days}
+
+
+def require_fresh(label: str, period, max_age_days: int, today: _dt.date | None = None) -> dict:
+    """Raises if `period` is older than `max_age_days` — a dead/frozen
+    source, not just a normally-lagged one. Callers that already have a
+    manual-value fallback (gold price, COFER) catch this the same way they
+    catch any other fetch failure; callers with no fallback (the core FRED
+    series, Treasury debt-service) let it propagate and fail the run loudly,
+    per this project's fail-loudly convention (exit non-zero, no partial
+    write — see fetch.py's atomic_write)."""
+    f = freshness(label, period, max_age_days, today)
+    if f["stale"]:
+        raise RuntimeError(
+            f"freshness guard: {label} latest observation is {f['period']} "
+            f"({f['age_days']}d old, today {today or _dt.date.today()}) — exceeds "
+            f"the {max_age_days}d threshold for this series' cadence. The source "
+            f"is likely dead or frozen, not just running a normal lag."
+        )
+    return f
 
 
 def as_quarterly(obs):
