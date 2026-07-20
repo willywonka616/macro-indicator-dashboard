@@ -12,6 +12,7 @@ on:
     branches: [claude/new-session-ldotj8]
     paths:
       - "scripts/remaining_issues_check.py"
+      - "scripts/gold_imf_direct_check.py"
       - ".github/workflows/remaining-issues-check.yml"
 
 permissions:
@@ -35,3 +36,7 @@ jobs:
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: python remaining_issues_check.py
+
+      - name: Run gold IMF-direct follow-up check
+        working-directory: scripts
+        run: python gold_imf_direct_check.py
