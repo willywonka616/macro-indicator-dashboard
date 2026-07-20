@@ -60,26 +60,35 @@ def main():
                               for k in gold_oz.keys() & price_monthly.keys()}
     baseline = compute(shipped_value_monthly, f"shipped, {price_asof[0]}-{price_asof[1]:02d} price")
 
-    print("\n=== Counterfactual: current market price substituted at the same "
-          f"gold-oz month ({oz_asof[0]}-{oz_asof[1]:02d}) ===")
+    # Substitute at price_asof, not oz_asof: price_monthly has no entry past
+    # 2025-06, so that's the only month the intersection (and hence the
+    # baseline's own "latest") can land on, even though oz data runs to
+    # 2026-06 (a live-confirmed 12-month gap, matching STATUS.md's shipped
+    # staleness note). Holding the oz figure and GDP quarter fixed at the
+    # same month isolates exactly the effect of correcting the stale price.
+    print(f"\n=== Counterfactual: current market price substituted at the same "
+          f"month the baseline actually uses ({price_asof[0]}-{price_asof[1]:02d}) ===")
     counterfactual_monthly = dict(shipped_value_monthly)
-    counterfactual_monthly[oz_asof] = gold_oz[oz_asof] * CURRENT_MARKET_PRICE_USD_PER_OZ
+    counterfactual_monthly[price_asof] = gold_oz[price_asof] * CURRENT_MARKET_PRICE_USD_PER_OZ
     corrected = compute(counterfactual_monthly,
                          f"${CURRENT_MARKET_PRICE_USD_PER_OZ:,.0f}/oz market estimate")
 
     print("\n=== For context only: at the ~Jan-2026 peak price ===")
     peak_monthly = dict(shipped_value_monthly)
-    peak_monthly[oz_asof] = gold_oz[oz_asof] * PEAK_PRICE_USD_PER_OZ
+    peak_monthly[price_asof] = gold_oz[price_asof] * PEAK_PRICE_USD_PER_OZ
     compute(peak_monthly, f"${PEAK_PRICE_USD_PER_OZ:,.0f}/oz peak estimate")
 
     gap = corrected["latest"] - baseline["latest"]
-    gold_value_gap_usd = (counterfactual_monthly[oz_asof] - shipped_value_monthly[oz_asof])
+    gold_value_gap_usd = (counterfactual_monthly[price_asof] - shipped_value_monthly[price_asof])
     print(f"\nGap: shipped ({baseline['latest']}%) vs current-market-corrected "
           f"({corrected['latest']}%) = {gap:+.1f} points of GDP")
     print(f"Underlying gold market-value gap at the same oz holdings: "
           f"${gold_value_gap_usd/1e9:,.1f}B "
           f"(${shipped_price:,.2f}/oz -> ${CURRENT_MARKET_PRICE_USD_PER_OZ:,.0f}/oz, "
-          f"same {gold_oz[oz_asof]:,.0f} oz)")
+          f"same {gold_oz[price_asof]:,.0f} oz)")
+    print(f"\n(For context: gold-oz data itself is current through "
+          f"{oz_asof[0]}-{oz_asof[1]:02d}, {gold_oz[oz_asof]:,.0f} oz — the "
+          f"price series is the only stale leg.)")
 
 
 if __name__ == "__main__":
