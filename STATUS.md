@@ -6,20 +6,22 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-20c-verification.md` (gold alt-source probes: World
-> Bank Pink Sheet via DBnomics, Stooq XAUUSD, and a live-computed magnitude
-> of the current gold-staleness error — run output; no companion
-> `-values.md`, no shipped code/data changed this round), base commit
-> `bf0ec51`. For headline values, `docs/review/2026-07-20a-values.md` is
-> still current (base commit `9bace30`). Each review pass gets its own new
-> file under `docs/review/` instead of rewriting `docs/verification-log.md`
-> / `docs/current-values.md` in place — a reviewer's fetch tool caches by
-> URL and can't see edits to an already-fetched path, so an old path that
-> keeps getting rewritten is invisible on a repeat check. Those two old
-> paths hold short tombstone stubs pointing here; do not resurrect the
-> regenerate-in-place pattern. Prior rounds: `docs/review/2026-07-19c-*.md`,
-> `docs/review/2026-07-19d-*.md`, `docs/review/2026-07-20a-*.md`,
-> `docs/review/2026-07-20b-*.md` (superseded, left in place). When you add
+> `docs/review/2026-07-20d-verification.md` (run output) and
+> `docs/review/2026-07-20d-values.md` (headline values), base commit
+> `a93e485` — the freshness-guard pass: gold-source search (all 5 tried,
+> none usable), the freshness guard itself, and the live production run
+> where it correctly demoted both the frozen gold price AND a
+> newly-discovered frozen IMF COFER to manual. `reserves_to_gdp` and
+> `World CB reserves in USD` are both `manual` as of this round (see §17).
+> Each review pass gets its own new file under `docs/review/` instead of
+> rewriting `docs/verification-log.md` / `docs/current-values.md` in
+> place — a reviewer's fetch tool caches by URL and can't see edits to an
+> already-fetched path, so an old path that keeps getting rewritten is
+> invisible on a repeat check. Those two old paths hold short tombstone
+> stubs pointing here; do not resurrect the regenerate-in-place pattern.
+> Prior rounds: `docs/review/2026-07-19c-*.md`, `docs/review/2026-07-19d-*.md`,
+> `docs/review/2026-07-20a-*.md`, `docs/review/2026-07-20b-*.md`,
+> `docs/review/2026-07-20c-*.md` (superseded, left in place). When you add
 > a new round, update this line to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
@@ -130,6 +132,28 @@ mixing a manually-sourced price estimate into a row the UI presents as
 live — documented here instead. See §16 for the full writeup and
 `docs/review/2026-07-20c-verification.md` for the run output (no shipped
 code or data changed this pass).
+
+**Later the same day, an eighth pass (§17): tried five named gold sources
+(FRED, World Bank, Bundesbank, Nasdaq Data Link, Stooq) in order — all
+five fail, for five different, evidenced reasons — then added the more
+valuable half of the task: a freshness guard that checks every fetched
+series' DATE, not just its magnitude.** First live run immediately caught
+a *second* frozen source nobody had found: IMF COFER has been stuck at
+2025-Q1 for 565 days, meaning `World CB reserves in USD` — previously
+logged in §9 as "live, matches closely, independently computed" — had
+also been silently stale the whole time. Calibrated the thresholds against
+real observed lag (FRED's quarterly series are dated to period-*start*,
+so ~200 days old is normal, not stale; fixed two false positives without
+weakening the real catches). Ran the actual `update-data.yml` end to end:
+both frozen sources (gold price, COFER) now correctly fall back to
+`manual` instead of shipping as falsely `live` — `reserves_to_gdp` is now
+3.0% (manual, was 3.7% live) and `World CB reserves in USD` is 57.0%
+(manual, was 57.7% live), committed as `a93e485`. Also fixed a real,
+unrelated gap: `manual.json`'s fallback `note` field existed but was
+never actually surfaced on the row — it is now. §9's table updated to
+mark both rows `manual` with an explanation. See §17 for the full writeup
+and `docs/review/2026-07-20d-*.md` for the run output and headline
+values.
 
 ---
 
@@ -706,25 +730,30 @@ gap had gone unnoticed because it was never added to this table.
 | Debt, 10-yr projection / GDP | 122% | 122% | **manual**, carried from `data/manual.json` (CBO) | Trivial — same figure, not independently derived |
 | Held by CB / domestic / abroad | 13% / 57% / 29% | 13% / 57% / 29% | **manual**, carried from `data/manual.json` (TIC) | Trivial — same figures, not independently derived |
 | Debt service / revenue | 22% (Ch.17 table); **~20% (Ch.3 prose, "the US is also borrowing ~20% of its income each year to cover interest expenses")** | 19.6% (net-to-public / **total** receipts, net of refunds) | live, `scripts/treasury.py` | **Matches the Ch.3 figure** (−0.4pt) — **does not match Ch.17's 22%** (−2.4pt). The book gives two figures for this ratio, ~2pt apart, in the same March-2025 vintage; exact reproduction of both is impossible. This pipeline reproduces the one computed on the standard (net-to-public / total, net-of-refunds) definition — see §14.1 for the recomputed matrix confirming no realised basis reproduces 22% |
-| FX reserves / GDP | 3% | 3.7% (excl.-gold FX + gold at market) | live, `scripts/gold.py` + FRED | Close but not exact — residual ~0.7pt, attributed partly to the gold-price staleness (§3/§7) |
+| FX reserves / GDP | 3% | 3.0% (excl.-gold FX + gold at market) | **manual** as of 2026-07-20 (was live at 3.7%) | **No longer a genuine check** — the freshness guard added in §17 correctly caught the gold price frozen at 2025-06 (414 days stale) and fell back to the manual value, which was itself hand-set to match Dalio's figure. The prior "close but not exact" 3.7% *was* a live, independent number, just built on a price now known to be dead; see §17 for why this is the correct behaviour (ship known-good, not silently-stale) rather than a regression |
 | Total debt (Dalio's "other debt") / GDP | 340% | 362.6% (TCMDO, all sectors incl. financial) | live, `FRED: TCMDO` | **Does not match** — +22.6pt gap. Two alternative readings tried and **both eliminated**: nonfinancial-sectors-only (TCMDODNS, 256.7%, −83pt) and non-government debt (TCMDO minus government's own ~99%, 263.9%, −76pt) — both further from 340% than TCMDO itself. See §14.4 |
 | Current account, 3-yr avg / GDP | −4% | −3.7% | live, `IEABC` (FRED) | Matches closely |
 | World trade in USD | 52.6% | 52.6% | **manual**, carried from `data/manual.json` | Trivial — same figure |
 | World debt in USD | 80.7% | 80.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
 | Global equity market cap in USD | 65.7% | 65.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
-| World CB reserves in USD | 57.0% | 57.7% | live, IMF COFER via DBnomics | Matches closely — independently computed, not carried |
+| World CB reserves in USD | 57.0% | 57.0% | **manual** as of 2026-07-20 (was live at 57.7%) | **No longer a genuine check either** — same freshness guard, same reason: IMF COFER has been frozen at 2025-Q1 (565 days stale) this whole time, discovered only because §17 checked dates, not just magnitude. Falls back to the manual figure, which was transcribed from this same book — trivially matches now, same caveat as the rows above it |
 | Debt / revenue | ~580% (Mar 2025, stated) | 576% (2026-Q1, shipped); **580% at 2025-Q1 (Mar-2025, his own vintage)** | live, derived (§3, §12, §13) | **Matches almost exactly at his vintage** — see §13: switching to TOTAL receipts, net of refunds (the corrected, shipped basis) puts debt/revenue at $28.93T / $4.99T TTM = 580% for 2025-Q1, essentially identical to his stated figure. Strongest confirmation yet that TOTAL, net-of-refunds receipts is his denominator |
 | Debt / revenue, 10-yr projection | ~700% (his stated forward projection) | *(not yet checkable)* | *n/a* | **Forward anchor, recorded not verified** — this pipeline has no 10-year debt/revenue projection to compare (only Dalio's own manual `cboProjection` figure exists, and that's for debt/GDP, not debt/revenue). Noted here so the anchor isn't lost, not claimed as checked |
 
-**Read the "Basis" column before trusting a "match."** Six of the twelve
-rows are `manual` — hand-carried from `data/manual.json`, which in most
-cases was originally *transcribed from this same book*. Those matching is
-not a validation of anything; it would be surprising if they didn't match.
-The rows worth trusting as genuine checks are the `live` ones — five
-numbers this pipeline actually derived from FRED/Treasury/DBnomics without
-looking at Dalio's figure first, three of which land close (debt/GDP,
-current account, COFER share) and two of which don't fully reconcile
-(debt service, reserves) despite real investigation.
+**Read the "Basis" column before trusting a "match."** As of this pass
+(§17, 2026-07-20), **eight** of the twelve rows are `manual` — hand-carried
+from `data/manual.json`, which in most cases was originally *transcribed
+from this same book*. Those matching is not a validation of anything; it
+would be surprising if they didn't match. Two of those eight (reserves,
+COFER share) were `live` as recently as §16 — they moved to `manual` this
+pass not because anything about them was rolled back, but because a new
+freshness guard (§17) correctly caught both sources frozen for well over a
+year and refused to keep shipping them as "live." The rows still worth
+trusting as genuine checks are the three remaining `live` ones — debt/GDP,
+debt service, and current account — of which one lands close (debt/GDP),
+one is close on one of the book's own two stated figures but not the other
+(debt service — see the row above), and current account matches closely
+too.
 
 **Three rows needed more than a bug fix — a definitional decision or a new
 data source:**
@@ -743,7 +772,20 @@ data source:**
   closeness-to-22% stopped being a live consideration). See §13.
 - **Reserves**: no amount of debugging FRED's `TRESEGUSM052N` alone could
   close this gap — the series structurally excludes gold. Required a new
-  data source (Treasury gold holdings × a live gold price).
+  data source (Treasury gold holdings × a live gold price). **Update,
+  2026-07-20 (§17):** that live gold price has been frozen at 2025-06 for
+  over a year — a fact the pipeline had no way to know until this pass
+  added a freshness guard, since a stale-but-plausible number passes every
+  other check silently. The row now ships `manual` (3.0%, exactly Dalio's
+  figure by construction) rather than a live number built on dead data.
+  **When a working live gold-price source is eventually found**, expect
+  this row to move to a different value than 3.0% or the old 3.7% — gold
+  has run from ~$3,352/oz (the frozen price) through a ~$5,595 Jan-2026
+  peak to ~$4,000/oz today (§16), so a genuinely current price will price
+  US gold holdings well above either figure, widening the gap from Dalio's
+  3% rather than closing it. **That would be correct behaviour, not a
+  regression** — his 3% reflects gold priced as of his March-2025 vintage;
+  a live figure reflects whatever day the pipeline last ran.
 - **Total debt**: investigated but **not resolved**. TCMDO (all sectors) at
   362.6% is the closest of three tried readings, still 22.6pts over Dalio's
   340%. Two alternative hypotheses tested and **both eliminated**:
@@ -1929,6 +1971,163 @@ to update.
 | Stooq is not usable as a plain-HTTP keyless CI source, as currently protected | **VERIFIED (negative)** — confirmed live, not inferred from a timeout |
 | The shipped `reserves_incl_gold` row currently reads ~0.5pt of GDP low vs. a $4,000/oz current-market estimate | **VERIFIED** — live computation via the real pipeline functions and real FRED/Treasury data |
 | No gold source switched; staleness note kept as-is | **VERIFIED** — no working alternative found |
+
+---
+
+## 17. Gold price fix attempt + a freshness guard for every series (2026-07-20, eighth pass)
+
+Per `TASKgoldpricefreshness.md`: two parts. First, try five named keyless
+gold-price sources in order and stop at the first current one, or record
+all five as tried-and-failed. Second — "the more valuable half" — add a
+freshness guard so a frozen source can never again pass silently, the way
+the 2025-06 gold price and (newly discovered this pass) IMF COFER both
+did. Full run output: `docs/review/2026-07-20d-verification.md`.
+
+### 17.1 All five candidate gold sources tried, in the specified order — none usable
+
+1. **FRED**, tried first as instructed
+   (`series/search?search_text=gold price`, plus `LBMA gold`/`gold
+   fixing`/`gold spot`): zero genuine spot/fixing series. The two old LBMA
+   fixings, `GOLDAMGBD228NLBM`/`GOLDPMGBD228NLBM`, now return a hard `400`
+   — not "discontinued with history," the IDs are gone outright, settling
+   the "believed discontinued" question the task flagged as unverified.
+   The only current, on-cadence hits among 30 search results are a
+   volatility index (`GVZCLS`) and PPI/import/export price *indices*
+   (base-year, e.g. `IQ12260`) — none a $/oz spot price.
+2. **World Bank Pink Sheet via DBnomics** (provider `WB`): the real
+   dataset (`commodity_prices`) exists with a gold series (`FGOLD-1W`),
+   but it's annual and its "latest" point is **2030** — a *projected*
+   out-year, not an observation (§16.1, prior pass).
+3. **Bundesbank**, both directly (three guessed series keys against
+   `api.statistiken.bundesbank.de` — all 404) and via DBnomics (provider
+   `BUBA`, full 50-dataset catalog dump plus server-side `q=gold`/`q=XAU`
+   search): found the real series (`BBEX3`, D-Mark/Frankfurt fixing) —
+   but it stops at **end-1998**, pre-euro, permanently discontinued, not
+   a stale-but-alive feed.
+4. **Nasdaq Data Link** (ex-Quandl), LBMA/GOLD, no-key attempt: blocked
+   by an Incapsula anti-bot WAF (`403`, JS challenge page) on both the
+   CSV and JSON endpoints. Would need a paid API key (a new GitHub
+   secret) to test properly — not added without that being explicitly
+   requested.
+5. **Stooq** daily XAUUSD CSV, no key (§16.1, prior pass): blocked by a
+   client-side SHA-256 proof-of-work anti-bot challenge, not a real
+   URL/header problem.
+
+**All five tried, all five fail** — acceptance criterion 1's second
+branch. No source switch. DBnomics-mirrored IMF PCPS remains primary,
+`data/manual.json`'s fallback remains the fallback, unchanged. Full
+findings recorded in `scripts/gold.py`'s module docstring as well as here.
+
+### 17.2 The freshness guard: what it's for, and what it immediately caught
+
+The stale gold price survived every review round this project has done
+because **the existing sanity bands check magnitude, not date** — a dead
+source returning a plausible in-band number looks completely healthy.
+Added `series.freshness()`/`series.require_fresh()`: every fetched series'
+latest observation date is compared against a per-cadence threshold
+(`FRESHNESS_DAYS_BY_FREQ`: Daily 20d, Monthly 60d, Quarterly 220d), with
+explicit overrides where a longer lag is genuinely normal rather than
+exempting the series outright, per the task's own instruction:
+- **COFER**: 270d (documented as running "a quarter or two" behind even healthy).
+- **TRESEGUSM052N** (Total Reserves excl. Gold, IMF/BOP-sourced): 180d.
+
+Series with an existing manual-value fallback (gold price, COFER) raise
+inside the same `try`/`except` that already handles fetch failures, so a
+frozen source now degrades to manual instead of shipping as falsely
+"live." Series with no fallback (the 7 core FRED series, both Treasury
+debt-service ratios) raise uncaught, failing the whole run loudly — same
+convention as every other guard in this pipeline (exit non-zero, no
+partial write).
+
+**First live run immediately caught a second frozen source nobody had
+found:** IMF COFER has been stuck at **2025-Q1 for 565 days** — past even
+the generous 270d COFER-specific threshold by a wide margin. This is
+exactly the failure mode the task predicted ("there may be more than one
+frozen series") and exactly why this half of the task is the more
+valuable one: the gold price was already known-suspect from earlier
+rounds; COFER was not on anyone's radar until the guard checked its date
+instead of just its magnitude. The `World CB reserves in USD` row —
+previously reported as "live, independently computed, matches closely" in
+§9's own table — has therefore *also* been silently stale this whole time.
+
+**Two false positives found and fixed during calibration, not shipped:**
+- FRED dates quarterly macro series (`GDP`, `FYGFGDQ188S`, `TCMDO`,
+  `IEABC`) to the **start** of the quarter, not the release date. Right
+  before the next quarter's print, a perfectly healthy series is
+  legitimately ~200 days past its own date-stamp (observed live:
+  `2026-01-01`, 200d old, still the genuinely latest point). The initial
+  150d Quarterly threshold flagged this as stale; raised to 220d.
+- `TRESEGUSM052N` observed at 141d old, still genuinely current (IMF/BOP
+  reserves data runs a real, longer lag than domestic monthly series even
+  when healthy) — the initial generic 60d Monthly threshold was too tight
+  for this specific series; given its own 180d override.
+
+Both fixes are recalibration, not weakening: gold price (414d) and COFER
+(565d) still fail decisively at every threshold considered.
+
+**A real, unrelated gap found and fixed in the process:** `data/manual.json`'s
+`reservesInclGoldFallback.note` field existed but was never actually
+attached to the shipped row — `fetch.py` built the manual fallback dict
+without carrying it through. Now fixed; the fallback's own explanatory
+note (*"Fallback only, used if the live Treasury gold-holdings or
+DBnomics gold-price fetch fails..."*) renders on the row whenever the
+fallback is actually in use, which — as of this run — it is.
+
+**`--verify` output** (fetch.py, treasury.py, imf.py, gold.py) now prints
+every series' latest observation date, age, threshold, and ok/STALE
+status, per acceptance criterion 4.
+
+### 17.3 Full production run: both stale sources correctly degraded to manual
+
+Ran the real `update-data.yml` (`workflow_dispatch`, not just `--verify`)
+end to end with all of the above live. Run
+`https://github.com/willywonka616/macro-indicator-dashboard/actions/runs/29756605271`,
+committed as `a93e485`:
+
+```
+Gold-inclusive reserves unavailable, using manual value: freshness guard:
+  gold price (DBnomics PCPS) latest observation is (2025, 6) (414d old,
+  today 2026-07-20) — exceeds the 60d threshold for this series' cadence.
+IMF COFER unavailable, using manual value: freshness guard: IMF COFER
+  USD share latest observation is 2025-Q1 (565d old, today 2026-07-20) —
+  exceeds the 270d threshold for this series' cadence.
+Wrote public/data.json — generatedAt 2026-07-20T15:47:15Z
+  debt_to_gdp                     99%  (2026-Q1, 225 pts)
+  debt_service_to_revenue         20%  (2026-06, 42 pts)
+  real_rates                     0.6%  (2026-Q2, 258 pts)
+```
+
+`reserves_to_gdp` no longer appears in that "live" summary because it
+correctly flipped to `tag: "manual"` — **the new `reserves_to_gdp` is
+3.0% of GDP** (was 3.7%, live), and **no gold price was used this run** —
+the guard rejected the frozen 2025-06 quote during the fallback decision
+itself, which is the intended, correct behaviour per the task's own
+fallback-chain instruction ("a future outage degrades rather than
+breaks"), not a bug. `World CB reserves in USD` similarly flipped to
+`manual`, 57.0% (was 57.7%, live). All other live rows (`debt_to_gdp`,
+`debt_service_to_revenue`, `real_rates`, `FX reserves excl. gold`, both
+debt-service panel rows) are unaffected — their own freshness checks all
+passed. §9's table above is updated to reflect both rows' new `manual`
+status and why.
+
+**Claim status: VERIFIED** — live `workflow_dispatch` run, not a mock;
+`public/data.json` at commit `a93e485` reflects exactly this.
+
+### 17.4 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| FRED has no current gold spot/fixing series (search + explicit ID checks) | **VERIFIED** — live queries, zero usable results, both old fixing IDs return hard 400s |
+| World Bank Pink Sheet is not mirrored on DBnomics (only an annual outlook dataset is) | **VERIFIED** — carried forward from §16, re-confirmed |
+| Bundesbank's own gold series (`BBEX3`) is discontinued at end-1998 | **VERIFIED** — live query, full catalog + server-side search, observed data range |
+| Nasdaq Data Link blocks no-key access via an anti-bot WAF | **VERIFIED** — live 403 with Incapsula challenge markup |
+| Stooq blocks no-key access via a JS proof-of-work challenge | **VERIFIED** — carried forward from §16 |
+| All five specified gold sources tried and failed; no switch made | **VERIFIED** |
+| IMF COFER has been frozen at 2025-Q1 for 565 days | **VERIFIED** — live query, computed directly from the observation dates returned |
+| The freshness guard correctly demotes both gold price and COFER to manual in a real production run, without breaking any other row | **VERIFIED** — live `workflow_dispatch` run, `a93e485` |
+| Quarterly/TRESEGUSM052N threshold recalibration (220d/180d) doesn't mask genuine staleness | **VERIFIED** — gold price and COFER still fail decisively at the recalibrated thresholds |
+| `manual.json`'s fallback `note` field is now actually surfaced on the shipped row | **VERIFIED** — code change, confirmed in the live `a93e485` `data.json` |
+| Once a working live gold price is found, the reserves-incl-gold figure is expected to move away from 3.0%/3.7%, not toward it | **ASSUMED** — reasoned from gold's known price path (~$3,352 → ~$5,595 → ~$4,000), not yet observed live since no working live source exists |
 
 ---
 
