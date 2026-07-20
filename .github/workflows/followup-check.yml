@@ -9,7 +9,11 @@ on:
   push:
     branches: [claude/new-session-ldotj8]
     paths:
-      - "scripts/gold_bundesbank_check3.py"
+      - "scripts/fetch.py"
+      - "scripts/series.py"
+      - "scripts/treasury.py"
+      - "scripts/imf.py"
+      - "scripts/gold.py"
       - ".github/workflows/followup-check.yml"
 
 jobs:
@@ -25,6 +29,7 @@ jobs:
       - name: Install deps
         run: pip install -r scripts/requirements.txt
 
-      - name: Bundesbank BBEX3/BBK01 gold search
-        working-directory: scripts
-        run: python gold_bundesbank_check3.py
+      - name: Verify (with the new freshness guard)
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: python scripts/fetch.py --verify
