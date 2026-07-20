@@ -10,6 +10,9 @@ import Tag from "./components/Tag.jsx";
 const PLANNED = ["Euro area · ECB", "Japan", "China"];
 
 const dotColor = (tag) => (tag === "live" ? c.calm : tag === "model" ? c.mitig : c.caution);
+// manual_price (a hybrid — one input hand-entered, the rest still live)
+// falls through to the caution/hollow-dot treatment above, same as a
+// fully manual value: it isn't fully live, so it shouldn't look fully live.
 const commentaryTone = (t) => (t === "alarm" ? c.alarm : t === "calm" ? c.calm : t === "mitig" ? c.mitig : c.text);
 
 function fmtTimestamp(iso) {

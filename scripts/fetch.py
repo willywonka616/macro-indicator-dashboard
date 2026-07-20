@@ -343,35 +343,64 @@ def build_us(manual: dict, force: bool) -> dict:
     gold_stale_note = None
     try:
         gold_oz_monthly = G.gold_holdings_troy_oz()
-        gold_price_monthly = G.gold_price_usd_per_oz()
         oz_asof = max(gold_oz_monthly)
-        price_asof = max(gold_price_monthly)
-        # Freshness guard: gold oz (Treasury) is normally current; gold
-        # price (DBnomics-mirrored IMF PCPS) has been frozen since 2025-06
-        # (STATUS.md §14.3/§16) — this is the mechanism that now correctly
-        # refuses to ship that stale price as "live" rather than relying on
-        # the staleness `note` alone. Raising here is caught below, same as
-        # any other gold-fetch failure, and falls back to the manual value.
+        # Freshness guard: gold oz (Treasury) is normally current — if even
+        # this fails, there's no live leg left at all, so let it propagate
+        # to the outer except and use the full manual fallback.
         S.require_fresh("gold holdings (Treasury oz)", oz_asof, S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
-        S.require_fresh("gold price (DBnomics PCPS)", price_asof, S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
+
+        # Gold price: try live first (DBnomics-mirrored IMF PCPS), freshness
+        # gated. It has been frozen since 2025-06 (STATUS.md §14.3/§16) — if
+        # it's still dead, fall back to a hand-entered manual PRICE applied
+        # to the still-live ounce count, rather than an all-manual OUTPUT.
+        # The ounce count has no reason to be stale just because the price
+        # source died elsewhere, and a manual price + live ounce count is a
+        # materially better estimate than a fully manual (and, until this
+        # round, Dalio's-own-book-figure-by-construction) fallback — see
+        # STATUS.md §18.
+        try:
+            gold_price_monthly = G.gold_price_usd_per_oz()
+            price_asof = max(gold_price_monthly)
+            S.require_fresh("gold price (DBnomics PCPS)", price_asof, S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
+            price_is_live = True
+        except Exception as price_e:  # noqa: BLE001
+            print(f"Gold price unavailable/stale, using manual price input at the live oz month: {price_e}")
+            gpf = mu["goldPriceManualFallback"]
+            gold_price_monthly = {oz_asof: gpf["pricePerOz"]}
+            price_asof = oz_asof
+            price_is_live = False
+
         gold_value_monthly = {k: gold_oz_monthly[k] * gold_price_monthly[k]
                                for k in gold_oz_monthly.keys() & gold_price_monthly.keys()}
         if not gold_value_monthly:
             raise RuntimeError("gold: no overlapping months between holdings and price")
-        if oz_asof == price_asof:
-            gold_src_detail = f"Treasury (gold) + DBnomics (price), both {oz_asof[0]}-{oz_asof[1]:02d}"
+
+        if price_is_live:
+            reserves_incl_gold_tag = "live"
+            if oz_asof == price_asof:
+                gold_src_detail = f"Treasury (gold) + DBnomics (price), both {oz_asof[0]}-{oz_asof[1]:02d}"
+            else:
+                gold_src_detail = (f"Treasury (gold oz {oz_asof[0]}-{oz_asof[1]:02d}) "
+                                    f"+ DBnomics (price {price_asof[0]}-{price_asof[1]:02d})")
+                # Visible on the row itself, not only inferable from src/asOf —
+                # see STATUS.md §14.3 (root cause: IMF PCPS upstream, not the
+                # DBnomics mirror, as far as this project could confirm live).
+                lag_months = (oz_asof[0] - price_asof[0]) * 12 + (oz_asof[1] - price_asof[1])
+                if lag_months >= 2:
+                    gold_stale_note = (
+                        f"⚠ gold priced as of {price_asof[0]}-{price_asof[1]:02d} "
+                        f"({lag_months} months old) — market value may be off if gold has moved since"
+                    )
         else:
-            gold_src_detail = (f"Treasury (gold oz {oz_asof[0]}-{oz_asof[1]:02d}) "
-                                f"+ DBnomics (price {price_asof[0]}-{price_asof[1]:02d})")
-            # Visible on the row itself, not only inferable from src/asOf —
-            # see STATUS.md §14.3 (root cause: IMF PCPS upstream, not the
-            # DBnomics mirror, as far as this project could confirm live).
-            lag_months = (oz_asof[0] - price_asof[0]) * 12 + (oz_asof[1] - price_asof[1])
-            if lag_months >= 2:
-                gold_stale_note = (
-                    f"⚠ gold priced as of {price_asof[0]}-{price_asof[1]:02d} "
-                    f"({lag_months} months old) — market value may be off if gold has moved since"
-                )
+            reserves_incl_gold_tag = "manual_price"
+            gold_src_detail = (f"Treasury (gold oz, live, {oz_asof[0]}-{oz_asof[1]:02d}) "
+                                f"+ manual price (${gpf['pricePerOz']:,.0f}/oz as of {gpf['asOf']})")
+            gold_stale_note = (
+                f"⚠ manual gold price input: ${gpf['pricePerOz']:,.0f}/oz as of {gpf['asOf']} "
+                f"— the live price source is dead, but the ounce count is still live "
+                f"({oz_asof[0]}-{oz_asof[1]:02d})"
+            )
+
         reserves_incl_gold = S.reserves_incl_gold_pct_gdp(
             raw["TRESEGUSM052N"][1], raw["TRESEGUSM052N"][0], gold_value_monthly,
             raw["GDP"][1], raw["GDP"][0])
@@ -382,7 +411,8 @@ def build_us(manual: dict, force: bool) -> dict:
                 "Check the gold schema dumped by --verify before trusting it."
             )
     except Exception as e:  # noqa: BLE001
-        print(f"Gold-inclusive reserves unavailable, using manual value: {e}")
+        print(f"Gold-inclusive reserves unavailable even with a manual price input "
+              f"(live ounce count itself failed), using the full manual fallback: {e}")
         reserves_incl_gold_tag = "manual"
         gf = mu["reservesInclGoldFallback"]
         reserves_incl_gold = {"latest": gf["value"], "asOf": mu.get("lastChecked"), "history": []}
@@ -459,7 +489,7 @@ def build_us(manual: dict, force: bool) -> dict:
             **_vital(reserves_incl_gold, "risk",
                 "Reserves including gold at market value are still thin relative to the debt — "
                 "and most of the buffer is illiquid gold, not spendable FX.",
-                (f"derived · {gold_src_detail} + FRED" if reserves_incl_gold_tag == "live"
+                (f"derived · {gold_src_detail} + FRED" if reserves_incl_gold_tag != "manual"
                  else mu["reservesInclGoldFallback"]["src"]),
                 "reserves / GDP", tag=reserves_incl_gold_tag)},
     ]
@@ -490,7 +520,7 @@ def build_us(manual: dict, force: bool) -> dict:
         "label": "Reserves incl. gold (market)", "value": num(reserves_incl_gold["latest"]),
         "display": pct_display(reserves_incl_gold["latest"], 1), "unit": "of GDP",
         "tone": "risk", "tag": reserves_incl_gold_tag,
-        "src": (f"derived · {gold_src_detail} + FRED" if reserves_incl_gold_tag == "live"
+        "src": (f"derived · {gold_src_detail} + FRED" if reserves_incl_gold_tag != "manual"
                 else mu["reservesInclGoldFallback"]["src"]),
         "asOf": reserves_incl_gold.get("asOf"),
         "history": reserves_incl_gold.get("history", []),
@@ -589,12 +619,15 @@ def build_us(manual: dict, force: bool) -> dict:
                                    "is a real anchor but not exactly reproduced by any tested "
                                    "denominator — see STATUS.md §12/§13. debt_to_gdp remains the "
                                    "headline.",
-            "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz) "
-                              "x live gold price (DBnomics: IMF PCPS, indicator PGOLD — "
-                              "DBnomics' LBMA mirror was dropped 2026-07 after LBMA moved its "
-                              "price tables behind a members-only portal), gold valued at "
-                              "MARKET not the $42.2222/oz statutory book rate — resolved "
-                              "2026-07 to match Dalio's Ch.17 US snapshot (3%); see STATUS.md",
+            "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz, "
+                              "live) x gold price, valued at MARKET not the $42.2222/oz statutory "
+                              "book rate. Price is live (DBnomics: IMF PCPS, indicator PGOLD) when "
+                              "fresh; that source has been frozen at 2025-06 since at least "
+                              "2026-07, so the price currently falls back to a hand-entered manual "
+                              "value (data/manual.json: goldPriceManualFallback) applied to the "
+                              "still-live ounce count — see STATUS.md §18 for why this replaced "
+                              "the prior all-manual-output fallback (which matched Dalio's Ch.17 "
+                              "figure by construction, not by independent computation).",
             "reservesInclGoldTag": reserves_incl_gold_tag,
         },
     }

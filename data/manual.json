@@ -19,10 +19,20 @@
     "cboProjection": { "display": "122%", "unit": "of GDP", "tone": "risk", "src": "CBO · forward" },
     "sovereignWealth": { "display": "None", "tone": "risk", "src": "—" },
     "shareHardFX": { "display": "No", "tone": "mitig", "src": "—" },
+    "goldPriceManualFallback": {
+      "pricePerOz": 4000, "asOf": "2026-07-20",
+      "src": "market data (spot, hand-entered) — live DBnomics/IMF PCPS price source has been frozen at 2025-06 since at least 2026-07 (STATUS.md §16/§17)",
+      "note": "⚠ manual price input ($4,000/oz as of 2026-07-20) — the live gold-price source is dead, but Treasury's gold-holdings (troy oz) figure is still live and current; this price is applied to that live ounce count rather than falling back to a fully manual output. Update this figure (and the date) periodically until a working live source is found. Cross-checked 2026-07-20: ~$4,001-4,008/oz per tradingeconomics.com and mygoldcalc.com.",
+      "history": [
+        { "date": "2025-06", "pricePerOz": 3351.86, "note": "last live DBnomics/IMF PCPS observation before the source froze" },
+        { "date": "2026-01", "pricePerOz": 5595, "note": "approximate Jan-2026 peak, for context only — not used in any computation" },
+        { "date": "2026-07-20", "pricePerOz": 4000, "note": "current hand-entered value" }
+      ]
+    },
     "reservesInclGoldFallback": {
       "display": "3.0%", "value": 3.0, "unit": "of GDP", "tone": "risk",
       "src": "manual · Dalio Ch.17 (gold at market)",
-      "note": "Fallback only, used if the live Treasury gold-holdings or DBnomics gold-price fetch fails. Matches Dalio's book figure directly since it's the reconciliation target."
+      "note": "Last-resort fallback ONLY — used if the live Treasury gold-holdings fetch itself fails (not just the price). If holdings are live but the price source is dead, goldPriceManualFallback (above) is used instead, keeping the ounce count live. This value is Dalio's own book figure, hand-carried for the double-failure case; it is NOT an independent check and reads as a match against his figure by construction — see STATUS.md §9/§18."
     },
     "reserveCurrency": {
       "note": "Dalio's single biggest risk mitigator. Dollar dominance across trade, debt, equities and reserves is what holds overall risk down — and what the US is undermining. Only the reserve series has long public history (IMF COFER, from 1999).",
@@ -30,17 +40,23 @@
       "debt": { "value": 80.7, "display": "80.7%", "tone": "mitig", "src": "BIS · from ~1990s" },
       "equity": { "value": 65.7, "display": "65.7%", "tone": "mitig", "src": "market data" },
       "cbReserves": {
-        "value": 57.0,
-        "display": "57.0%",
+        "value": 57.13,
+        "display": "57.1%",
         "tone": "mitig",
-        "src": "IMF COFER · from 1999",
-        "asOf": "2024",
+        "src": "IMF COFER · latest actually-published figure, hand-entered (live DBnomics mirror frozen at 2025-Q1 since at least 2026-07 — STATUS.md §17/§18)",
+        "asOf": "2026-Q1",
+        "note": "Hand-entered from IMF's own published COFER data brief (2026-Q1: 57.13%, up from 56.42% in 2025-Q4), not from Dalio's book (his figure was 57.0% as of ~2024/his March-2025 vintage) — this is deliberately NOT the book value, to avoid the circularity flagged in STATUS.md §9. Cross-checked 2026-07-20 via web search against thedarksideoftheboom.substack.com and MUFG Research, both citing the same IMF release.",
         "history": [
           { "y": 1999, "v": 71 },
           { "y": 2008, "v": 64 },
           { "y": 2015, "v": 66 },
           { "y": 2020, "v": 59 },
-          { "y": 2024, "v": 58 }
+          { "y": 2024, "v": 58 },
+          { "y": 2025.0, "v": 57.79, "note": "2025-Q1" },
+          { "y": 2025.25, "v": 56.32, "note": "2025-Q2" },
+          { "y": 2025.5, "v": 56.92, "note": "2025-Q3" },
+          { "y": 2025.75, "v": 56.42, "note": "2025-Q4" },
+          { "y": 2026.0, "v": 57.13, "note": "2026-Q1, latest published" }
         ]
       }
     },
