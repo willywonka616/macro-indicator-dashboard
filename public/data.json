@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-19T21:26:05Z",
+  "generatedAt": "2026-07-20T06:49:27Z",
   "meta": {
     "seed": false,
     "schema": 1
@@ -3721,7 +3721,8 @@
                   "y": 2026.417,
                   "v": 19.57
                 }
-              ]
+              ],
+              "note": "The current situation — cash leaving the government today"
             },
             {
               "label": "Gross interest (incl. intragovernmental)",
@@ -3901,7 +3902,8 @@
                   "y": 2026.417,
                   "v": 25.13
                 }
-              ]
+              ],
+              "note": "The leading indicator — the gap is obligation accruing before it's an outflow"
             }
           ]
         },
@@ -4136,7 +4138,8 @@
                   "y": 2025.25,
                   "v": 3.678
                 }
-              ]
+              ],
+              "note": "⚠ gold priced as of 2025-06 (12 months old) — market value may be off if gold has moved since"
             },
             {
               "label": "FX reserves excl. gold",
