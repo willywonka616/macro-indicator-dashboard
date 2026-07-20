@@ -6,16 +6,17 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-19d-verification.md` (run output) and
-> `docs/review/2026-07-19d-values.md` (headline values), base commit
-> `76362af`. Each review pass gets its own new file under `docs/review/`
+> `docs/review/2026-07-20a-verification.md` (run output) and
+> `docs/review/2026-07-20a-values.md` (headline values), base commit
+> `9bace30`. Each review pass gets its own new file under `docs/review/`
 > instead of rewriting `docs/verification-log.md` / `docs/current-values.md`
 > in place — a reviewer's fetch tool caches by URL and can't see edits to
 > an already-fetched path, so an old path that keeps getting rewritten is
 > invisible on a repeat check. Those two old paths hold short tombstone
 > stubs pointing here; do not resurrect the regenerate-in-place pattern.
-> Prior round: `docs/review/2026-07-19c-*.md` (superseded, left in place).
-> When you add a new round, update this line to point at it.
+> Prior rounds: `docs/review/2026-07-19c-*.md`, `docs/review/2026-07-19d-*.md`
+> (superseded, left in place). When you add a new round, update this line
+> to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -69,6 +70,24 @@ found and stated plainly: §10.2's "the pipeline's 23.0% matches GAO/CBO's
 at the time used the inflated gross denominator. See §13 for the full
 writeup, including the corrected 3×4 matrix and why on-budget was
 dropped for total on definitional (not just numerical) grounds.
+
+**2026-07-20, a fifth pass (§14): closed out the remaining open items.**
+Re-ran the drift matrix on the corrected basis and confirmed §13's "no
+realised basis near 22%" conclusion holds (verification exercise, no
+basis change). Found IMF's own SDMX 3.0 API is reachable from CI, no key
+— new for this project — and its PCPS dataflow metadata is suggestive
+(not conclusive) that gold-price staleness is upstream at IMF, not just
+DBnomics' mirror; couldn't pull the actual PGOLD series data directly
+after eight key-format attempts, so shipped a visible staleness indicator
+on the reserves row instead (exact month count, not the earlier "~13
+months" estimate — it's 12). Tested and eliminated a second "other debt"
+hypothesis (TCMDO minus government debt, 263.9% vs. Dalio's 340%, worse
+than TCMDO alone). Resolved the long-open `IEABC` annualization question
+from evidence already sitting in committed files. Fixed `gold.py`'s stale
+verify banner. Added row-level net/gross framing captions (new
+`MetricRow` `note` field) alongside the panel-level explanation. See §14
+for the full writeup and `docs/review/2026-07-20a-*.md` for the run that
+shipped it (commit `9bace30`).
 
 ---
 
