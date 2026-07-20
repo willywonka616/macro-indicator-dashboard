@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-20T15:47:15Z",
+  "generatedAt": "2026-07-20T18:24:08Z",
   "meta": {
     "seed": false,
     "schema": 1
@@ -3705,7 +3705,7 @@
               "src": "manual · Dalio Ch.17 (gold at market)",
               "asOf": "2026-07-18",
               "history": [],
-              "note": "Fallback only, used if the live Treasury gold-holdings or DBnomics gold-price fetch fails. Matches Dalio's book figure directly since it's the reconciliation target."
+              "note": "Last-resort fallback ONLY — used if the live Treasury gold-holdings fetch itself fails (not just the price). If holdings are live but the price source is dead, goldPriceManualFallback (above) is used instead, keeping the ounce count live. This value is Dalio's own book figure, hand-carried for the double-failure case; it is NOT an independent check and reads as a match against his figure by construction — see STATUS.md §9/§18."
             },
             {
               "label": "FX reserves excl. gold",
@@ -7563,13 +7563,13 @@
             },
             {
               "label": "World CB reserves in USD",
-              "display": "57.0%",
+              "display": "57.1%",
               "unit": "",
               "tone": "mitig",
               "tag": "manual",
-              "src": "IMF COFER · from 1999",
-              "value": 57.0,
-              "asOf": "2024",
+              "src": "IMF COFER · latest actually-published figure, hand-entered (live DBnomics mirror frozen at 2025-Q1 since at least 2026-07 — STATUS.md §17/§18)",
+              "value": 57.13,
+              "asOf": "2026-Q1",
               "history": [
                 {
                   "y": 1999,
@@ -7590,6 +7590,31 @@
                 {
                   "y": 2024,
                   "v": 58
+                },
+                {
+                  "y": 2025.0,
+                  "v": 57.79,
+                  "note": "2025-Q1"
+                },
+                {
+                  "y": 2025.25,
+                  "v": 56.32,
+                  "note": "2025-Q2"
+                },
+                {
+                  "y": 2025.5,
+                  "v": 56.92,
+                  "note": "2025-Q3"
+                },
+                {
+                  "y": 2025.75,
+                  "v": 56.42,
+                  "note": "2025-Q4"
+                },
+                {
+                  "y": 2026.0,
+                  "v": 57.13,
+                  "note": "2026-Q1, latest published"
                 }
               ]
             }
@@ -7694,7 +7719,7 @@
         "debtServiceBasis": "NET interest to the public (excl. intragovernmental GAS) / TOTAL receipts, net of refunds — headline `debt_service_to_revenue`. Net-to-public is the numerator whose scope matches debt_to_gdp (debt held by the public); gross interest incl. GAS ships as its own separate row instead. See STATUS.md §13.",
         "grossDebtServiceBasis": "GROSS interest (incl. intragovernmental Government Account Series) / TOTAL receipts, net of refunds — the explicit second debt-service row, same denominator as the net headline (see revenueDefinition).",
         "debtToRevenueBasis": "Debt held by the public ($, FYGFGDQ188S x GDP) / TOTAL receipts, net of refunds (TTM, $) — same denominator as both debt-service rows. Dalio's Ch.17 table reports only debt/GDP; his Ch.3 debt-to-revenue figure (~580%, ~700% in ten years) is a real anchor but not exactly reproduced by any tested denominator — see STATUS.md §12/§13. debt_to_gdp remains the headline.",
-        "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz) x live gold price (DBnomics: IMF PCPS, indicator PGOLD — DBnomics' LBMA mirror was dropped 2026-07 after LBMA moved its price tables behind a members-only portal), gold valued at MARKET not the $42.2222/oz statutory book rate — resolved 2026-07 to match Dalio's Ch.17 US snapshot (3%); see STATUS.md",
+        "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz, live) x gold price, valued at MARKET not the $42.2222/oz statutory book rate. Price is live (DBnomics: IMF PCPS, indicator PGOLD) when fresh; that source has been frozen at 2025-06 since at least 2026-07, so the price currently falls back to a hand-entered manual value (data/manual.json: goldPriceManualFallback) applied to the still-live ounce count — see STATUS.md §18 for why this replaced the prior all-manual-output fallback (which matched Dalio's Ch.17 figure by construction, not by independent computation).",
         "reservesInclGoldTag": "manual"
       }
     }
