@@ -9,7 +9,7 @@ on:
   push:
     branches: [claude/new-session-ldotj8]
     paths:
-      - "scripts/gold_bundesbank_check2.py"
+      - "scripts/gold_bundesbank_check3.py"
       - ".github/workflows/followup-check.yml"
 
 jobs:
@@ -25,6 +25,6 @@ jobs:
       - name: Install deps
         run: pip install -r scripts/requirements.txt
 
-      - name: Bundesbank BUBA full dataset list + cross-dataset search
+      - name: Bundesbank BBEX3/BBK01 gold search
         working-directory: scripts
-        run: python gold_bundesbank_check2.py
+        run: python gold_bundesbank_check3.py
