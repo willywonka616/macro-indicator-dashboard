@@ -100,18 +100,30 @@ def check_ecb():
         print(f"  provider ECB dataset list FAILED: {e}")
 
     for ds in ("FM",):
+        for kw in ("gold", "XAU", "bullion", "precious"):
+            try:
+                r = _get(f"{DBN}/series/ECB/{ds}", params={"limit": "20", "observations": "1", "q": kw})
+                docs = r.json().get("series", {}).get("docs", [])
+                print(f"\n  ECB/{ds} q={kw!r} -> {len(docs)} series")
+                for d in docs[:10]:
+                    periods = d.get("period", [])
+                    values = d.get("value", [])
+                    print(f"    {d.get('series_code')} ({d.get('series_name')}): "
+                          f"{len(periods)} obs, latest {periods[-1] if periods else None} = "
+                          f"{values[-1] if values else None}")
+            except Exception as e:  # noqa: BLE001
+                print(f"  ECB/{ds} q={kw!r} FAILED: {e}")
+
+        # No-filter sample so the naming convention is visible even if none
+        # of the above keywords match the actual series description text.
         try:
-            r = _get(f"{DBN}/series/ECB/{ds}", params={"limit": "20", "observations": "1", "q": "gold"})
+            r = _get(f"{DBN}/series/ECB/{ds}", params={"limit": "15", "observations": "0"})
             docs = r.json().get("series", {}).get("docs", [])
-            print(f"\n  ECB/{ds} q=gold -> {len(docs)} series")
-            for d in docs[:10]:
-                periods = d.get("period", [])
-                values = d.get("value", [])
-                print(f"    {d.get('series_code')} ({d.get('series_name')}): "
-                      f"{len(periods)} obs, latest {periods[-1] if periods else None} = "
-                      f"{values[-1] if values else None}")
+            print(f"\n  ECB/{ds} no-filter sample ({len(docs)} shown):")
+            for d in docs:
+                print(f"    {d.get('series_code')}  {d.get('series_name')}")
         except Exception as e:  # noqa: BLE001
-            print(f"  ECB/{ds} q=gold FAILED: {e}")
+            print(f"  ECB/{ds} no-filter sample FAILED: {e}")
 
 
 # --- 3. IMF IFS (distinct from PCPS, already tried) ---
@@ -146,6 +158,4 @@ def check_imf_ifs():
 
 
 if __name__ == "__main__":
-    check_worldbank_full()
     check_ecb()
-    check_imf_ifs()
