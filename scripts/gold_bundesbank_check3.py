@@ -31,10 +31,13 @@ def _get(url, params=None, tries=2, timeout=15):
     raise RuntimeError(f"request to {url} failed after {tries} tries: {last}")
 
 
-def dump_dataset(code, limit=1000):
-    print(f"\n=== BUBA/{code} — bare series dump (limit={limit}) ===")
+def dump_dataset(code, limit=1000, q=None):
+    print(f"\n=== BUBA/{code} — series dump (limit={limit}, q={q!r}) ===")
     try:
-        r = _get(f"{DBN}/series/BUBA/{code}", params={"limit": str(limit), "observations": "1"})
+        params = {"limit": str(limit), "observations": "1"}
+        if q:
+            params["q"] = q
+        r = _get(f"{DBN}/series/BUBA/{code}", params=params)
         docs = r.json().get("series", {}).get("docs", [])
         print(f"  {len(docs)} series total")
         gold_docs = [d for d in docs
@@ -56,4 +59,6 @@ def dump_dataset(code, limit=1000):
 
 
 if __name__ == "__main__":
-    dump_dataset("BBEX3", limit=300)
+    dump_dataset("BBEX3", limit=50, q="gold")
+    dump_dataset("BBEX3", limit=50, q="XAU")
+    dump_dataset("BBEX3", limit=50, q="precious metal")
