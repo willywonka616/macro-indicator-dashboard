@@ -14,6 +14,7 @@ on:
       - "scripts/dated_matrix_check.py"
       - "scripts/gold_imf_codelist_check.py"
       - "scripts/gold_imf_codelist_check2.py"
+      - "scripts/gold_imf_wildcard_check.py"
       - ".github/workflows/followup-check.yml"
 
 permissions:
@@ -47,6 +48,12 @@ jobs:
       #   working-directory: scripts
       #   run: python gold_imf_codelist_check.py
 
-      - name: Run gold IMF codelist check v2 (PCPS-specific codelists)
+      # Skipped: already captured (run 29724177116) - confirmed PGOLD is
+      # the right code, still empty. Re-enable if needed again.
+      # - name: Run gold IMF codelist check v2 (PCPS-specific codelists)
+      #   working-directory: scripts
+      #   run: python gold_imf_codelist_check2.py
+
+      - name: Run gold IMF wildcard check
         working-directory: scripts
-        run: python gold_imf_codelist_check2.py
+        run: python gold_imf_wildcard_check.py
