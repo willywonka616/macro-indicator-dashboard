@@ -9,7 +9,8 @@ on:
   push:
     branches: [claude/new-session-ldotj8]
     paths:
-      - "scripts/gold_source_search.py"
+      - "scripts/gold_bundesbank_check.py"
+      - "scripts/gold_nasdaq_check.py"
       - ".github/workflows/followup-check.yml"
 
 jobs:
@@ -25,8 +26,8 @@ jobs:
       - name: Install deps
         run: pip install -r scripts/requirements.txt
 
-      - name: Gold source search (FRED)
+      - name: Gold source check (Bundesbank + Nasdaq Data Link)
         working-directory: scripts
-        env:
-          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
-        run: python gold_source_search.py
+        run: |
+          python gold_bundesbank_check.py
+          python gold_nasdaq_check.py
