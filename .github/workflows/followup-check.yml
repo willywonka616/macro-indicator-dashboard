@@ -10,6 +10,7 @@ on:
     branches: [claude/new-session-ldotj8]
     paths:
       - "scripts/gold_altsource_check.py"
+      - "scripts/gold_error_magnitude_check.py"
       - ".github/workflows/followup-check.yml"
 
 jobs:
@@ -25,5 +26,8 @@ jobs:
       - name: Install deps
         run: pip install -r scripts/requirements.txt
 
-      - name: Gold alt-source check
-        run: python scripts/gold_altsource_check.py
+      - name: Gold error magnitude check
+        working-directory: scripts
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: python gold_error_magnitude_check.py
