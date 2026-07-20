@@ -6,19 +6,20 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-20b-verification.md` (follow-up diagnostics: dated
-> matrix re-run, IMF-direct gold query — run output; no companion
-> `-values.md`, nothing in `public/data.json` changed this round), base
-> commit `8c5d3bb`. For headline values, `docs/review/2026-07-20a-values.md`
-> is still current (base commit `9bace30`). Each review pass gets its own
-> new file under `docs/review/` instead of rewriting
-> `docs/verification-log.md` / `docs/current-values.md` in place — a
-> reviewer's fetch tool caches by URL and can't see edits to an
-> already-fetched path, so an old path that keeps getting rewritten is
-> invisible on a repeat check. Those two old paths hold short tombstone
-> stubs pointing here; do not resurrect the regenerate-in-place pattern.
-> Prior rounds: `docs/review/2026-07-19c-*.md`, `docs/review/2026-07-19d-*.md`,
-> `docs/review/2026-07-20a-*.md` (superseded, left in place). When you add
+> `docs/review/2026-07-20c-verification.md` (gold alt-source probes: World
+> Bank Pink Sheet via DBnomics, Stooq XAUUSD, and a live-computed magnitude
+> of the current gold-staleness error — run output; no companion
+> `-values.md`, no shipped code/data changed this round), base commit
+> `bf0ec51`. For headline values, `docs/review/2026-07-20a-values.md` is
+> still current (base commit `9bace30`). Each review pass gets its own new
+> file under `docs/review/` instead of rewriting `docs/verification-log.md`
+> / `docs/current-values.md` in place — a reviewer's fetch tool caches by
+> URL and can't see edits to an already-fetched path, so an old path that
+> keeps getting rewritten is invisible on a repeat check. Those two old
+> paths hold short tombstone stubs pointing here; do not resurrect the
+> regenerate-in-place pattern. Prior rounds: `docs/review/2026-07-19c-*.md`,
+> `docs/review/2026-07-19d-*.md`, `docs/review/2026-07-20a-*.md`,
+> `docs/review/2026-07-20b-*.md` (superseded, left in place). When you add
 > a new round, update this line to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
@@ -110,6 +111,25 @@ dead-end, not forced into a false resolution. No gold source switched. See
 §15 for the full writeup and `docs/review/2026-07-20b-verification.md`
 for the run output (no data change this pass, so no new `-values.md`;
 `2026-07-20a-values.md` remains current).
+
+**Later the same day, a seventh pass (§16): quantified the gold-staleness
+error instead of leaving it as an unquantified "old" flag.** Tried two
+keyless alternatives to the stale shipped gold price — World Bank Pink
+Sheet via DBnomics (real dataset found, but annual with a 2030 *projected*
+value as its "latest" point, not the monthly Pink Sheet) and Stooq's
+XAUUSD CSV (blocked by a client-side JS proof-of-work anti-bot challenge,
+confirmed live in the response body) — both ruled out for specific,
+evidenced reasons, neither a dead-end guess. Since neither worked,
+computed the actual size of the error live against real FRED/Treasury
+data: the shipped row reads **3.7% of GDP**, a current-market $4,000/oz
+estimate gives **4.2%** — a **+0.5 point gap** ($169.5B at the same gold
+holdings), independently reproducing the task's own estimate almost
+exactly. Kept the staleness note as-is; deliberately did not fold the
+magnitude into the shipped (live-tagged) note text itself, to avoid
+mixing a manually-sourced price estimate into a row the UI presents as
+live — documented here instead. See §16 for the full writeup and
+`docs/review/2026-07-20c-verification.md` for the run output (no shipped
+code or data changed this pass).
 
 ---
 
@@ -1811,6 +1831,104 @@ than forced into a false resolution.
 | Root cause of the zero-series response | **NOT IDENTIFIED** — open dead-end, candidates listed in §15.2, not pursued further |
 | Whether IMF PCPS itself is fresher than, or exactly as stale as, DBnomics' mirror | **STILL OPEN** — neither of the task's two conditional outcomes could be evaluated; no per-series date was retrievable at all |
 | No gold source switched | **VERIFIED** — nothing found to switch to |
+
+---
+
+## 16. Gold staleness is now quantified: ~0.5pt of GDP low, both keyless alternatives ruled out (2026-07-20, seventh pass)
+
+Follow-up on §14.3/§15.2's "gold staleness" finding: the shipped
+`reserves_incl_gold` row isn't just *old*, it's now *materially wrong* —
+spot gold ran from the shipped 2025-06 quote (~$3,352/oz) to a ~$5,595
+Jan-2026 peak and back to ~$4,000 today, and the row hasn't moved through
+any of it. Tasked with trying two specific keyless sources before
+accepting the staleness note as the final answer, and — if both failed —
+quantifying the error rather than leaving it as an unquantified "old"
+flag. Full run output: `docs/review/2026-07-20c-verification.md`.
+
+### 16.1 Two candidates tried, both ruled out for specific, evidenced reasons
+
+**World Bank "Pink Sheet" via DBnomics:** DBnomics does carry a World Bank
+provider (`WB`) with a real, gold-relevant dataset —
+`commodity_prices` ("Commodity Prices: History and Projections"),
+containing `FGOLD-1W` (Gold, nominal, $/troy oz – World). But it is
+**annual, not monthly**, and its "latest" period is **2030** — a
+*projected* out-year (value $1,100/oz, nowhere near any real gold price
+this decade, confirming it's a long-run forecast average). DBnomics does
+not mirror the actual monthly Pink Sheet CSV under this provider, only
+this annual outlook series. Not usable as a current price under any
+reading of "latest."
+
+**Stooq XAUUSD daily CSV:** a bare request 404s; adding a browser-like
+`User-Agent` gets a `200`, but the body is an anti-bot interstitial that
+requires solving a client-side SHA-256 proof-of-work challenge in
+JavaScript before serving the real CSV (`"This site requires JavaScript to
+verify your browser"` → `crypto.subtle.digest("SHA-256", ...)` → POST to
+`/__verify`). This is not a header or URL-shape problem a plain HTTP
+client can route around — it would need a headless browser or a
+deliberately-automated challenge-solve, neither appropriate for a
+legitimate keyless data source in this pipeline.
+
+**Claim status: VERIFIED (both as negative results)** — both failures were
+observed directly (dataset periodicity/projection-year in the JSON;
+anti-bot challenge markup in the HTML body), not inferred from a timeout
+or a generic error.
+
+### 16.2 The error, quantified live rather than left as "old"
+
+Since neither candidate worked, computed the actual size of the gap
+instead of shipping only a staleness flag. Reused the real pipeline
+functions (`series.reserves_incl_gold_pct_gdp`, live `TRESEGUSM052N` +
+`GDP` from FRED, live Treasury gold-oz holdings) and substituted a
+current-market price estimate for the shipped stale one, holding
+everything else (gold-oz month, GDP quarter) fixed so the comparison
+isolates exactly the price correction:
+
+| Price used | reserves_incl_gold_pct_gdp |
+|---|---|
+| Shipped (DBnomics IMF PCPS, 2025-06): $3,351.86/oz | **3.7%** (shipped) |
+| Current-market estimate: $4,000/oz | **4.2%** |
+| ~Jan-2026 peak, for scale: $5,595/oz | **5.6%** |
+
+**Gap: +0.5 points of GDP** (3.7% shown vs. ~4.2% at a $4,000/oz current
+estimate) — underlying gold market-value gap $169.5B at the same 261.5M
+oz holdings. This independently reproduces the task's own ~4.2-4.3%
+estimate almost exactly (landed at 4.2% using its own $4,000/oz figure).
+Gold-oz data itself is current through 2026-06; the price series is the
+only stale leg (12 months behind as of this pass, matching the shipped
+staleness note in §14.3/§14.6).
+
+**Claim status: VERIFIED** — live run against real FRED/Treasury/DBnomics
+data, not a back-of-envelope estimate from rounded headline percentages.
+
+### 16.3 Disposition: staleness note kept, no shipped code change
+
+Per the task's own fallback instruction, the shipped staleness `note`
+(§14.3/§14.6 — `"⚠ gold priced as of 2025-06 (N months old) — market value
+may be off if gold has moved since"`) is kept as-is; no source switch,
+since neither candidate produced usable data. **Deliberately not** folding
+the $169.5B/+0.5pt magnitude into the shipped `note` string itself: that
+number depends on a manually-sourced, non-live "$4,000/oz current market"
+estimate the pipeline has no live way to verify or refresh — baking it
+into a `tag: "live"` row's own text would blur exactly the live/manual
+distinction this project has otherwise been careful to keep (see
+`gold.py`'s own docstring: *"a live-tagged number built on a stale price"*
+is the failure mode the manual-fallback pattern exists to avoid). The
+magnitude belongs here, in documentation a reader can check the
+provenance of, not baked into a number the UI presents as live. If a
+working live source is found in a future session, this is the first place
+to update.
+
+### 16.4 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| DBnomics mirrors a World Bank gold-price dataset (`WB/commodity_prices`, `FGOLD-1W`) | **VERIFIED** — live query, real series returned |
+| That dataset is annual with projected out-years, not a usable current monthly price | **VERIFIED** — latest period is 2030, value ($1,100) consistent with a forecast average, not a real quote |
+| DBnomics does not mirror the actual monthly World Bank Pink Sheet under provider WB | **VERIFIED (negative)** — only `GEM` and `commodity_prices` exist under WB; neither is the monthly Pink Sheet |
+| Stooq's XAUUSD CSV endpoint is gated by a client-side JS proof-of-work anti-bot challenge | **VERIFIED** — challenge markup observed directly in the live response body |
+| Stooq is not usable as a plain-HTTP keyless CI source, as currently protected | **VERIFIED (negative)** — confirmed live, not inferred from a timeout |
+| The shipped `reserves_incl_gold` row currently reads ~0.5pt of GDP low vs. a $4,000/oz current-market estimate | **VERIFIED** — live computation via the real pipeline functions and real FRED/Treasury data |
+| No gold source switched; staleness note kept as-is | **VERIFIED** — no working alternative found |
 
 ---
 
