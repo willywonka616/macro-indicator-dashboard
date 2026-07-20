@@ -1,0 +1,30 @@
+name: Follow-up diagnostic check
+
+# Temporary, diagnostic-only workflow — not a shipped feature. Deleted once
+# this round's findings are recorded in STATUS.md / docs/review. push
+# trigger is needed because workflow_dispatch can't target a workflow file
+# that isn't yet on the default branch.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [claude/new-session-ldotj8]
+    paths:
+      - "scripts/gold_source_retry.py"
+      - ".github/workflows/followup-check.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r scripts/requirements.txt
+
+      - name: Retry World Bank Pink Sheet, ECB, IMF IFS
+        working-directory: scripts
+        run: python gold_source_retry.py
