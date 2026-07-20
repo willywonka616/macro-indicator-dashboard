@@ -6,17 +6,20 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-20a-verification.md` (run output) and
-> `docs/review/2026-07-20a-values.md` (headline values), base commit
-> `9bace30`. Each review pass gets its own new file under `docs/review/`
-> instead of rewriting `docs/verification-log.md` / `docs/current-values.md`
-> in place — a reviewer's fetch tool caches by URL and can't see edits to
-> an already-fetched path, so an old path that keeps getting rewritten is
+> `docs/review/2026-07-20b-verification.md` (follow-up diagnostics: dated
+> matrix re-run, IMF-direct gold query — run output; no companion
+> `-values.md`, nothing in `public/data.json` changed this round), base
+> commit `8c5d3bb`. For headline values, `docs/review/2026-07-20a-values.md`
+> is still current (base commit `9bace30`). Each review pass gets its own
+> new file under `docs/review/` instead of rewriting
+> `docs/verification-log.md` / `docs/current-values.md` in place — a
+> reviewer's fetch tool caches by URL and can't see edits to an
+> already-fetched path, so an old path that keeps getting rewritten is
 > invisible on a repeat check. Those two old paths hold short tombstone
 > stubs pointing here; do not resurrect the regenerate-in-place pattern.
-> Prior rounds: `docs/review/2026-07-19c-*.md`, `docs/review/2026-07-19d-*.md`
-> (superseded, left in place). When you add a new round, update this line
-> to point at it.
+> Prior rounds: `docs/review/2026-07-19c-*.md`, `docs/review/2026-07-19d-*.md`,
+> `docs/review/2026-07-20a-*.md` (superseded, left in place). When you add
+> a new round, update this line to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -88,6 +91,25 @@ verify banner. Added row-level net/gross framing captions (new
 `MetricRow` `note` field) alongside the panel-level explanation. See §14
 for the full writeup and `docs/review/2026-07-20a-*.md` for the run that
 shipped it (commit `9bace30`).
+
+**Later the same day, a sixth pass (§15): closed the two loose ends a
+reviewer flagged in round a's own writeup.** Fixed `treasury.py`'s matrix
+header, which claimed cells were dated to Mar-2025 when they were actually
+latest-TTM — then re-ran the matrix as two explicit, separately-dated
+grids (Mar-2025 and today) and confirmed, via an independent
+re-derivation, that §13's "no realised basis near 22%" conclusion
+holds exactly (no basis change). Actually queried IMF PCPS directly for
+`PGOLD` — went past round a's dataflow-level-metadata inference to try the
+real series: confirmed `PGOLD` is the exact right code, confirmed the
+query's dimension order matches the DSD's own declaration, and still got
+zero retrievable observations even after wildcarding every uncertain
+dimension. Neither of the task's two conditional outcomes ("fresher,
+switch" / "same, closes the question") could be evaluated, since no
+per-series date was retrievable at all — recorded as an honest open
+dead-end, not forced into a false resolution. No gold source switched. See
+§15 for the full writeup and `docs/review/2026-07-20b-verification.md`
+for the run output (no data change this pass, so no new `-values.md`;
+`2026-07-20a-values.md` remains current).
 
 ---
 
@@ -1675,6 +1697,120 @@ item rather than fabricating a monitoring setup nobody asked for.
 | The row-level `note` and gold-staleness warning render correctly in a real build | **VERIFIED** — Playwright screenshot against `npm run build` + `vite preview` with the live post-fix `public/data.json` |
 | Pull request #1 opened, `claude/new-session-ldotj8` → `main`, 46 commits | **VERIFIED** — `https://github.com/willywonka616/macro-indicator-dashboard/pull/1` |
 | The unattended monthly cron (5th of the month) has fired successfully at least once | **NOT VERIFIED, not yet true** — every run to date has been a manual `workflow_dispatch`; next scheduled firing is 2026-08-05 |
+
+---
+
+## 15. Follow-up on §14: dated matrix re-run and direct IMF gold query (2026-07-20, sixth pass)
+
+A reviewer working from round a's own files (§14.1, §14.3) flagged two
+loose ends and asked for both to be closed with live evidence rather than
+re-assertion: (1) `treasury.py`'s `verify()` matrix header said "Mar 2025"
+above cells that were actually latest-TTM values — fix it, then re-run and
+paste a genuinely-dated Mar-2025 grid next to a today grid; (2) §14.3 cited
+only PCPS *dataflow-level* metadata as suggestive of upstream gold
+staleness — actually query IMF PCPS directly for the `PGOLD` series' own
+latest observation. Full run output: `docs/review/2026-07-20b-verification.md`.
+
+### 15.1 Dated matrix: §13 CONFIRMED, not revised
+
+Fixed the header (commit `95dd7c1`) and re-ran the matrix via a new,
+temporary script (`dated_matrix_check.py`, reusing round c's
+`ttm_series_full()`/CBO-projection logic) that prints two explicitly
+separate grids instead of one ambiguously-headed grid:
+
+```
+GRID 1 of 2 — AT MARCH 2025 (Dalio's stated vintage), TTM ending 2025-03:
+  numerator                             total receipts    on-budget receipts     tax receipts onlyCBO Jan-2025 projected
+  gross (incl. GAS)                              23.9%                 32.2%                 37.6%                 22.5%
+  net-to-public (excl. GAS)                      19.0%                 25.6%                 29.9%                 17.9%
+  net interest, fn900                            18.9%                 25.4%                 29.7%                 17.7%
+
+GRID 2 of 2 — AT TODAY (latest available TTM):
+  numerator                             total receipts    on-budget receipts     tax receipts onlyCBO Jan-2025 projected
+  gross (incl. GAS)                              25.1%                 33.3%                 35.0%                 24.9%
+  net-to-public (excl. GAS)                      19.6%                 25.9%                 27.8%                 19.4%
+  net interest, fn900                            19.5%                 25.8%                 27.8%                 19.3%
+
+  'today' = 2026-06 (TTM window ending that month)
+```
+
+**Claim status: VERIFIED** — every cell matches §13.2/§14.1's
+previously-reported numbers exactly, via an independent re-derivation
+(separate script, freshly-fetched live data). **§13's conclusion is
+CONFIRMED on this evidence, not revised: no realised-data basis reproduces
+Dalio's 22% at his Mar-2025 vintage** — closest is gross/total at 23.9%
+(~1.9pt off, itself inside the book's own internal 20%-vs-22% spread). No
+basis change. The header bug is fixed in shipped code (`95dd7c1`); the
+diagnostic script itself was deleted after this round per the
+diagnostic-not-a-feature convention (§14's own precedent) — its output is
+preserved verbatim in `docs/review/2026-07-20b-verification.md`.
+
+### 15.2 IMF-direct gold query: reachable, correct code, still zero data — the question stays open
+
+Went past round a's dataflow-metadata inference and queried IMF PCPS
+directly for `PGOLD` observations, across three escalating attempts (full
+detail and exact queries in `docs/review/2026-07-20b-verification.md`):
+
+1. Broad keyword search across all 31 codelists for "gold" — found the
+   right codelist *names* (`CL_PCPS_INDICATOR`, `CL_PCPS_COMMODITY`) but
+   queried data with keyword-matched guesses instead of confirmed codes
+   first. Every guess: `200 obs=0`.
+2. Fetched `CL_PCPS_COMMODITY` directly and confirmed `PGOLD` → `"Gold"`
+   is the exact right code (matches DBnomics' own code). Queried it
+   directly: still `200 obs=0`.
+3. Wildcarded the two remaining uncertain dimensions (`COUNTRY`,
+   `DATA_TRANSFORMATION`) to test whether *any* monthly PGOLD data is
+   reachable at all, independent of guessing exact codes. All three
+   wildcard variants returned `200`, confirmed the series-dimension order
+   matches the DSD's own declaration exactly, and still returned **zero
+   series** — even with both uncertain dimensions fully open.
+
+**Disposition against the task's own two-way conditional** ("if fresher,
+switch source; if the same, the staleness is upstream and that closes the
+question"): **neither outcome applies.** No PGOLD observation was
+retrievable at all via `api.imf.org`'s SDMX 3.0 REST API for the
+`IMF.RES/PCPS` dataflow, as tested — not "same date" and not "fresher,"
+because no date could be read at all. Wrong-code and wrong-dimension-order
+are now both ruled out with direct evidence (the confirmed-correct
+`PGOLD` code, and the wildcard test's confirmed dimension order); the
+actual blocker is something this round's testing didn't isolate —
+candidates not yet tested: the `~` "latest version" resolving to a
+dataflow/DSD version pairing that doesn't actually carry PGOLD
+observations, a required content-negotiation header this session's plain
+`Accept: application/json`/default didn't send, an access restriction on
+observation data that isn't visible in the (public) structure/metadata
+endpoints, or the data being served under a different agency/dataflow
+than `IMF.RES/PCPS`.
+
+**No gold source switch performed** — there is nothing to switch to: this
+round didn't get IMF PCPS to return any data at all, direct or otherwise,
+so it cannot be shown fresher than DBnomics' 2025-06, and DBnomics' mirror
+remains the only working source. Round a's §14.3 metadata-level inference
+(`lastUpdatedAt: 2025-06-16`, suggestive of upstream staleness) is
+neither strengthened nor refuted by this round — it stands as **ASSUMED**,
+exactly as before, since this round could not reach the series level
+either way. The shipped gold-staleness `note` (§14.3/§14.6) already covers
+the user-facing risk regardless of which side the staleness sits on.
+
+**Claim status: VERIFIED (as a negative result)** — three independent,
+methodical attempts, each ruling out a specific hypothesis (wrong
+codelist searched, wrong code, wrong dimension order/uncertain dimensions)
+without ever finding a positive cause. Recorded as an open dead-end rather
+than forced into a false resolution.
+
+### 15.3 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| `treasury.py`'s matrix header no longer claims cells are dated to Mar-2025 when they're latest-TTM | **VERIFIED** — code change (`95dd7c1`) |
+| Dated Mar-2025 grid, re-derived independently, matches §13.2/§14.1 exactly | **VERIFIED** — live run, separate script, fresh data fetch |
+| §13's "no realised basis near 22%" conclusion | **CONFIRMED, not revised** — same live evidence as above |
+| `PGOLD` is the exact correct IMF PCPS indicator code for gold | **VERIFIED** — read directly from `CL_PCPS_COMMODITY` v1.0.0 |
+| The series-dimension order used in queries (`COUNTRY.INDICATOR.DATA_TRANSFORMATION.FREQUENCY`) is correct | **VERIFIED** — matches the DSD's own declared order, confirmed via wildcard query response |
+| IMF PCPS returns zero retrievable `PGOLD` observations via `api.imf.org`, as tested | **VERIFIED (negative result)** — 200 responses, zero series, across guessed codes, confirmed-correct code, and full wildcarding of remaining uncertain dimensions |
+| Root cause of the zero-series response | **NOT IDENTIFIED** — open dead-end, candidates listed in §15.2, not pursued further |
+| Whether IMF PCPS itself is fresher than, or exactly as stale as, DBnomics' mirror | **STILL OPEN** — neither of the task's two conditional outcomes could be evaluated; no per-series date was retrievable at all |
+| No gold source switched | **VERIFIED** — nothing found to switch to |
 
 ---
 
