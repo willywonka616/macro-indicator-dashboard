@@ -101,7 +101,14 @@ def q_label(qkey) -> str:
 FRESHNESS_DAYS_BY_FREQ = {
     "Daily": 20,      # FRED daily series (DGS10): a few business days' lag is normal
     "Monthly": 60,     # a monthly series is normally current within 30-45 days
-    "Quarterly": 150,  # ~5 months — covers normal release lag with headroom
+    # 220d, not the ~5 months a naive "quarterly" guess suggests: FRED dates
+    # quarterly macro series (GDP, FYGFGDQ188S, TCMDO, IEABC) to the START
+    # of the quarter, not the release date. Right before the NEXT quarter's
+    # release, a perfectly healthy series is legitimately ~200 days past its
+    # own date-stamp (observed live: 2026-01-01 at 200d old, still current,
+    # the morning before the Q2 print — see docs/review/). 220d gives a
+    # little headroom above that observed real-world maximum.
+    "Quarterly": 220,
     "Annual": 400,
 }
 
@@ -110,8 +117,18 @@ FRESHNESS_DAYS_BY_FREQ = {
 # legitimate lag than the generic Quarterly threshold above allows for, so
 # it gets its own explicit threshold rather than being exempted outright
 # (TASKgoldpricefreshness.md: "set the threshold to match" the known lag,
-# don't just skip the check).
+# don't just skip the check). Even at 270d (~9 months, well past "a quarter
+# or two"), COFER still failed this live (565d, frozen at 2025-Q1) — a
+# second genuinely frozen source, not a threshold-calibration artifact.
 COFER_FRESH_DAYS = 270
+
+# TRESEGUSM052N ("Total Reserves excluding Gold") is IMF/BOP-sourced
+# international reserves data, not a domestic FRED series — it runs a
+# real, longer lag than CPI/DGS10 even when healthy (observed live: 141d,
+# still the genuinely latest print). Its own threshold, same reasoning as
+# COFER above, rather than the generic 60d Monthly bucket which is
+# calibrated to domestic series like CPIAUCSL.
+TRESEGUS_FRESH_DAYS = 180
 
 
 def _period_to_date(period) -> _dt.date:

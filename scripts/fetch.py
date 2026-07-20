@@ -125,7 +125,8 @@ def verify() -> int:
             title = (m.get("title", "") or "")[:40]
             end = m.get("observation_end", "")
             freq_name = expect["freq"]
-            max_days = S.FRESHNESS_DAYS_BY_FREQ.get(freq_name, 60)
+            max_days = (S.TRESEGUS_FRESH_DAYS if sid == "TRESEGUSM052N"
+                        else S.FRESHNESS_DAYS_BY_FREQ.get(freq_name, 60))
             f = S.freshness(sid, end, max_days) if end else None
             age_s = f"{f['age_days']}d" if f else "?"
             fresh_s = ("STALE" if f["stale"] else "ok") if f else "?"
@@ -279,8 +280,13 @@ def build_us(manual: dict, force: bool) -> dict:
         # Freshness guard (TASKgoldpricefreshness.md): a dead source can
         # still return a plausible in-band NUMBER — this checks the DATE,
         # so a frozen series fails loudly here instead of silently shipping
-        # as "live" (see S.require_fresh's docstring and STATUS.md).
-        max_days = S.FRESHNESS_DAYS_BY_FREQ.get(S.FRED_SERIES[sid]["freq"], 60)
+        # as "live" (see S.require_fresh's docstring and STATUS.md). Special
+        # case: TRESEGUSM052N is IMF/BOP-sourced with a longer normal lag
+        # than domestic monthly series, same reasoning as COFER below.
+        if sid == "TRESEGUSM052N":
+            max_days = S.TRESEGUS_FRESH_DAYS
+        else:
+            max_days = S.FRESHNESS_DAYS_BY_FREQ.get(S.FRED_SERIES[sid]["freq"], 60)
         S.require_fresh(sid, obs[-1][0], max_days)
 
     # --- live + derived metrics ---
