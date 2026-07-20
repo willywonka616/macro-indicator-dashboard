@@ -1452,6 +1452,180 @@ task (still out of scope here) revisits panel copy.
 
 ---
 
+## 14. Closing out the remaining open issues (2026-07-20, fifth pass)
+
+Per `TASKremainingissues.md`: the receipts fix (§13) is accepted as correct.
+This pass works through everything still open, in the task's priority order.
+Ran via three temporary diagnostic scripts (`remaining_issues_check.py`,
+`gold_imf_direct_check.py` ×2 iterations), all since removed — full run
+output in `docs/review/2026-07-20a-verification.md`.
+
+### 14.1 The 22% question, shown not asserted
+
+Re-ran the 3×4 drift matrix on the corrected net-of-refunds basis,
+confirming §13's numbers were not a one-off:
+
+```
+gross (incl. GAS):
+  total (net, shipped)     Mar-2025: 23.9%   today (2026-06): 25.1%
+  on-budget (net)          Mar-2025: 32.2%   today (2026-06): 33.3%
+  tax receipts only        Mar-2025: 37.6%   today (2026-03): 35.0%
+  CBO Jan-2025 projected   Mar-2025: 22.5%   today (2026-06): 24.9%
+net-to-public (excl. GAS):
+  total (net, shipped)     Mar-2025: 19.0%   today (2026-06): 19.6%
+  on-budget (net)          Mar-2025: 25.6%   today (2026-06): 25.9%
+  tax receipts only        Mar-2025: 29.9%   today (2026-03): 27.8%
+  CBO Jan-2025 projected   Mar-2025: 17.9%   today (2026-06): 19.4%
+```
+
+**Claim status: VERIFIED** — live run, matches §13's numbers exactly (same
+underlying data, re-derived independently). The task's own arithmetic
+concern (gross reads 25.1% today; at ~2.3pt/yr drift that "implies
+something near 22% around March 2025") is answered directly: gross/total
+at Mar-2025 is 23.9%, not ~22% — the naive linear-extrapolation estimate
+overshoots because the series isn't drifting at a constant rate through
+this whole window (see §12.2's regime note: steep 2023 climb, flatter
+since). **§13's conclusion stands, on this evidence: no realised basis
+reproduces 22% closely.** The shipped basis is unchanged (net-to-public /
+total, net of refunds) — this was a verification exercise, not grounds to
+switch, per the task's explicit instruction not to change the basis on
+this evidence.
+
+### 14.2 Ch.3's ~20% — recorded in §9
+
+Done directly in the §9 table (Debt service / revenue row): the pipeline
+(19.6%) matches Ch.3's ~20% (−0.4pt) and does not match Ch.17's 22%
+(−2.4pt); both book figures are recorded rather than picking one. The
+~700% ten-year debt/revenue projection is recorded as a forward anchor,
+explicitly not yet checkable (this pipeline has no 10-year debt/revenue
+projection to compare it against).
+
+### 14.3 Gold staleness: real progress, not a full resolution
+
+**What's new this pass:** found and confirmed live that IMF's own SDMX 3.0
+API (`https://api.imf.org/external/sdmx/3.0`) is reachable, no key, from
+CI (previous sessions couldn't confirm this — `dataservices.imf.org`, the
+older API host, doesn't resolve at all; `api.imf.org` does and returns
+200s). Querying its PCPS dataflow structure directly returned:
+```
+"annotations":[...,{"id":"lastUpdatedAt","value":"2025-06-16T17:59:44.643694Z"}]
+```
+**This is suggestive evidence that IMF's PCPS dataflow itself, not just
+DBnomics' mirror, was last refreshed around June 2025** — matching
+DBnomics' own last observation (2025-06) almost exactly. That would mean
+the earlier session's inference ("DBnomics' mirror is more likely stale
+than IMF's own PCPS," based only on IMF's documented monthly cadence, not
+a direct check) had it backwards. **Claim status: ASSUMED, not
+VERIFIED** — this is dataflow-level metadata (when the *dataflow's
+structure* was last touched), not confirmed to be the PGOLD *series'*
+own latest-observation date specifically.
+
+**What didn't work:** getting the actual PGOLD observations directly from
+IMF's API to check that per-series date with certainty. Eight key
+combinations were tried across three query attempts (DBnomics' own
+`M.W00.PGOLD.USD` ordering; IMF's declared dimension order
+`W00.PGOLD.USD.M`, `W00.PGOLD..M`, `W00.PGOLD.IX.M`, `W00.PGOLD.USD.A`) —
+all returned HTTP 200 but an empty `dataSets` (no matching series), meaning
+the indicator/transformation dimension member codes guessed for gold
+weren't right. Resolving this fully would need IMF's own codelist for the
+PCPS dataflow's `INDICATOR`/`DATA_TRANSFORMATION` dimensions (a further
+API call this session didn't reach) — flagged as the concrete next step,
+not re-guessed further.
+
+**No fresher alternative source found or switched to.** The World Bank
+Pink Sheet (monthly, no key, updated through the current month per its own
+publication schedule) is a real candidate, but its distribution is a
+monthly Excel/CSV file rather than a queryable API, needs a new parsing
+dependency, and CI-reachability from `worldbank.org`/`thedocs.worldbank.org`
+was never confirmed live (this session's tools got 403s researching it,
+which — per this project's own established pattern — doesn't distinguish
+a genuine block from a bot-facing 403 without an actual CI test). Recorded
+as a candidate for a future session, not implemented.
+
+**Fallback implemented, per the task's own instruction:** `reserves_incl_gold_row`
+now carries a visible `note` whenever the gold price and gold-quantity
+months differ by 2+ months — e.g. `"⚠ gold priced as of 2025-06 (12
+months old) — market value may be off if gold has moved since"` — computed
+from the actual source dates, not a hardcoded "~13 months" estimate (the
+real figure is 12 months as of this pass's data). This renders on the row
+itself (new `MetricRow` `note` prop, §14.6), not only inferable from
+`src`/`asOf`. **Claim status: VERIFIED** — code change, confirmed by the
+local mock test and (pending) a live production run.
+
+### 14.4 Total debt: second hypothesis tested and eliminated
+
+TCMDO and government debt read at the same live quarter (2026-Q1):
+```
+TCMDO (total debt, all sectors) / GDP: 362.6%
+FYGFGDQ188S (govt debt held by public) / GDP: 98.7%
+Non-government-debt proxy (TCMDO - govt): 263.9%
+Dalio's Ch.17 'other debt' target: 340%
+Residual vs. 340%: -76.1pt (TCMDO itself: +22.6pt)
+```
+**Claim status: VERIFIED** — live run. The non-government-debt reading
+(TCMDO minus the government's own debt, to avoid double-counting against
+the debt/GDP row above it in Dalio's table) moves in the **wrong**
+direction and by more than TCMDONS did — 76pt short of 340% versus
+TCMDO's 22.6pt over. **Both tested alternatives (TCMDODNS,
+non-government-debt) are now eliminated; TCMDO itself remains the closest
+of the three.** §9's table and the "three rows needed more" bullet list
+both updated to record this rather than leave the gap unattended. A
+household+corporate-debt-specifically aggregation (summed from separate
+FRED series, not derived by subtraction) is named as the remaining
+untested candidate, not attempted this pass.
+
+### 14.5 Loose ends closed
+
+- **`IEABC` annualization branch**: resolved from evidence **already
+  committed**, no new run needed. `docs/review/2026-07-19d-verification.md`'s
+  own FRED table shows `IEABC ... Millions of Dollars ... Balance on
+  current account` (does not contain "annual rate"), and the committed
+  `public/data.json`'s `provenance.currentAccountAnnualizedInput` reads
+  `false` — confirming the non-annualized, trailing-4-quarter-sum branch
+  of `current_account_pct_gdp_3yr` is the one that actually fires live.
+  **Claim status: VERIFIED** — both pieces of evidence read directly from
+  already-committed files, cross-checked against each other.
+- **`gold.py`'s stale `--verify` banner**: fixed — was "DBnomics LBMA
+  price" (stale label from before the 2026-07 IMF PCPS switch), now
+  "DBnomics-mirrored IMF PCPS price". Cosmetic, but the banner is exactly
+  what a reviewer reads first. **Claim status: VERIFIED** — code change.
+
+### 14.6 Commentary refresh
+
+The panel-note prose in `commentary.js` (net = current situation vs. gross
+= leading indicator; debt/GDP vs. debt/revenue) makes no numeric claims,
+so it needed no changes for the 20%/25%/576% move — checked, not assumed.
+The one vital-level numeric claim ("about a fifth of total revenue") was
+already corrected in §13 and is accurate at 19.6%. New this pass: a
+`note` field on `MetricRow` (`src/components/MetricRow.jsx`), a short
+caption under the row label, distinct from `Panel.jsx`'s `longNote` (the
+fuller explanation several screens down) — so the net/gross framing is
+visible on the rows themselves, per the task's explicit ask, not only in
+the panel note above them. "Net interest (to the public)" now carries
+*"The current situation — cash leaving the government today"*; "Gross
+interest" carries *"The leading indicator — the gap is obligation
+accruing before it's an outflow"*. Same mechanism used for the gold
+staleness note (§14.3). **Claim status: VERIFIED** — code change,
+confirmed via the local mock test; a live-browser check follows before
+this is called done (§14.9).
+
+### 14.8 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| Recomputed matrix confirms §13's conclusion (no realised basis near 22%) | **VERIFIED** — live run, independent re-derivation |
+| The naive linear-drift extrapolation to "~22% at Mar-2025" doesn't hold | **VERIFIED** — actual Mar-2025 value is 23.9%, not ~22% |
+| `api.imf.org` SDMX 3.0 is reachable, no key, from CI | **VERIFIED** — live 200 responses |
+| PCPS dataflow's own `lastUpdatedAt` (2025-06-16) suggests upstream staleness, not just a DBnomics-mirror problem | **ASSUMED** — dataflow-level metadata, not a confirmed per-series observation date |
+| No fresher no-key gold source was found and confirmed CI-reachable | **VERIFIED** (as a negative — World Bank Pink Sheet identified but not confirmed reachable or implemented) |
+| Gold staleness is now visible on the row itself, not only in `src`/`asOf` | **VERIFIED** — code change, mock-tested |
+| Non-government-debt hypothesis for "other debt" (263.9%) is eliminated | **VERIFIED** — live run |
+| `IEABC` uses the non-annualized branch | **VERIFIED** — read from two independent already-committed files |
+| `gold.py`'s verify banner now names IMF PCPS, not DBnomics LBMA | **VERIFIED** — code change |
+| Commentary prose needed no numeric changes; row-level framing added | **VERIFIED** — code change, mock-tested |
+
+---
+
 ## Meta: how to keep this file honest
 
 - Don't hand-wave dates or run outcomes — check the Actions tab
