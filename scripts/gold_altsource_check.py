@@ -74,46 +74,77 @@ def check_worldbank_dbnomics():
             print(f"  provider {code} dataset list FAILED: {e}")
             continue
 
-        # Try the most likely dataset codes directly regardless of the name search
-        for ds in ("GEM", "GEM-COMMODITY", "PINK", "CMO"):
-            try:
-                r = _get(f"https://api.db.nomics.world/v22/series/{code}/{ds}",
-                         params={"limit": "1000", "observations": "1", "q": "gold"})
-                js = r.json()
-                docs = js.get("series", {}).get("docs", [])
-                print(f"    {code}/{ds} q=gold -> {len(docs)} series")
-                gold_docs = [d for d in docs if "gold" in str(d.get("series_name", "")).lower()
-                             or "gold" in str(d.get("series_code", "")).lower()]
-                for d in gold_docs[:5]:
-                    periods = d.get("period", [])
-                    values = d.get("value", [])
-                    print(f"      {d.get('series_code')} ({d.get('series_name')}): "
-                          f"{len(periods)} obs, latest {periods[-1] if periods else None} = "
-                          f"{values[-1] if values else None}")
-            except Exception as e:  # noqa: BLE001
-                print(f"    {code}/{ds} FAILED: {e}")
+        # Try every dataset actually listed under this provider (not guessed
+        # codes) — round 1 found the real dataset list includes "GEM" and
+        # "commodity_prices" ("Commodity Prices: History and Projections"),
+        # neither of which matches the guessed GEM-COMMODITY/PINK/CMO codes.
+        try:
+            r = _get(f"https://api.db.nomics.world/v22/datasets/{code}")
+            ds_codes = [d.get("code") for d in
+                        r.json().get("datasets", {}).get("docs", [])]
+        except Exception as e:  # noqa: BLE001
+            print(f"    (re-)listing datasets FAILED: {e}; falling back to guesses")
+            ds_codes = ["GEM", "commodity_prices"]
+
+        for ds in ds_codes:
+            for q in ("gold", None):
+                try:
+                    params = {"limit": "1000", "observations": "1"}
+                    if q:
+                        params["q"] = q
+                    r = _get(f"https://api.db.nomics.world/v22/series/{code}/{ds}",
+                             params=params)
+                    js = r.json()
+                    docs = js.get("series", {}).get("docs", [])
+                    print(f"    {code}/{ds} q={q} -> {len(docs)} series")
+                    gold_docs = [d for d in docs
+                                 if "gold" in str(d.get("series_name", "")).lower()
+                                 or "gold" in str(d.get("series_code", "")).lower()]
+                    for d in gold_docs[:8]:
+                        periods = d.get("period", [])
+                        values = d.get("value", [])
+                        print(f"      {d.get('series_code')} ({d.get('series_name')}): "
+                              f"{len(periods)} obs, latest {periods[-1] if periods else None} = "
+                              f"{values[-1] if values else None}")
+                    if q is None and not gold_docs and docs:
+                        names = [(d.get("series_code"), d.get("series_name"))
+                                 for d in docs][:20]
+                        print(f"      no gold match; sample series in {ds}: {names}")
+                    if docs:
+                        break  # q=gold worked, no need for the unfiltered dump
+                except Exception as e:  # noqa: BLE001
+                    print(f"    {code}/{ds} q={q} FAILED: {e}")
 
 
 # --- 2. Stooq daily CSV for XAUUSD ------------------------------------------
 
 def check_stooq():
     print("\n=== 2. Stooq daily CSV, XAUUSD ===")
-    url = "https://stooq.com/q/d/l/"
-    try:
-        r = _get(url, params={"s": "xauusd", "i": "d"})
-        text = r.text
-        print(f"  GET {r.url}")
-        print(f"  status: {r.status_code}, content-type: {r.headers.get('content-type')}")
-        print(f"  first 200 chars: {text[:200]!r}")
-        rows = list(csv.DictReader(io.StringIO(text)))
-        print(f"  {len(rows)} rows parsed")
-        if rows:
-            last = rows[-1]
-            print(f"  latest row: {last}")
-            first = rows[0]
-            print(f"  first row: {first}")
-    except Exception as e:  # noqa: BLE001
-        print(f"  FAILED: {e}")
+    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                              "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
+    # First attempt bare (no UA) to confirm/refute a UA-based 404, then a
+    # couple of URL-shape variants in case the endpoint path is off.
+    attempts = [
+        ("no UA, base url", "https://stooq.com/q/d/l/", {"s": "xauusd", "i": "d"}, {}),
+        ("with UA, base url", "https://stooq.com/q/d/l/", {"s": "xauusd", "i": "d"}, headers),
+        ("with UA, .csv path", "https://stooq.com/q/d/l/", {"s": "xauusd", "i": "d", "d1": "", "d2": ""}, headers),
+        ("with UA, no trailing slash", "https://stooq.com/q/d/l", {"s": "xauusd", "i": "d"}, headers),
+    ]
+    for label, url, params, hdrs in attempts:
+        try:
+            r = _get(url, params=params, headers=hdrs, tries=2)
+            text = r.text
+            print(f"\n  [{label}] GET {r.url}")
+            print(f"  status: {r.status_code}, content-type: {r.headers.get('content-type')}")
+            print(f"  first 200 chars: {text[:200]!r}")
+            rows = list(csv.DictReader(io.StringIO(text)))
+            print(f"  {len(rows)} rows parsed")
+            if rows:
+                print(f"  first row: {rows[0]}")
+                print(f"  latest row: {rows[-1]}")
+                return  # got usable data, no need to try further variants
+        except Exception as e:  # noqa: BLE001
+            print(f"\n  [{label}] FAILED: {e}")
 
 
 if __name__ == "__main__":
