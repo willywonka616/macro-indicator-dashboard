@@ -31,11 +31,14 @@ jobs:
       - name: Install deps
         run: pip install -r scripts/requirements.txt
 
-      - name: Run remaining-issues check
-        working-directory: scripts
-        env:
-          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
-        run: python remaining_issues_check.py
+      # Step temporarily skipped: already captured twice (runs 29721896003,
+      # 29722050882), both fully successful. Re-enable if this diagnostic
+      # needs a full re-run for some other reason.
+      # - name: Run remaining-issues check
+      #   working-directory: scripts
+      #   env:
+      #     FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+      #   run: python remaining_issues_check.py
 
       - name: Run gold IMF-direct follow-up check
         working-directory: scripts
