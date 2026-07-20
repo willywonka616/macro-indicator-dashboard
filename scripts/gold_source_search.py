@@ -74,11 +74,30 @@ def report(series_id):
         return series_id, None, None, None
 
 
+def search_and_list(text, limit=30):
+    print(f"\n=== FRED: series/search?search_text={text!r} ===")
+    js = fred_get("series/search", search_text=text, limit=limit,
+                   order_by="popularity", sort_order="desc")
+    seriess = js.get("seriess", [])
+    print(f"{len(seriess)} results:")
+    for s in seriess:
+        sid = s["id"]
+        freq = s.get("frequency_short", "")
+        units = s.get("units", "")
+        end = s.get("observation_end", "")
+        title = s.get("title", "")
+        print(f"  {sid:<22} freq={freq:<3} units={units!r:<24} end={end:<12} {title}")
+    return seriess
+
+
 def main():
-    print("=== FRED: series/search?search_text=gold price ===")
+    for text in ("LBMA gold", "gold fixing", "gold spot"):
+        search_and_list(text, limit=15)
+
     js = fred_get("series/search", search_text="gold price", limit=30,
                    order_by="popularity", sort_order="desc")
     seriess = js.get("seriess", [])
+    print(f"\n=== FRED: series/search?search_text='gold price' ===")
     print(f"{len(seriess)} results (top 30 by popularity):")
     candidates = []
     for s in seriess:
