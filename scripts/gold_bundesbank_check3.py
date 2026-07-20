@@ -17,7 +17,7 @@ import requests
 DBN = "https://api.db.nomics.world/v22"
 
 
-def _get(url, params=None, tries=3, timeout=25):
+def _get(url, params=None, tries=2, timeout=15):
     last = None
     for i in range(tries):
         try:
@@ -56,5 +56,4 @@ def dump_dataset(code, limit=1000):
 
 
 if __name__ == "__main__":
-    dump_dataset("BBEX3")
-    dump_dataset("BBK01")
+    dump_dataset("BBEX3", limit=300)
