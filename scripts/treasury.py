@@ -650,7 +650,11 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
         ok = False
         print(f"  gross-row ratio computation FAILED: {e}")
 
-    print("\n  Debt-service calibration matrix (Dalio Ch.17 US target: 22%, Mar 2025):")
+    print("\n  Debt-service calibration matrix, LATEST TTM values (each cell is a")
+    print("  trailing-12-month ratio ending at its own most recent overlapping month,")
+    print("  NOT dated to Mar-2025 — compare against Dalio's Ch.17 US target, 22% at")
+    print("  his March-2025 vintage; see --verify's dated Mar-2025-vs-today section,")
+    print("  or docs/review/, for values actually AT that date):")
     try:
         matrix = debt_service_matrix(tax_receipts_monthly)
         den_labels = sorted({d for _, d in matrix})
