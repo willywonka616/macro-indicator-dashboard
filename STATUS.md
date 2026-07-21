@@ -6,17 +6,18 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-21a-verification.md` (run output) and
-> `docs/review/2026-07-21a-values.md` (headline values), base commit
-> `b0e8827` — the manual-INPUT (not OUTPUT) fallback pass: gold reserves
-> now use a hand-entered PRICE applied to the still-live ounce count
-> (`tag: "manual_price"`, 4.1% of GDP) instead of a fully manual output;
-> COFER's fallback is now the latest actually-published IMF figure
-> (57.13%, 2026-Q1) instead of a book-transcribed value; §9's circularity
-> is labelled explicitly; World Bank Pink Sheet, ECB Data Portal, and IMF
-> IFS were retried and ruled out (see §18). A first attempt at the gold
-> fix had a real bug (silently fell through to the old fallback in a live
-> production run) — found and fixed same round, see §18.2.
+> `docs/review/2026-07-21b-verification.md` (run output) and
+> `docs/review/2026-07-21b-values.md` (headline values), base commit
+> `3335451` — the manual-value-freshness-guard + provenance-assertion
+> pass: `data/manual.json`'s own dated values (gold price, the COFER
+> snapshot, `lastChecked`) now have thresholds of their own and are
+> checked both when used as a fallback and unconditionally during
+> `--verify`; 11 of 14 manual values were found to have no date at all
+> (audited, not fixed — see §19.2); every fallback-capable row now
+> asserts its actual tag against the expected `"live"` tag and records
+> any mismatch in `provenance.fallbacksFired`, warned loudly (console
+> banner + GitHub Actions annotation) rather than left as an easy-to-miss
+> `print()` line (see §19).
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -25,9 +26,9 @@ prior sessions and no access to this repo's chat history.
 > stubs pointing here; do not resurrect the regenerate-in-place pattern.
 > Prior rounds: `docs/review/2026-07-19c-*.md`, `docs/review/2026-07-19d-*.md`,
 > `docs/review/2026-07-20a-*.md`, `docs/review/2026-07-20b-*.md`,
-> `docs/review/2026-07-20c-*.md`, `docs/review/2026-07-20d-*.md`
-> (superseded, left in place). When you add a new round, update this line
-> to point at it.
+> `docs/review/2026-07-20c-*.md`, `docs/review/2026-07-20d-*.md`,
+> `docs/review/2026-07-21a-*.md` (superseded, left in place). When you
+> add a new round, update this line to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -186,6 +187,34 @@ already ruled out), ECB Data Portal, and IMF IFS (distinct from PCPS) —
 all three ruled out for specific, evidenced reasons; no source switched.
 See §18 for the full writeup and `docs/review/2026-07-21a-*.md` for the
 run output and headline values.
+
+**Later the same day, a tenth pass (§19): closed two more silently-wrong-
+data gaps.** §17's freshness guard only ever checked FETCHED series —
+`data/manual.json`'s own hand-entered values (the gold price added in
+§18) had no threshold at all, and could go stale with nothing to catch
+it. Added thresholds for every dated manual value (`goldPriceManualFallback.asOf`,
+`reserveCurrency.cbReserves.asOf`, and the catch-all `lastChecked`),
+checked both when actually used as a fallback and unconditionally during
+`--verify`; none are stale as of this pass, but the audit found **11 of
+14 manual.json values have no date of their own at all** (TIC holder
+shares, the CBO projection, and the three reserve-currency market-share
+figures — recorded, not fixed, since fixing it means sourcing 11 new
+independently-tracked dates). Separately, added a per-row provenance
+assertion (`assert_provenance`) at both fallback-capable rows (gold
+reserves, COFER) — this is the structural fix for how §18.2's bug was
+actually found: by reading a build log line-by-line, not by any
+automated check. A fallback firing is now a loud, unmissable signal
+(console banner + GitHub Actions `::warning::` annotation) AND a
+structured field in the shipped data (`country.provenance.fallbacksFired`),
+not just a `print()` line easy to miss. Both new mechanisms are
+deliberately non-fatal — these are already the fallback of last resort,
+so failing the build over their own staleness or over a fallback firing
+would defeat the entire "degrade rather than break" point of the
+fallback chains §17/§18 built in the first place. Confirmed working in a
+live production run (`3335451`): both known fallbacks (gold, COFER)
+correctly produced loud warnings and `fallbacksFired` entries; headline
+values unchanged from §18. See §19 for the full writeup and
+`docs/review/2026-07-21b-*.md` for the run output and headline values.
 
 ---
 
@@ -2465,7 +2494,82 @@ case, confirmed by inspecting the raw test output.
 
 ### 19.5 Live production run
 
-<!-- filled in once the workflow_dispatch run for commit 13c0a76 completes -->
+Two runs were needed (same race pattern as §18.3: a `workflow_dispatch`'s
+own `git push` losing against a STATUS.md commit pushed moments later
+from this session). The clean run
+(`https://github.com/willywonka616/macro-indicator-dashboard/actions/runs/29809275699`,
+job `88566499233`, 2026-07-21 07:07-07:09 UTC) pushed as `3335451`.
+Verbatim `--verify` output showing the new manual-value audit running
+unconditionally, plus the build step showing both loud warnings firing
+correctly for the (still-expected, unchanged from §18) gold-price and
+COFER fallbacks:
+```
+Manual-value freshness audit (data/manual.json):
+  goldPriceManualFallback.asOf                            2026-07-20      1d old   60d threshold  ok
+  reserveCurrency.cbReserves.asOf                         2026-Q1       201d old  270d threshold  ok
+  lastChecked (governs every dateless value below)        2026-07-18      3d old  180d threshold  ok
+  11 manual values have NO individual date, relying solely on lastChecked above:
+    govAssetsMinusDebt
+    cboProjection
+    holders.centralBank
+    holders.domestic
+    holders.abroad
+    shareHardFX
+    sovereignWealth
+    reserveCurrency.trade
+    reserveCurrency.equity
+    reserveCurrency.debt
+    reservesInclGoldFallback (no own asOf; last-resort only — see its own note)
+```
+```
+Gold price unavailable/stale, patching a manual price input across the gap: freshness guard: gold price (DBnomics PCPS) latest observation is (2025, 6) (415d old, today 2026-07-21) — exceeds the 60d threshold for this series' cadence. The source is likely dead or frozen, not just running a normal lag.
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+WARNING: provenance mismatch on 'Reserves incl. gold (market)': expected tag 'live', shipped 'manual_price' — a fallback fired. Reason: live gold price and/or holdings fetch failed or exceeded its freshness threshold
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+##[warning]provenance mismatch on 'Reserves incl. gold (market)': expected tag 'live', shipped 'manual_price' — a fallback fired. Reason: live gold price and/or holdings fetch failed or exceeded its freshness threshold
+IMF COFER unavailable, using manual value: freshness guard: IMF COFER USD share latest observation is 2025-Q1 (566d old, today 2026-07-21) — exceeds the 270d threshold for this series' cadence. The source is likely dead or frozen, not just running a normal lag.
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+WARNING: provenance mismatch on 'World CB reserves in USD': expected tag 'live', shipped 'manual' — a fallback fired. Reason: live IMF COFER fetch failed or exceeded its freshness threshold
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+##[warning]provenance mismatch on 'World CB reserves in USD': expected tag 'live', shipped 'manual' — a fallback fired. Reason: live IMF COFER fetch failed or exceeded its freshness threshold
+Wrote public/data.json — generatedAt 2026-07-21T07:09:57Z
+```
+The `##[warning]`-prefixed lines are GitHub's own rendering of the
+`::warning::` annotations — they appear as actual Annotations on the
+run's Checks page, not just log text. `public/data.json`'s
+`countries.US.provenance.fallbacksFired`, read directly from the
+committed file:
+```json
+[
+  {
+    "row": "Reserves incl. gold (market)",
+    "expectedTag": "live",
+    "actualTag": "manual_price",
+    "reason": "live gold price and/or holdings fetch failed or exceeded its freshness threshold"
+  },
+  {
+    "row": "World CB reserves in USD",
+    "expectedTag": "live",
+    "actualTag": "manual",
+    "reason": "live IMF COFER fetch failed or exceeded its freshness threshold"
+  }
+]
+```
+Headline values unchanged from §18 (as expected — nothing about the
+underlying fallback logic changed this round, only its visibility):
+`reserves_to_gdp` 4.1% (`manual_price`), `World CB reserves in USD`
+57.1% (`manual`). None of the three manual dates (`goldPriceManualFallback.asOf`,
+`cbReserves.asOf`, `lastChecked`) are stale as of this run, so no
+manual-value-staleness warning fired — only the (expected, unchanged)
+provenance mismatches for the two known fallback rows.
+
+**Claim status: VERIFIED** — live `workflow_dispatch` run, not a mock;
+`public/data.json` at commit `3335451` reflects exactly this, including
+the new `fallbacksFired` field.
 
 ### 19.6 Verified vs. assumed — this round's new claims
 
