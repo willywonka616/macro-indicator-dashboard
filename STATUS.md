@@ -6,18 +6,16 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-21b-verification.md` (run output) and
-> `docs/review/2026-07-21b-values.md` (headline values), base commit
-> `3335451` — the manual-value-freshness-guard + provenance-assertion
-> pass: `data/manual.json`'s own dated values (gold price, the COFER
-> snapshot, `lastChecked`) now have thresholds of their own and are
-> checked both when used as a fallback and unconditionally during
-> `--verify`; 11 of 14 manual values were found to have no date at all
-> (audited, not fixed — see §19.2); every fallback-capable row now
-> asserts its actual tag against the expected `"live"` tag and records
-> any mismatch in `provenance.fallbacksFired`, warned loudly (console
-> banner + GitHub Actions annotation) rather than left as an easy-to-miss
-> `print()` line (see §19).
+> `docs/review/2026-07-21c-verification.md` (run output), base commit
+> `0873732` — the equation-button pass: a "ƒx" disclosure on every metric
+> reveals the formula behind it in Dalio's own Ch. 3 notation, with the
+> mapping table's src/asOf/tag read from `data.json` at render time
+> (never hardcoded in `src/content/equations.js`) and a real 390px
+> horizontal-overflow bug found and fixed via live Playwright browser
+> testing before shipping (see §20). Headline values are unchanged from
+> round b — `docs/review/2026-07-21b-values.md` remains current for those;
+> this round only added `key`/`terms` fields to `data.json`'s shape, no
+> new `-values.md`.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -27,8 +25,9 @@ prior sessions and no access to this repo's chat history.
 > Prior rounds: `docs/review/2026-07-19c-*.md`, `docs/review/2026-07-19d-*.md`,
 > `docs/review/2026-07-20a-*.md`, `docs/review/2026-07-20b-*.md`,
 > `docs/review/2026-07-20c-*.md`, `docs/review/2026-07-20d-*.md`,
-> `docs/review/2026-07-21a-*.md` (superseded, left in place). When you
-> add a new round, update this line to point at it.
+> `docs/review/2026-07-21a-*.md`, `docs/review/2026-07-21b-*.md`
+> (superseded, left in place). When you add a new round, update this line
+> to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -215,6 +214,33 @@ live production run (`3335451`): both known fallbacks (gold, COFER)
 correctly produced loud warnings and `fallbacksFired` entries; headline
 values unchanged from §18. See §19 for the full writeup and
 `docs/review/2026-07-21b-*.md` for the run output and headline values.
+
+**Later the same day, an eleventh pass (§20): the equation button —
+`TASK-equation-button.md`.** A small "ƒx" disclosure on every metric row
+now reveals the formula behind it in Ray Dalio's own variable names
+(*How Countries Go Broke* Ch. 3), keeping current-value definitions
+visibly separate from his forward-looking projection formulas so the
+maths view can never be read as though a projection formula produced the
+number on screen. `scripts/fetch.py` now attaches a stable `key` to every
+panel row and a `terms` array (each with its own src/asOf/tag) to the
+five rows whose Dalio equation names multiple distinct inputs the
+pipeline currently exposes as one combined row. `src/content/equations.js`
+holds only the hand-written formulas/prose — per the task's addendum, the
+mapping table's src/asOf/tag are read from `data.json` at render time,
+never hardcoded, so the tag vocabulary changing (as it just did with
+`manual_price`) needs no content update. Browser-tested live with
+Playwright (`chromium-cli` unavailable in this environment; used the
+`playwright` package already in `node_modules`) — found and fixed a real
+390px horizontal-overflow bug before shipping (a flex row couldn't wrap
+a long src string; fixed by stacking label/src instead of fitting them
+side by side), confirmed zero overflow across all 24 buttons on the page
+afterward, confirmed correct `aria-expanded`/keyboard behaviour
+programmatically, and confirmed the feature against real production data
+including a genuine mixed-tag case (three live terms, one `manual_price`
+term, in the same reserves-incl-gold mapping table). Bundle impact:
++3.39kB gzip, no new runtime dependency. See §20 for the full writeup and
+`docs/review/2026-07-21c-verification.md` for the run output (headline
+values unchanged from round b, so no new `-values.md` this round).
 
 ---
 
