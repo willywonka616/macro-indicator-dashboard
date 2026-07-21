@@ -6,13 +6,17 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-20d-verification.md` (run output) and
-> `docs/review/2026-07-20d-values.md` (headline values), base commit
-> `a93e485` — the freshness-guard pass: gold-source search (all 5 tried,
-> none usable), the freshness guard itself, and the live production run
-> where it correctly demoted both the frozen gold price AND a
-> newly-discovered frozen IMF COFER to manual. `reserves_to_gdp` and
-> `World CB reserves in USD` are both `manual` as of this round (see §17).
+> `docs/review/2026-07-21a-verification.md` (run output) and
+> `docs/review/2026-07-21a-values.md` (headline values), base commit
+> `b0e8827` — the manual-INPUT (not OUTPUT) fallback pass: gold reserves
+> now use a hand-entered PRICE applied to the still-live ounce count
+> (`tag: "manual_price"`, 4.1% of GDP) instead of a fully manual output;
+> COFER's fallback is now the latest actually-published IMF figure
+> (57.13%, 2026-Q1) instead of a book-transcribed value; §9's circularity
+> is labelled explicitly; World Bank Pink Sheet, ECB Data Portal, and IMF
+> IFS were retried and ruled out (see §18). A first attempt at the gold
+> fix had a real bug (silently fell through to the old fallback in a live
+> production run) — found and fixed same round, see §18.2.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -21,8 +25,9 @@ prior sessions and no access to this repo's chat history.
 > stubs pointing here; do not resurrect the regenerate-in-place pattern.
 > Prior rounds: `docs/review/2026-07-19c-*.md`, `docs/review/2026-07-19d-*.md`,
 > `docs/review/2026-07-20a-*.md`, `docs/review/2026-07-20b-*.md`,
-> `docs/review/2026-07-20c-*.md` (superseded, left in place). When you add
-> a new round, update this line to point at it.
+> `docs/review/2026-07-20c-*.md`, `docs/review/2026-07-20d-*.md`
+> (superseded, left in place). When you add a new round, update this line
+> to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -154,6 +159,33 @@ never actually surfaced on the row — it is now. §9's table updated to
 mark both rows `manual` with an explanation. See §17 for the full writeup
 and `docs/review/2026-07-20d-*.md` for the run output and headline
 values.
+
+**2026-07-21, a ninth pass (§18): the user correctly flagged that §17's
+fix had swapped one problem for a worse one — replacing a stale-but-live
+number with a fully manual output that, for gold, was literally Dalio's
+own book figure, and, for COFER, was transcribed from the same book §9
+calibrates against. Fixed both as manual PRICE/VALUE INPUTS rather than
+manual OUTPUTS:** gold reserves now apply a hand-entered price (~$4,000/oz,
+dated) to the still-live Treasury ounce count (new `manual_price` tag);
+COFER's fallback is now the latest actually-published IMF figure
+(57.13%, 2026-Q1) instead of the book value. The first implementation of
+the gold fix had a real bug — a single-point manual price dict didn't
+overlap `TRESEGUSM052N`'s own lagging history, so it silently fell all
+the way back to the old manual output in a live production run — found
+via that run's own log output and fixed same-round (patch only the
+missing months, keep any real historical price data the fetch did
+return). Confirmed working in a second live production run:
+`reserves_to_gdp` is now **4.1%** of GDP (`manual_price`, live ounce
+count × manual price), `World CB reserves in USD` is **57.1%** (`manual`,
+real 2026-Q1 COFER). §9's table is updated to explicitly label the
+circularity in the old fix and why the new figures are non-circular (or,
+for gold, deliberately don't try to match the book at all). Also retried
+three gold sources not yet properly attempted per the user's correction
+— the actual World Bank Pink Sheet (distinct from the CMO forecast table
+already ruled out), ECB Data Portal, and IMF IFS (distinct from PCPS) —
+all three ruled out for specific, evidenced reasons; no source switched.
+See §18 for the full writeup and `docs/review/2026-07-21a-*.md` for the
+run output and headline values.
 
 ---
 
@@ -730,7 +762,7 @@ gap had gone unnoticed because it was never added to this table.
 | Debt, 10-yr projection / GDP | 122% | 122% | **manual**, carried from `data/manual.json` (CBO) | Trivial — same figure, not independently derived |
 | Held by CB / domestic / abroad | 13% / 57% / 29% | 13% / 57% / 29% | **manual**, carried from `data/manual.json` (TIC) | Trivial — same figures, not independently derived |
 | Debt service / revenue | 22% (Ch.17 table); **~20% (Ch.3 prose, "the US is also borrowing ~20% of its income each year to cover interest expenses")** | 19.6% (net-to-public / **total** receipts, net of refunds) | live, `scripts/treasury.py` | **Matches the Ch.3 figure** (−0.4pt) — **does not match Ch.17's 22%** (−2.4pt). The book gives two figures for this ratio, ~2pt apart, in the same March-2025 vintage; exact reproduction of both is impossible. This pipeline reproduces the one computed on the standard (net-to-public / total, net-of-refunds) definition — see §14.1 for the recomputed matrix confirming no realised basis reproduces 22% |
-| FX reserves / GDP | 3% | ~4.2-4.3% (excl.-gold FX, live + gold at market, live oz × manual price) | **manual_price** as of 2026-07-20 | **Retracted, then re-fixed within the same day — see §18.** §17's first fix replaced the stale-but-live 3.7% with a fully-manual 3.0% that happened to equal Dalio's own figure by construction (`data/manual.json` was hand-set to match his book value) — a tautological "match," not corroboration, flagged by the user and corrected same-day. §18 replaces that with a **manual PRICE INPUT** (~$4,000/oz, hand-entered and dated, applied to the still-live ounce count) instead of a manual OUTPUT — the ounce count, FX-excl-gold, and GDP are all still live; only the price is hand-entered. Expected to read **further from, not closer to**, Dalio's 3% (gold has risen well past his March-2025 price) — that widening is itself evidence the fix is working, not a new problem |
+| FX reserves / GDP | 3% | **4.1%** (excl.-gold FX, live + gold at market, live oz × manual price) | **manual_price** as of 2026-07-20 | **Retracted, then re-fixed — see §18.** §17's first fix replaced the stale-but-live 3.7% with a fully-manual 3.0% that happened to equal Dalio's own figure by construction (`data/manual.json` was hand-set to match his book value) — a tautological "match," not corroboration, flagged by the user and corrected. §18 replaces that with a **manual PRICE INPUT** (~$4,000/oz, hand-entered and dated, applied to the still-live ounce count) instead of a manual OUTPUT — the ounce count, FX-excl-gold, and GDP are all still live; only the price is hand-entered. Confirmed live in production at **4.1% of GDP**, further from Dalio's 3% than even the old stale-priced 3.7% was — expected, since gold has risen well past his March-2025 price; the widening is evidence the fix is working, not a new problem |
 | Total debt (Dalio's "other debt") / GDP | 340% | 362.6% (TCMDO, all sectors incl. financial) | live, `FRED: TCMDO` | **Does not match** — +22.6pt gap. Two alternative readings tried and **both eliminated**: nonfinancial-sectors-only (TCMDODNS, 256.7%, −83pt) and non-government debt (TCMDO minus government's own ~99%, 263.9%, −76pt) — both further from 340% than TCMDO itself. See §14.4 |
 | Current account, 3-yr avg / GDP | −4% | −3.7% | live, `IEABC` (FRED) | Matches closely |
 | World trade in USD | 52.6% | 52.6% | **manual**, carried from `data/manual.json` | Trivial — same figure |
@@ -2128,6 +2160,170 @@ status and why.
 | Quarterly/TRESEGUSM052N threshold recalibration (220d/180d) doesn't mask genuine staleness | **VERIFIED** — gold price and COFER still fail decisively at the recalibrated thresholds |
 | `manual.json`'s fallback `note` field is now actually surfaced on the shipped row | **VERIFIED** — code change, confirmed in the live `a93e485` `data.json` |
 | Once a working live gold price is found, the reserves-incl-gold figure is expected to move away from 3.0%/3.7%, not toward it | **ASSUMED** — reasoned from gold's known price path (~$3,352 → ~$5,595 → ~$4,000), not yet observed live since no working live source exists |
+
+---
+
+## 18. Manual-INPUT (not OUTPUT) fallback for gold + COFER; circularity labelled; World Bank/ECB/IMF-IFS retried (2026-07-21, ninth pass)
+
+**What this round covers:** a 3-part user correction to §17's fix. (1)
+§17's gold and COFER fallbacks were both manual *outputs* — full
+hand-carried percentages, one of them (gold) literally equal to Dalio's
+own book figure by construction. Flagged as materially worse than the
+stale-but-live number it replaced (3.0% manual vs. 3.7% stale-live, when
+gold's actual live-oz-count × current price is closer to 4%). Fix: switch
+gold to a manual *price input* (one hand-entered number, ~$4,000/oz,
+dated) applied to the still-live Treasury ounce count, and switch COFER's
+fallback from the book-transcribed 57.0%/~2024 to the latest *actually
+published* IMF figure (57.13%, 2026-Q1). (2) Label the resulting
+circularity in §9's calibration table explicitly, so a fallback-vs-book
+"match" doesn't read as independent corroboration. (3) Retry three gold
+sources not yet properly attempted: World Bank's actual Pink Sheet
+(distinct from the CMO forecast table already ruled out in §16), the ECB
+Data Portal, and IMF IFS (distinct from the already-tried PCPS dataflow).
+
+### 18.1 A new tag: `manual_price`
+
+Added a fourth provenance tag alongside `live` / `model` / `manual` for
+this exact hybrid case — one input hand-entered, everything else
+(ounce count, FX-excl-gold, GDP) still live. `Tag.jsx`'s `KINDS` map and
+`App.jsx`'s `dotColor` helper both updated; the frontend already handled
+an unrecognized tag safely (falls through to the caution/hollow-dot
+treatment), confirmed by reading the code before making any change, so
+this was a labelling addition, not a rendering fix.
+
+### 18.2 The 3-tier fallback chain, and a real bug it exposed
+
+Redesigned `scripts/fetch.py`'s gold-reserves block from a 2-tier chain
+(live → full manual output) to 3-tier: **live** (both ounce count and
+price fresh) → **manual price input** (ounce count still live, only the
+price hand-entered) → **manual output** (last resort, only if the ounce
+count itself is unavailable). `data/manual.json` gained
+`goldPriceManualFallback` (price=$4,000/oz, dated 2026-07-20, with a
+`history` array giving the last live price and the Jan-2026 peak for
+context) as the new primary fallback; the old `reservesInclGoldFallback`
+(3.0%, still Dalio's book figure) is retained but re-documented as a
+last-resort-only path that is NOT an independent check.
+
+**The first attempt at this had a real bug, caught by a live production
+run before it shipped.** The inner exception handler replaced the price
+dict with a single entry — `{oz_asof: gpf["pricePerOz"]}` — at the live
+ounce-count month. `TRESEGUSM052N` (FX reserves excl. gold) lags the gold
+ounce data by several months in practice (2026-03 vs. 2026-06 in the run
+that caught this), so that single-point dict shared zero overlapping
+months with `TRESEGUSM052N`'s own history. `series.reserves_incl_gold_pct_gdp()`
+requires overlap between the two to compute anything, so it raised `"no
+overlapping quarters"` — caught by the *outer* exception handler, which
+misreported it as "live ounce count itself failed" (it hadn't) and fell
+all the way back to the old 3.0% manual output, silently defeating the
+entire fix. Evidence, verbatim from the production run
+(`https://github.com/willywonka616/macro-indicator-dashboard/actions/runs/29767418637`,
+job `88436912553`, commit `44d4320` — since superseded):
+```
+Gold price unavailable/stale, using manual price input at the live oz month: freshness guard: gold price (DBnomics PCPS) latest observation is (2025, 6) (414d old, today 2026-07-20) — exceeds the 60d threshold for this series' cadence. The source is likely dead or frozen, not just running a normal lag.
+Gold-inclusive reserves unavailable even with a manual price input (live ounce count itself failed), using the full manual fallback: reserves_incl_gold_pct_gdp: no overlapping quarters
+```
+**Fix:** instead of discarding whatever real (if stale) historical price
+data the fetch attempt actually returned, keep it and only patch in the
+manual price for the months it's missing — restoring full month coverage
+so the intersection with `TRESEGUSM052N`'s own lagging history is
+non-empty again, while old chart history still uses real historical
+prices rather than the flat manual value:
+```python
+gold_price_monthly = {}
+try:
+    gold_price_monthly = G.gold_price_usd_per_oz()
+    price_asof = max(gold_price_monthly)
+    S.require_fresh(...)
+    price_is_live = True
+except Exception as price_e:
+    gpf = mu["goldPriceManualFallback"]
+    for ym in gold_oz_monthly.keys() - gold_price_monthly.keys():
+        gold_price_monthly[ym] = gpf["pricePerOz"]
+    price_asof = oz_asof
+    price_is_live = False
+```
+Verified two ways: (1) locally, against a strengthened mock test that now
+simulates the real lag (a `TRESEGUSM052N` stub cut off 3 months before
+"today" and a gold-price stub whose real history also stops short of the
+gap) — the pre-fix code reproduces the exact same "no overlapping
+quarters" failure against this mock, and the post-fix code resolves it
+correctly to `manual_price`, not `manual`; (2) live, in production (below).
+
+### 18.3 Live production run: confirmed working end to end
+
+Two production runs were needed. The first re-run after the fetch.py fix
+(`29806735725`, job `88558737649`) computed correctly — no more "no
+overlapping quarters" — but its own `git push` step lost a race against
+an unrelated STATUS.md commit pushed from this session moments earlier,
+so the resulting `data.json` was never actually saved to the branch. A
+second `workflow_dispatch` (`29806949328`, job `88559389516`,
+2026-07-21 06:25-06:27 UTC, committed as `b0e8827`) ran clean:
+```
+Gold price unavailable/stale, patching a manual price input across the gap: freshness guard: gold price (DBnomics PCPS) latest observation is (2025, 6) (415d old, today 2026-07-21) — exceeds the 60d threshold for this series' cadence. The source is likely dead or frozen, not just running a normal lag.
+IMF COFER unavailable, using manual value: freshness guard: IMF COFER USD share latest observation is 2025-Q1 (566d old, today 2026-07-21) — exceeds the 270d threshold for this series' cadence. The source is likely dead or frozen, not just running a normal lag.
+Wrote public/data.json — generatedAt 2026-07-21T06:26:59Z
+```
+Resulting values, read directly from the committed `public/data.json`:
+- `reserves_to_gdp`: **4.1%** of GDP, `tag: "manual_price"`, `src: "derived · Treasury (gold oz, live, 2026-06) + manual price ($4,000/oz as of 2026-07-20) + FRED"`, `asOf: "2026-Q1"`. Close to, but not exactly, the task's own ~4.2-4.3% estimate — expected, since the task's figure was a rough hand-estimate and this pipeline's number is the actual computed ratio against real live `TRESEGUSM052N`/GDP data at their native (lagging) latest quarter. **Further from Dalio's 3% than even the old stale-priced 3.7% was** — correct, since gold has risen well past his March-2025 price; the widening is the fix working, not a regression.
+- `World CB reserves in USD`: **57.1%**, `tag: "manual"` (COFER has no live-partial-input concept — it's a single percentage, not derived from a live component + a separate price), `src` names the real IMF figure and cites STATUS.md for why it deliberately isn't the book value.
+
+**Claim status: VERIFIED** — both figures read directly from the live
+`workflow_dispatch` output and the committed `public/data.json` at
+`b0e8827`, not computed by hand or assumed.
+
+### 18.4 The circularity, now labelled
+
+§9's table previously logged both rows above as "manual, matches Dalio's
+figure" without flagging that the match was tautological — the fallback
+value literally *was* his figure, transcribed into `data/manual.json`.
+§9's two rows are now updated in place (not a new table) to say so
+explicitly: the FX-reserves row is marked `manual_price` and its
+narrative states the old fix was retracted for this reason; the COFER row
+states the new value is a **genuine, non-circular near-match** specifically
+*because* it no longer traces back to the book. See §9's table directly.
+
+### 18.5 World Bank Pink Sheet, ECB Data Portal, IMF IFS — three more sources tried, all ruled out
+
+None of the three replaces the frozen DBnomics/IMF-PCPS gold price;
+`scripts/gold_source_retry.py` (run twice via a temporary CI workflow,
+findings captured below, then deleted per this project's
+diagnostic-not-a-feature convention — commit `f0d7209`) found:
+
+- **World Bank — the actual monthly Pink Sheet, not the CMO forecast
+  table already ruled out in §16.** All 14 DBnomics `WB` datasets
+  enumerated by name and description. `GEM` (Global Economic Monitor) is
+  CPI/inflation series per country, not commodities. `commodity_prices`
+  is confirmed to be the same annual Commodity Markets Outlook table
+  already ruled out (its "latest" value is a 2030 *projection*).
+  **DBnomics simply does not mirror the World Bank Pink Sheet at all** —
+  an exhaustive negative, not a search-term artifact.
+- **ECB Data Portal.** Found the right dataset category (`FM`, confirmed
+  present alongside other commodities like Brent crude) but no gold/XAU/
+  bullion/precious-metal series turned up across 4 keyword variants plus
+  a raw naming-convention sample of the dataset. Two guessed direct-API
+  series keys both 404'd. **No usable gold price found.**
+- **IMF IFS** (distinct dataset from the already-tried PCPS). Does
+  contain gold-related series, but they are all per-country reserve
+  *holdings* valued at market price — a stock/quantity measure, not a
+  market price benchmark itself. **Not usable as a price source** for
+  this pipeline, which needs a $/oz series to multiply against ounces,
+  not an already-valued holdings figure.
+
+No source switched. The manual-price-input mechanism (§18.2) remains the
+correct fallback until a working live source is found.
+
+### 18.6 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| §17's original gold/COFER fallback was less accurate than the stale-live value it replaced, and circular against §9's own table | **VERIFIED** — user-flagged, confirmed by inspection: `reservesInclGoldFallback` (3.0%) was hand-set to Dalio's own book figure, and §9 compared the shipped value against that same book |
+| The first manual-price-input implementation had a live bug that silently fell through to the old full-manual output | **VERIFIED** — live production run `29767418637`/`44d4320`, "no overlapping quarters" traced to a single-entry price dict not overlapping `TRESEGUSM052N`'s lagging history |
+| The fix (patch only the missing months, keep real historical data) resolves the bug | **VERIFIED** — both locally (strengthened mock reproducing the lag) and live (`29806949328`/`b0e8827`) |
+| `reserves_to_gdp` is now 4.1% of GDP, `tag: manual_price`, live ounce count (2026-06) × manual price ($4,000/oz) | **VERIFIED** — read directly from committed `public/data.json` |
+| `World CB reserves in USD` is now 57.1%, `tag: manual`, the real 2026-Q1 IMF COFER figure, not the book value | **VERIFIED** — read directly from committed `public/data.json`; underlying figure cross-checked in §17→§18's manual.json update against two independent secondary sources citing the same IMF release |
+| DBnomics does not mirror the World Bank Pink Sheet in any of its 14 `WB` datasets | **VERIFIED** — all 14 enumerated by name/description |
+| ECB Data Portal has no gold/XAU series discoverable via keyword search or raw sample of its `FM` dataset | **VERIFIED** — 4 keyword variants + raw sample, all negative; 2 guessed series keys 404'd |
+| IMF IFS's gold series are reserve holdings, not a price benchmark, and are therefore unusable here | **VERIFIED** — live query, series descriptions confirm holdings/stock framing |
 
 ---
 
