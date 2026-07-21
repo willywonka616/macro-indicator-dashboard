@@ -358,15 +358,22 @@ def build_us(manual: dict, force: bool) -> dict:
         # materially better estimate than a fully manual (and, until this
         # round, Dalio's-own-book-figure-by-construction) fallback — see
         # STATUS.md §18.
+        gold_price_monthly = {}
         try:
             gold_price_monthly = G.gold_price_usd_per_oz()
             price_asof = max(gold_price_monthly)
             S.require_fresh("gold price (DBnomics PCPS)", price_asof, S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
             price_is_live = True
         except Exception as price_e:  # noqa: BLE001
-            print(f"Gold price unavailable/stale, using manual price input at the live oz month: {price_e}")
+            print(f"Gold price unavailable/stale, patching a manual price input across the gap: {price_e}")
             gpf = mu["goldPriceManualFallback"]
-            gold_price_monthly = {oz_asof: gpf["pricePerOz"]}
+            # Keep any real (if stale) historical months the fetch did
+            # return -- only patch the months it's missing, so old chart
+            # history stays priced with real data and only the frozen
+            # tail (which otherwise wouldn't overlap TRESEGUSM052N's own
+            # lagging history -- STATUS.md §18) gets the manual price.
+            for ym in gold_oz_monthly.keys() - gold_price_monthly.keys():
+                gold_price_monthly[ym] = gpf["pricePerOz"]
             price_asof = oz_asof
             price_is_live = False
 
