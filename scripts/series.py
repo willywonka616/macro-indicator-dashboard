@@ -130,6 +130,43 @@ COFER_FRESH_DAYS = 270
 # calibrated to domestic series like CPIAUCSL.
 TRESEGUS_FRESH_DAYS = 180
 
+# --- manual-value freshness (STATUS.md §19) -------------------------------
+#
+# A hand-entered value with a date is exactly as capable of going stale as
+# a fetched one — the freshness guard above only ever checked FETCHED
+# series. These thresholds extend the same idea to data/manual.json's own
+# dated fields, which are just as capable of silently drifting out of date
+# once nobody's looking. Unlike require_fresh() (which raises and kills the
+# build for a dead LIVE source with a healthy fallback available), staleness
+# here is checked with the non-raising `freshness()` and only WARNED on —
+# these values are already the fallback of last resort; failing the build
+# over their own staleness would take the whole site down over a metadata
+# gap, the opposite of "degrade rather than break" (see fetch.py's gold/
+# COFER fallback comments). The warning must still be impossible to miss —
+# see fetch.py's loud_warn(), which emits both a console banner and a
+# GitHub Actions ::warning:: annotation.
+
+# The manual gold price stands in for a live monthly source — it should be
+# reviewed at least as often as that source would naturally update, so it
+# gets the same cadence as the live Monthly threshold it replaces, not a
+# longer one.
+GOLD_MANUAL_PRICE_FRESH_DAYS = FRESHNESS_DAYS_BY_FREQ["Monthly"]
+
+# manual.json's `reserveCurrency.cbReserves` is a hand-entered snapshot of
+# the same IMF COFER series COFER_FRESH_DAYS already governs — same cadence
+# reasoning applies when it's the one actually shipped (COFER's live fetch
+# failed and this manual snapshot is standing in for it).
+CBRESERVES_MANUAL_FRESH_DAYS = COFER_FRESH_DAYS
+
+# The catch-all: manual.json's top-level `lastChecked` is the implicit date
+# for every manual value that has no `asOf` of its own (most of them — see
+# STATUS.md §19 for the full audit of which). 180d (~6 months) is a review
+# cadence, not a data cadence — these are mostly slow-moving context figures
+# (TIC holder shares, CBO's projection, market-cap shares), so this exists
+# to catch "nobody has looked at manual.json in a long time," not to imply
+# the underlying figures update on any particular schedule.
+MANUAL_FRESH_DAYS = 180
+
 
 def _period_to_date(period) -> _dt.date:
     """Normalise any of this pipeline's 'asOf'/period representations to a

@@ -47,6 +47,63 @@ MOVE_THRESHOLD = 0.25
 MINUS = "−"  # proper minus sign, matching the UI
 
 
+# --- loud signalling (STATUS.md §19) --------------------------------------
+#
+# Two kinds of "silently wrong" this project has now hit: a frozen SOURCE
+# (§17's freshness guard) and a STALE MANUAL VALUE / an unnoticed FALLBACK
+# (this section). Both get the same treatment: never just a print() line
+# buried among a hundred others — a console banner AND a GitHub Actions
+# ::warning:: annotation, which surfaces as a visible Annotation on the
+# run's Checks page, not just something you'd have to go read the raw log
+# to find.
+
+def loud_warn(msg: str):
+    print(f"\n{'!' * 70}\nWARNING: {msg}\n{'!' * 70}\n")
+    print(f"::warning::{msg}")
+
+
+def check_manual_freshness(label: str, date_str, max_age_days: int, today: dt.date | None = None):
+    """Non-fatal staleness check for a hand-entered data/manual.json value
+    (STATUS.md §19) — a manual value is exactly as capable of going stale
+    as a fetched one, but unlike a fetched series it has no live source to
+    fall further back to, so this warns loudly rather than raising (see
+    series.py's MANUAL_FRESH_DAYS docstring for why). Returns the
+    freshness dict either way, so callers can fold staleness into a
+    shipped row's note."""
+    f = S.freshness(label, date_str, max_age_days, today)
+    if f["stale"]:
+        loud_warn(
+            f"manual value '{label}' is {f['age_days']}d old (dated {f['period']}) "
+            f"— past its {max_age_days}d review threshold. This is a hand-entered "
+            f"fallback with no further live source behind it; someone should "
+            f"check whether it's still accurate and update data/manual.json."
+        )
+    return f
+
+
+def assert_provenance(fallbacks_fired: list, row_label: str, expected_tag: str,
+                       actual_tag: str, reason: str):
+    """Per-row provenance check (STATUS.md §19): assert the tag that
+    actually shipped matches what a fully-healthy run would produce. A
+    mismatch means a fallback fired — today that's only visible as an
+    incidental print() line in the middle of the build log, easy to miss;
+    this makes it an unmissable, structured signal instead (loud warning +
+    recorded in country.provenance.fallbacksFired, so it's inspectable in
+    the shipped data too, not just CI logs). Non-fatal by design — the
+    fallback chains this guards (gold price, COFER) exist specifically so
+    a dead source degrades the site rather than breaking it; failing the
+    build here would defeat that. See STATUS.md §17/§18 for why those
+    fallbacks exist at all."""
+    if actual_tag == expected_tag:
+        return
+    entry = {"row": row_label, "expectedTag": expected_tag, "actualTag": actual_tag, "reason": reason}
+    fallbacks_fired.append(entry)
+    loud_warn(
+        f"provenance mismatch on '{row_label}': expected tag '{expected_tag}', "
+        f"shipped '{actual_tag}' — a fallback fired. Reason: {reason}"
+    )
+
+
 # --- FRED client ---------------------------------------------------------
 
 def _key() -> str:
@@ -201,7 +258,50 @@ def verify() -> int:
     # schemas + the computed market value.
     G.verify()
 
+    # Manual-value freshness audit (STATUS.md §19) — checked unconditionally
+    # here, not only when a fallback actually fires in a real build, so
+    # drift is visible during routine --verify runs too.
+    try:
+        manual = json.loads(MANUAL.read_text())
+        audit_manual_values(manual["US"])
+    except Exception as e:  # noqa: BLE001
+        print(f"\nManual-value freshness audit FAILED to run: {e}")
+
     return 0 if (fred_ok and treasury_ok) else 1
+
+
+def audit_manual_values(mu: dict) -> None:
+    """STATUS.md §19: (a) staleness-check every manual.json value that
+    carries its own date, unconditionally — not only when a fallback
+    actually fires in a real build, so drift is visible even while the
+    live sources it would replace are still healthy; (b) list every
+    manual value that has NO date of its own at all, relying solely on
+    the top-level `lastChecked` — the audit the task asked for."""
+    print("\nManual-value freshness audit (data/manual.json):")
+    dated = [
+        ("goldPriceManualFallback.asOf", mu["goldPriceManualFallback"]["asOf"],
+         S.GOLD_MANUAL_PRICE_FRESH_DAYS),
+        ("reserveCurrency.cbReserves.asOf", mu["reserveCurrency"]["cbReserves"]["asOf"],
+         S.CBRESERVES_MANUAL_FRESH_DAYS),
+        ("lastChecked (governs every dateless value below)", mu.get("lastChecked"),
+         S.MANUAL_FRESH_DAYS),
+    ]
+    for label, date_str, max_days in dated:
+        f = S.freshness(label, date_str, max_days)
+        status = "STALE" if f["stale"] else "ok"
+        print(f"  {label:<55} {date_str:<12} {f['age_days']:>4}d old  {max_days:>3}d threshold  {status}")
+
+    # Every other manual value shipped via manual_row() in build_us, checked
+    # by hand against data/manual.json's actual keys — none of these carry
+    # their own `asOf`/date field, only the global lastChecked above.
+    dateless = [
+        "govAssetsMinusDebt", "cboProjection", "holders.centralBank",
+        "holders.domestic", "holders.abroad", "shareHardFX", "sovereignWealth",
+        "reserveCurrency.trade", "reserveCurrency.equity", "reserveCurrency.debt",
+        "reservesInclGoldFallback (no own asOf; last-resort only — see its own note)",
+    ]
+    print(f"  {len(dateless)} manual values have NO individual date, relying solely on "
+          f"lastChecked above:\n    " + "\n    ".join(dateless))
 
 
 def _quarterly_saar_to_monthly(obs, units: str) -> dict:
@@ -270,6 +370,11 @@ def _check_move(key, new_val, prev, force):
 def build_us(manual: dict, force: bool) -> dict:
     mu = manual["US"]
     prev = _prev_values()
+    # Per-row provenance mismatches (STATUS.md §19) — populated by
+    # assert_provenance() at each fallback decision point, shipped in
+    # country.provenance.fallbacksFired so a fallback firing is visible in
+    # the data itself, not only in a CI log someone has to go read.
+    fallbacks_fired: list = []
 
     # --- fetch every FRED series we need ---
     need = ["FYGFGDQ188S", "GDP", "TCMDO", "IEABC", "TRESEGUSM052N", "DGS10", "CPIAUCSL"]
@@ -367,6 +472,14 @@ def build_us(manual: dict, force: bool) -> dict:
         except Exception as price_e:  # noqa: BLE001
             print(f"Gold price unavailable/stale, patching a manual price input across the gap: {price_e}")
             gpf = mu["goldPriceManualFallback"]
+            # The manual price itself has a date and can go stale exactly
+            # like a fetched series (STATUS.md §19) — check it too, not
+            # just the live source it's replacing. Non-fatal (see
+            # check_manual_freshness's docstring): this is already the
+            # fallback, there's nowhere further live to go.
+            gold_manual_freshness = check_manual_freshness(
+                "gold price manual fallback (goldPriceManualFallback.asOf)",
+                gpf["asOf"], S.GOLD_MANUAL_PRICE_FRESH_DAYS)
             # Keep any real (if stale) historical months the fetch did
             # return -- only patch the months it's missing, so old chart
             # history stays priced with real data and only the frozen
@@ -407,6 +520,16 @@ def build_us(manual: dict, force: bool) -> dict:
                 f"— the live price source is dead, but the ounce count is still live "
                 f"({oz_asof[0]}-{oz_asof[1]:02d})"
             )
+            if gold_manual_freshness["stale"]:
+                # The hand-entered fallback is ITSELF now overdue for review
+                # (STATUS.md §19) — distinct from "the live source is dead"
+                # above, and surfaced on the row itself so a stale manual
+                # value isn't only visible to someone reading CI logs.
+                gold_stale_note += (
+                    f" — ⚠⚠ this manual price is also {gold_manual_freshness['age_days']}d "
+                    f"old itself, past its {S.GOLD_MANUAL_PRICE_FRESH_DAYS}d review threshold; "
+                    f"data/manual.json needs a human to update it"
+                )
 
         reserves_incl_gold = S.reserves_incl_gold_pct_gdp(
             raw["TRESEGUSM052N"][1], raw["TRESEGUSM052N"][0], gold_value_monthly,
@@ -424,6 +547,22 @@ def build_us(manual: dict, force: bool) -> dict:
         gf = mu["reservesInclGoldFallback"]
         reserves_incl_gold = {"latest": gf["value"], "asOf": mu.get("lastChecked"), "history": []}
         gold_stale_note = gf.get("note")
+        # This last-resort fallback has no `asOf` of its own — it relies on
+        # manual.json's top-level lastChecked (STATUS.md §19's dateless-field
+        # audit). Check that for staleness too, same non-fatal treatment.
+        last_checked_freshness = check_manual_freshness(
+            "manual.json lastChecked (governs reservesInclGoldFallback, which "
+            "has no asOf of its own)", mu.get("lastChecked"), S.MANUAL_FRESH_DAYS)
+        if last_checked_freshness["stale"]:
+            gold_stale_note = (gold_stale_note or "") + (
+                f" — ⚠⚠ manual.json has not been reviewed in "
+                f"{last_checked_freshness['age_days']}d, past its "
+                f"{S.MANUAL_FRESH_DAYS}d threshold"
+            )
+
+    assert_provenance(
+        fallbacks_fired, "Reserves incl. gold (market)", "live", reserves_incl_gold_tag,
+        reason="live gold price and/or holdings fetch failed or exceeded its freshness threshold")
 
     total_debt = S.total_debt_pct_gdp(raw["TCMDO"][1], raw["TCMDO"][0],
                                       raw["GDP"][1], raw["GDP"][0])
@@ -555,6 +694,7 @@ def build_us(manual: dict, force: bool) -> dict:
         ],
     }
     # World CB reserves in USD: live from IMF COFER, else fall back to manual.
+    cb_reserves_tag = "live"
     try:
         cofer = I.cofer_usd_share()
         S.require_fresh("IMF COFER USD share", cofer["asOf"], S.COFER_FRESH_DAYS)
@@ -565,7 +705,23 @@ def build_us(manual: dict, force: bool) -> dict:
         }
     except Exception as e:  # noqa: BLE001
         print(f"IMF COFER unavailable, using manual value: {e}")
+        cb_reserves_tag = "manual"
+        # This manual snapshot has its own asOf (unlike reservesInclGoldFallback)
+        # — check it against the same cadence COFER's own live threshold uses
+        # (STATUS.md §19), since it's a snapshot of that same series.
+        cbreserves_freshness = check_manual_freshness(
+            "reserveCurrency.cbReserves.asOf (manual COFER fallback)",
+            rc["cbReserves"]["asOf"], S.CBRESERVES_MANUAL_FRESH_DAYS)
         cb_reserves_row = manual_row("World CB reserves in USD", rc["cbReserves"])
+        if cbreserves_freshness["stale"]:
+            cb_reserves_row["note"] = (
+                f"⚠ this manual COFER figure is {cbreserves_freshness['age_days']}d old itself, "
+                f"past its {S.CBRESERVES_MANUAL_FRESH_DAYS}d review threshold; "
+                f"data/manual.json needs a human to check for a newer published figure"
+            )
+    assert_provenance(
+        fallbacks_fired, "World CB reserves in USD", "live", cb_reserves_tag,
+        reason="live IMF COFER fetch failed or exceeded its freshness threshold")
 
     reserve_ccy_panel = {
         "eyebrow": "Reserve-currency status", "tag": "manual", "accent": "#5B8DD6",
@@ -636,6 +792,12 @@ def build_us(manual: dict, force: bool) -> dict:
                               "the prior all-manual-output fallback (which matched Dalio's Ch.17 "
                               "figure by construction, not by independent computation).",
             "reservesInclGoldTag": reserves_incl_gold_tag,
+            # Per-row provenance assertions (STATUS.md §19): every row whose
+            # tag can legitimately fall back from "live" is checked here at
+            # build time. Empty list = every fallback-capable row shipped as
+            # live this run; a non-empty list means at least one fallback
+            # fired and is loudly warned above, not just silently shipped.
+            "fallbacksFired": fallbacks_fired,
         },
     }
     _validate(country)
