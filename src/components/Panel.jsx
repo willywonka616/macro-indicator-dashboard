@@ -3,9 +3,16 @@ import { c } from "../theme.js";
 import MetricRow from "./MetricRow.jsx";
 import Tag from "./Tag.jsx";
 
+const commentaryTone = (t) => (t === "alarm" ? c.alarm : t === "calm" ? c.calm : t === "mitig" ? c.mitig : c.text);
+
 /* A titled panel of metric rows.
- * `p` = { eyebrow, tag, note, accent?, rows[] }. */
-export default function Panel({ p }) {
+ * `p` = { eyebrow, tag, note, accent?, rows[] }.
+ * `longNote` (optional) = paragraphs of hand-written explanation, same
+ * segment shape as commentary.js's `reads` — rendered right under the
+ * panel's own rows, not several screens away, for cases (like the net/gross
+ * debt-service split) where a reader seeing two numbers side by side needs
+ * the reason there. Each paragraph is [{ t, tone? }, ...]. */
+export default function Panel({ p, longNote }) {
   return (
     <section
       className="rounded-lg p-4"
@@ -38,6 +45,15 @@ export default function Panel({ p }) {
         <p className="mt-3" style={{ fontSize: 11.5, lineHeight: 1.5, color: c.muted }}>
           {p.note}
         </p>
+      )}
+      {longNote && longNote.length > 0 && (
+        <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${c.lineSoft}` }}>
+          {longNote.map((para, i) => (
+            <p key={i} style={{ fontSize: 12, lineHeight: 1.6, color: c.muted, marginTop: i === 0 ? 0 : 8 }}>
+              {para.map((seg, j) => <span key={j} style={{ color: commentaryTone(seg.tone) }}>{seg.t}</span>)}
+            </p>
+          ))}
+        </div>
       )}
     </section>
   );

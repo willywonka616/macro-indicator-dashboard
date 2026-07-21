@@ -26,6 +26,8 @@ import time
 
 import requests
 
+import series as S
+
 DATASET = "https://api.db.nomics.world/v22/series/IMF/COFER"
 # COFER exposes a ready-made percent series: allocated reserves, US dollar,
 # share (RaTe, _PT = percent), world, quarterly. Use it directly — no summing.
@@ -104,7 +106,10 @@ def verify() -> bool:
         print(f"[cofer] {DATASET} (FREQ=Q, REF_AREA=W00)")
         print(f"  {len(docs)} series; codes: {codes[:40]}")
         r = cofer_usd_share()
-        print(f"  computed USD share: {r['latest']}% as of {r['asOf']} ({len(r['history'])} pts)")
+        f = S.freshness("COFER USD share", r["asOf"], S.COFER_FRESH_DAYS)
+        fresh_s = "STALE" if f["stale"] else "ok"
+        print(f"  computed USD share: {r['latest']}% as of {r['asOf']} ({len(r['history'])} pts)"
+              f" — freshness: {f['age_days']}d old, {S.COFER_FRESH_DAYS}d threshold, {fresh_s}")
     except Exception as e:  # noqa: BLE001
         print(f"[cofer] unavailable — build will use the manual value: {e}")
     return True

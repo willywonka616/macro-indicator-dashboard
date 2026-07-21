@@ -20,34 +20,88 @@ preference before implementing):
      recorded so a future session can pick the investigation back up instead
      of re-deriving it composed if a good current source turns up.
   2. What's actually used: Treasury's own gold holdings (fine troy ounces,
-     monthly) x a live gold price (DBnomics LBMA daily fix), combined with
-     FRED's excl.-gold reserves and GDP. Both endpoints are exercised by
-     verify() so a schema change is visible in the run log, same as every
-     other integration in this project.
+     monthly) x a live gold price, combined with FRED's excl.-gold reserves
+     and GDP. Both endpoints are exercised by verify() so a schema change is
+     visible in the run log, same as every other integration in this
+     project.
+
+Gold-price source history (2026-07): DBnomics' LBMA/gold_D dataset — the
+obvious first choice, and what this module used originally — now 404s on
+every shape tried (series-code path, dataset-level with a `dimensions`
+filter, and a bare unfiltered dump). Root cause, confirmed via web research
+rather than guessed: LBMA moved its benchmark price tables behind a
+members-only portal starting the week of 2025-11-24, and FRED's own
+GOLDAMGBD228NLBM series (the same LBMA fix) was separately discontinued
+with no replacement — DBnomics' LBMA mirror is downstream of the same
+now-restricted source, not a URL-shape problem. Switched to IMF's Primary
+Commodity Price System (PCPS, indicator code PGOLD — world gold price
+benchmark, USD/troy oz, monthly), mirrored on DBnomics the same way COFER
+is, which keeps the pipeline on http-only, no-key sources dumped defensively
+(bare fetch + client-side filter by series_code, since PCPS's exact
+dimension names haven't been confirmed live yet — see verify()).
 
 Best-effort by design: gold_market_value_usd() raises on any problem, and the
 caller (fetch.py) falls back to a manual value rather than shipping a
 live-tagged number built on a stale price, same pattern as imf.py's COFER
 fallback.
+
+**Search for a fresher price (2026-07, TASKgoldpricefreshness.md): all five
+candidates tried, none currently usable, order as specified:**
+  1. FRED (`series/search?search_text=gold price`, plus `LBMA gold`/`gold
+     fixing`/`gold spot`) — zero results for any actual spot/fixing series.
+     `GOLDAMGBD228NLBM`/`GOLDPMGBD228NLBM` (the old LBMA fixings) now
+     return a hard 400, not just "discontinued with history" — the IDs are
+     gone outright. The only current, on-cadence hits are a volatility
+     index (GVZCLS) and PPI/import/export price INDICES (base-year,
+     e.g. `IQ12260`), none of them a $/oz spot price.
+  2. World Bank Pink Sheet via DBnomics (provider `WB`) — the real dataset
+     (`commodity_prices`) exists and has a gold series (`FGOLD-1W`), but
+     it's annual with `2030` (a *projected* out-year) as its "latest"
+     point, not the monthly Pink Sheet. See docs/review/2026-07-20c.
+  3. Bundesbank, both directly (api.statistiken.bundesbank.de, three
+     guessed series keys — all 404) and via DBnomics (provider `BUBA`):
+     found the real gold series (`BBEX3`, D-Mark Frankfurt fixing) after
+     a full-catalog + server-side search, but it stops at end-1998 —
+     pre-euro, permanently discontinued, not a stale-but-alive feed.
+  4. Nasdaq Data Link (ex-Quandl), LBMA/GOLD, no-key attempt — blocked by
+     an Incapsula anti-bot WAF (403, JS challenge page), same failure mode
+     Stooq hit below. Would need a paid API key (a new GitHub secret) to
+     even test properly; not pursued without that being requested.
+  5. Stooq daily XAUUSD CSV, no key — a bare request 404s; with a
+     browser User-Agent it returns 200 but the body is a client-side
+     SHA-256 proof-of-work anti-bot challenge, not the CSV. Not reachable
+     via a plain HTTP client.
+
+No source switch made — DBnomics-mirrored IMF PCPS remains primary, manual
+value remains the fallback, unchanged. What DID change: fetch.py now runs a
+freshness check on the fetched price (see series.py's `require_fresh`)
+before trusting it as live, so a frozen PCPS feed like the current one
+(stuck at 2025-06) correctly degrades to the manual value instead of
+shipping as falsely "live" — closing the actual gap this task opened with,
+even without a fresher source to switch to.
 """
 
 from __future__ import annotations
 
 import datetime as dt
-import json
 import time
 from collections import defaultdict
 
 import requests
 
+import series as S
+
 TREASURY_BASE = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service"
 GOLD_ENDPOINT = "/v2/accounting/od/gold_reserve"
 
-# Note: unlike COFER (a direct dataset/series-code path works), LBMA's
-# gold_D dataset needs a `dimensions` filter against the dataset-level
-# endpoint — a direct .../gold_D/gold_D_USD_AM series-code path 404s.
-DBNOMICS_GOLD_DATASET = "https://api.db.nomics.world/v22/series/LBMA/gold_D"
-DBNOMICS_GOLD_DIMENSIONS = {"unit": ["USD"], "time": ["AM"]}
+# IMF Primary Commodity Price System via DBnomics — same aggregator, same
+# provider (IMF) as the working COFER integration. Exact dimension names for
+# PCPS are unconfirmed, so we don't filter server-side; the bare dump is
+# small enough (~200 series: ~15 commodities x a handful of frequencies) to
+# fetch whole and filter client-side by series_code, same defensive pattern
+# that resolved COFER.
+DBNOMICS_GOLD_DATASET = "https://api.db.nomics.world/v22/series/IMF/PCPS"
+GOLD_INDICATOR_HINT = "pgold"
 
 
 # --- http ------------------------------------------------------------------
@@ -146,37 +200,58 @@ def gold_holdings_troy_oz() -> dict:
     return {k: v for k, v in monthly.items() if v}
 
 
-# --- DBnomics: LBMA daily gold price, USD AM fix ----------------------------
+# --- DBnomics: IMF PCPS gold price (PGOLD) ----------------------------------
 
-def _gold_price_docs():
-    js = _get_json(DBNOMICS_GOLD_DATASET,
-                    {"dimensions": json.dumps(DBNOMICS_GOLD_DIMENSIONS),
-                     "facets": "1", "limit": "1000", "observations": "1"})
+def _all_gold_price_docs():
+    """Bare, unfiltered dump of every series in the IMF PCPS dataset."""
+    js = _get_json(DBNOMICS_GOLD_DATASET, {"limit": "1000", "observations": "1"})
     return js.get("series", {}).get("docs", [])
 
 
+def _gold_price_docs():
+    """PGOLD series, found by filtering the bare dump client-side rather
+    than guessing PCPS's dimension names. PCPS carries four PGOLD variants
+    per frequency — an index (.IX), two percent-change series (.PC_*), and
+    the actual dollar level (.USD); confirmed live (2026-07) that .USD is
+    the real per-ounce price and .IX is a rebased index (~268, not ~$3000s).
+    Prefers monthly (M.*) among the USD-suffixed matches."""
+    docs = _all_gold_price_docs()
+    matches = [d for d in docs
+               if GOLD_INDICATOR_HINT in str(d.get("series_code", "")).lower()]
+    if not matches:
+        return docs  # nothing matched — let the caller see the raw dump via verify()
+    usd = [d for d in matches if str(d.get("series_code", "")).upper().endswith(".USD")]
+    pool = usd or matches
+    monthly = [d for d in pool if str(d.get("series_code", "")).upper().startswith("M.")]
+    return monthly or pool
+
+
+def _period_to_ym(period: str):
+    """DBnomics periods are 'YYYY-MM-DD' (daily) or 'YYYY-MM' (monthly)."""
+    parts = period.split("-")
+    if len(parts) >= 2:
+        return int(parts[0]), int(parts[1])
+    raise ValueError(f"unrecognised period: {period!r}")
+
+
 def gold_price_usd_per_oz() -> dict:
-    """{(year, month): USD per troy oz} — last trading day of each month."""
+    """{(year, month): USD per troy oz}."""
     docs = _gold_price_docs()
     if not docs:
-        raise RuntimeError("LBMA gold_D (USD, AM): no series returned")
+        raise RuntimeError("IMF PCPS (PGOLD): no series returned")
     doc = docs[0]
-    daily = {}
+    monthly = {}
     for period, val in zip(doc.get("period", []), doc.get("value", [])):
         if val is None or period is None:
             continue
         try:
-            d = dt.date.fromisoformat(period)
+            ym = _period_to_ym(period)
             v = float(val)
         except (TypeError, ValueError):
             continue
-        daily[d] = v
-    if not daily:
-        raise RuntimeError("LBMA gold_D (USD, AM): no usable observations")
-
-    monthly = {}
-    for d in sorted(daily):  # ascending, so last day in each month wins
-        monthly[(d.year, d.month)] = daily[d]
+        monthly[ym] = v  # observations are ascending, so a later dup wins
+    if not monthly:
+        raise RuntimeError("IMF PCPS (PGOLD): no usable observations")
     return monthly
 
 
@@ -198,8 +273,8 @@ def verify() -> bool:
     """Dump both endpoints' schema + latest values, and try the computation.
     Non-fatal: always returns True (a source hiccup must not red the run —
     the build falls back to the manual value)."""
-    print("\nVerifying gold sources (Treasury holdings + DBnomics LBMA price; "
-          "non-fatal — manual fallback on failure)\n")
+    print("\nVerifying gold sources (Treasury holdings + DBnomics-mirrored "
+          "IMF PCPS price; non-fatal — manual fallback on failure)\n")
     try:
         rows = _treasury_gold_rows()
         s = rows[0]
@@ -218,19 +293,30 @@ def verify() -> bool:
         print(f"  latest {latest} rows:")
         for r in [r for r in rows if r["record_date"] == latest][:10]:
             print(f"    {r}")
+        f = S.freshness("gold holdings (Treasury oz)", latest, S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
+        fresh_s = "STALE" if f["stale"] else "ok"
+        print(f"  freshness: {f['age_days']}d old, {f['max_age_days']}d threshold, {fresh_s}")
     except Exception as e:  # noqa: BLE001
         print(f"[gold-holdings] FAILED: {e}")
 
     try:
+        all_docs = _all_gold_price_docs()
+        print(f"\n[gold-price] {DBNOMICS_GOLD_DATASET} (bare dump)")
+        print(f"  all series_codes in dataset: {[d.get('series_code') for d in all_docs]}")
         docs = _gold_price_docs()
-        print(f"\n[gold-price] {DBNOMICS_GOLD_DATASET} dimensions={DBNOMICS_GOLD_DIMENSIONS}")
         if docs:
             d = docs[0]
             periods = d.get("period", [])
             values = d.get("value", [])
-            print(f"  series_code: {d.get('series_code')}")
+            print(f"  selected series_code: {d.get('series_code')}")
             print(f"  {len(periods)} observations; latest: {periods[-1] if periods else None} = "
                   f"{values[-1] if values else None} USD/oz")
+            if periods:
+                max_days = S.FRESHNESS_DAYS_BY_FREQ["Monthly"]
+                f = S.freshness("gold price (DBnomics PCPS)", periods[-1], max_days)
+                fresh_s = "STALE" if f["stale"] else "ok"
+                print(f"  freshness: {f['age_days']}d old, {max_days}d threshold, {fresh_s} "
+                      f"{'— this is the frozen series, see STATUS.md §16' if f['stale'] else ''}")
         else:
             print("  no series returned")
     except Exception as e:  # noqa: BLE001

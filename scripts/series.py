@@ -17,6 +17,8 @@ scale each series happens to use.
 
 from __future__ import annotations
 
+import datetime as _dt
+
 # --- registry ------------------------------------------------------------
 
 # FRED series actively used by the fetcher. --verify checks each one every run.
@@ -29,6 +31,16 @@ from __future__ import annotations
 #   * A091/W006 (interest, tax receipts) -> debt service now comes from the
 #     Treasury Fiscal Data API on a budget basis (see treasury.py); the tax-only
 #     W006 denominator also overstated the ratio.
+# TCMDO vs TCMDODNS (2026-07, see STATUS.md §9): tried switching TCMDO
+# ("All Sectors; Debt Securities and Loans", Fed Z.1) to TCMDODNS ("Domestic
+# Nonfinancial Sectors; Debt Securities and Loans") on the hypothesis that
+# excluding the financial sector's own intra-system borrowing would close a
+# gap against Dalio's Ch.17 "other debt" row (340%). Live result: TCMDODNS =
+# 256.7% of GDP, TCMDO = 362.6% — the swap moved the WRONG direction and
+# made the gap much worse (-83pts vs +23pts). Reverted to TCMDO, which is
+# not a match either, but is the closer of the two by a wide margin. Kept
+# as the reported case study of a reasoned hypothesis that live data
+# refuted — see STATUS.md §9 for what "other debt" more plausibly means.
 # `kind`: "level" (dollars) | "percent" (already a rate/percentage).
 FRED_SERIES = {
     "FYGFGDQ188S": {"label": "Federal debt held by public as % of GDP", "units": "percent", "freq": "Quarterly", "start": "1966", "kind": "percent"},
@@ -75,6 +87,136 @@ def q_decimal(qkey) -> float:
 def q_label(qkey) -> str:
     y, q = qkey
     return f"{y}-Q{q}"
+
+
+# --- freshness guard -------------------------------------------------------
+
+# A dead/frozen source still returns a plausible NUMBER — the sanity bands
+# elsewhere in this pipeline check magnitude, not date, so a stale-but-in-band
+# value (like the gold price stuck at 2025-06 for a year+) sails through
+# every other guard silently. This checks dates instead. Thresholds are set
+# per cadence with real headroom above the source's normal publication lag
+# (so a routine delay never trips it) but well short of "the source died
+# months ago" (so that DOES trip it). See TASKgoldpricefreshness.md.
+FRESHNESS_DAYS_BY_FREQ = {
+    "Daily": 20,      # FRED daily series (DGS10): a few business days' lag is normal
+    "Monthly": 60,     # a monthly series is normally current within 30-45 days
+    # 220d, not the ~5 months a naive "quarterly" guess suggests: FRED dates
+    # quarterly macro series (GDP, FYGFGDQ188S, TCMDO, IEABC) to the START
+    # of the quarter, not the release date. Right before the NEXT quarter's
+    # release, a perfectly healthy series is legitimately ~200 days past its
+    # own date-stamp (observed live: 2026-01-01 at 200d old, still current,
+    # the morning before the Q2 print — see docs/review/). 220d gives a
+    # little headroom above that observed real-world maximum.
+    "Quarterly": 220,
+    "Annual": 400,
+}
+
+# IMF COFER publishes quarterly but is documented as running "a quarter or
+# two" behind even when healthy (imf.py's own docstring) — a longer
+# legitimate lag than the generic Quarterly threshold above allows for, so
+# it gets its own explicit threshold rather than being exempted outright
+# (TASKgoldpricefreshness.md: "set the threshold to match" the known lag,
+# don't just skip the check). Even at 270d (~9 months, well past "a quarter
+# or two"), COFER still failed this live (565d, frozen at 2025-Q1) — a
+# second genuinely frozen source, not a threshold-calibration artifact.
+COFER_FRESH_DAYS = 270
+
+# TRESEGUSM052N ("Total Reserves excluding Gold") is IMF/BOP-sourced
+# international reserves data, not a domestic FRED series — it runs a
+# real, longer lag than CPI/DGS10 even when healthy (observed live: 141d,
+# still the genuinely latest print). Its own threshold, same reasoning as
+# COFER above, rather than the generic 60d Monthly bucket which is
+# calibrated to domestic series like CPIAUCSL.
+TRESEGUS_FRESH_DAYS = 180
+
+# --- manual-value freshness (STATUS.md §19) -------------------------------
+#
+# A hand-entered value with a date is exactly as capable of going stale as
+# a fetched one — the freshness guard above only ever checked FETCHED
+# series. These thresholds extend the same idea to data/manual.json's own
+# dated fields, which are just as capable of silently drifting out of date
+# once nobody's looking. Unlike require_fresh() (which raises and kills the
+# build for a dead LIVE source with a healthy fallback available), staleness
+# here is checked with the non-raising `freshness()` and only WARNED on —
+# these values are already the fallback of last resort; failing the build
+# over their own staleness would take the whole site down over a metadata
+# gap, the opposite of "degrade rather than break" (see fetch.py's gold/
+# COFER fallback comments). The warning must still be impossible to miss —
+# see fetch.py's loud_warn(), which emits both a console banner and a
+# GitHub Actions ::warning:: annotation.
+
+# The manual gold price stands in for a live monthly source — it should be
+# reviewed at least as often as that source would naturally update, so it
+# gets the same cadence as the live Monthly threshold it replaces, not a
+# longer one.
+GOLD_MANUAL_PRICE_FRESH_DAYS = FRESHNESS_DAYS_BY_FREQ["Monthly"]
+
+# manual.json's `reserveCurrency.cbReserves` is a hand-entered snapshot of
+# the same IMF COFER series COFER_FRESH_DAYS already governs — same cadence
+# reasoning applies when it's the one actually shipped (COFER's live fetch
+# failed and this manual snapshot is standing in for it).
+CBRESERVES_MANUAL_FRESH_DAYS = COFER_FRESH_DAYS
+
+# The catch-all: manual.json's top-level `lastChecked` is the implicit date
+# for every manual value that has no `asOf` of its own (most of them — see
+# STATUS.md §19 for the full audit of which). 180d (~6 months) is a review
+# cadence, not a data cadence — these are mostly slow-moving context figures
+# (TIC holder shares, CBO's projection, market-cap shares), so this exists
+# to catch "nobody has looked at manual.json in a long time," not to imply
+# the underlying figures update on any particular schedule.
+MANUAL_FRESH_DAYS = 180
+
+
+def _period_to_date(period) -> _dt.date:
+    """Normalise any of this pipeline's 'asOf'/period representations to a
+    date, for freshness comparisons: a real date, a (year, month) tuple, or
+    a string — 'YYYY-MM', 'YYYY-Qn', or 'YYYY'."""
+    if isinstance(period, _dt.date):
+        return period
+    if isinstance(period, tuple) and len(period) == 2:
+        y, m = period
+        return _dt.date(y, m, 1)
+    s = str(period)
+    if "-Q" in s:
+        y, q = s.split("-Q")
+        return _dt.date(int(y), (int(q) - 1) * 3 + 1, 1)
+    if len(s) == 7 and s[4] == "-":
+        y, m = s.split("-")
+        return _dt.date(int(y), int(m), 1)
+    if len(s) == 4 and s.isdigit():
+        return _dt.date(int(s), 1, 1)
+    return _dt.date.fromisoformat(s)
+
+
+def freshness(label: str, period, max_age_days: int, today: _dt.date | None = None) -> dict:
+    """{"label", "period", "date", "age_days", "max_age_days", "stale"} —
+    used both to print an at-a-glance freshness line in --verify and to
+    decide whether to raise via require_fresh below."""
+    today = today or _dt.date.today()
+    d = _period_to_date(period)
+    age = (today - d).days
+    return {"label": label, "period": str(period), "date": d, "age_days": age,
+            "max_age_days": max_age_days, "stale": age > max_age_days}
+
+
+def require_fresh(label: str, period, max_age_days: int, today: _dt.date | None = None) -> dict:
+    """Raises if `period` is older than `max_age_days` — a dead/frozen
+    source, not just a normally-lagged one. Callers that already have a
+    manual-value fallback (gold price, COFER) catch this the same way they
+    catch any other fetch failure; callers with no fallback (the core FRED
+    series, Treasury debt-service) let it propagate and fail the run loudly,
+    per this project's fail-loudly convention (exit non-zero, no partial
+    write — see fetch.py's atomic_write)."""
+    f = freshness(label, period, max_age_days, today)
+    if f["stale"]:
+        raise RuntimeError(
+            f"freshness guard: {label} latest observation is {f['period']} "
+            f"({f['age_days']}d old, today {today or _dt.date.today()}) — exceeds "
+            f"the {max_age_days}d threshold for this series' cadence. The source "
+            f"is likely dead or frozen, not just running a normal lag."
+        )
+    return f
 
 
 def as_quarterly(obs):
@@ -168,6 +310,35 @@ def total_debt_pct_gdp(tcmdo_obs, tcmdo_units, gdp_obs, gdp_units):
         denom = to_dollars(gdp[k], gdp_units)
         if denom:
             ratio[k] = to_dollars(d[k], tcmdo_units) / denom * 100.0
+    latest, asof = _latest(ratio)
+    return {"latest": round(latest, 1), "asOf": asof, "history": quarterly_history(ratio)}
+
+
+def debt_to_revenue_pct(debt_pct_obs, gdp_obs, gdp_units, revenue_ttm_dollars):
+    """Debt held by the public, as a percentage of trailing-12-month
+    on-budget receipts — Dalio's Ch.3 preferred framing (debt against what
+    government can actually collect, not against GDP, which it can't
+    spend). No new series: debt$ = FYGFGDQ188S (%) x GDP ($); the quarterly
+    debt stock is divided by revenue_ttm_dollars, a monthly {(y,m): $} TTM
+    sum from treasury.py (collapsed to quarterly, last month of quarter) —
+    the same trailing-12-month smoothing the debt-service rows use, since
+    receipts swing far more with the tax calendar than GDP or the debt
+    stock do. Same on-budget-receipts denominator as both debt-service
+    rows (see provenance.revenueDefinition).
+    """
+    debt_pct_q = as_quarterly(debt_pct_obs)
+    gdp_q = as_quarterly(gdp_obs)
+    rev_q = {}
+    for (y, m), v in revenue_ttm_dollars.items():
+        rev_q[(y, (m - 1) // 3 + 1)] = v
+    ratio = {}
+    for k in debt_pct_q.keys() & gdp_q.keys() & rev_q.keys():
+        gdp_usd = to_dollars(gdp_q[k], gdp_units)
+        debt_usd = debt_pct_q[k] / 100.0 * gdp_usd
+        if rev_q[k]:
+            ratio[k] = debt_usd / rev_q[k] * 100.0
+    if not ratio:
+        raise RuntimeError("debt_to_revenue_pct: no overlapping quarters")
     latest, asof = _latest(ratio)
     return {"latest": round(latest, 1), "asOf": asof, "history": quarterly_history(ratio)}
 

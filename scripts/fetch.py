@@ -47,6 +47,63 @@ MOVE_THRESHOLD = 0.25
 MINUS = "−"  # proper minus sign, matching the UI
 
 
+# --- loud signalling (STATUS.md §19) --------------------------------------
+#
+# Two kinds of "silently wrong" this project has now hit: a frozen SOURCE
+# (§17's freshness guard) and a STALE MANUAL VALUE / an unnoticed FALLBACK
+# (this section). Both get the same treatment: never just a print() line
+# buried among a hundred others — a console banner AND a GitHub Actions
+# ::warning:: annotation, which surfaces as a visible Annotation on the
+# run's Checks page, not just something you'd have to go read the raw log
+# to find.
+
+def loud_warn(msg: str):
+    print(f"\n{'!' * 70}\nWARNING: {msg}\n{'!' * 70}\n")
+    print(f"::warning::{msg}")
+
+
+def check_manual_freshness(label: str, date_str, max_age_days: int, today: dt.date | None = None):
+    """Non-fatal staleness check for a hand-entered data/manual.json value
+    (STATUS.md §19) — a manual value is exactly as capable of going stale
+    as a fetched one, but unlike a fetched series it has no live source to
+    fall further back to, so this warns loudly rather than raising (see
+    series.py's MANUAL_FRESH_DAYS docstring for why). Returns the
+    freshness dict either way, so callers can fold staleness into a
+    shipped row's note."""
+    f = S.freshness(label, date_str, max_age_days, today)
+    if f["stale"]:
+        loud_warn(
+            f"manual value '{label}' is {f['age_days']}d old (dated {f['period']}) "
+            f"— past its {max_age_days}d review threshold. This is a hand-entered "
+            f"fallback with no further live source behind it; someone should "
+            f"check whether it's still accurate and update data/manual.json."
+        )
+    return f
+
+
+def assert_provenance(fallbacks_fired: list, row_label: str, expected_tag: str,
+                       actual_tag: str, reason: str):
+    """Per-row provenance check (STATUS.md §19): assert the tag that
+    actually shipped matches what a fully-healthy run would produce. A
+    mismatch means a fallback fired — today that's only visible as an
+    incidental print() line in the middle of the build log, easy to miss;
+    this makes it an unmissable, structured signal instead (loud warning +
+    recorded in country.provenance.fallbacksFired, so it's inspectable in
+    the shipped data too, not just CI logs). Non-fatal by design — the
+    fallback chains this guards (gold price, COFER) exist specifically so
+    a dead source degrades the site rather than breaking it; failing the
+    build here would defeat that. See STATUS.md §17/§18 for why those
+    fallbacks exist at all."""
+    if actual_tag == expected_tag:
+        return
+    entry = {"row": row_label, "expectedTag": expected_tag, "actualTag": actual_tag, "reason": reason}
+    fallbacks_fired.append(entry)
+    loud_warn(
+        f"provenance mismatch on '{row_label}': expected tag '{expected_tag}', "
+        f"shipped '{actual_tag}' — a fallback fired. Reason: {reason}"
+    )
+
+
 # --- FRED client ---------------------------------------------------------
 
 def _key() -> str:
@@ -110,10 +167,12 @@ def search_suggestions(text: str, n: int = 3):
 
 def verify() -> int:
     print(f"Verifying {len(S.FRED_SERIES)} FRED series against the live API\n")
-    header = f"{'ID':<18} {'OK':<3} {'FREQ':<10} {'UNITS':<28} {'START':<12} TITLE"
+    header = (f"{'ID':<18} {'OK':<3} {'FREQ':<10} {'UNITS':<28} {'START':<12} "
+              f"{'LATEST OBS':<12} {'AGE':>6} {'MAX':>6} {'FRESH':<7} TITLE")
     print(header)
     print("-" * len(header))
     failures = []
+    stale = []
     for sid, expect in S.FRED_SERIES.items():
         try:
             m = series_meta(sid)
@@ -121,7 +180,17 @@ def verify() -> int:
             units = (m.get("units", "") or "")[:27]
             start = m.get("observation_start", "")
             title = (m.get("title", "") or "")[:40]
-            print(f"{sid:<18} {'yes':<3} {freq:<10} {units:<28} {start:<12} {title}")
+            end = m.get("observation_end", "")
+            freq_name = expect["freq"]
+            max_days = (S.TRESEGUS_FRESH_DAYS if sid == "TRESEGUSM052N"
+                        else S.FRESHNESS_DAYS_BY_FREQ.get(freq_name, 60))
+            f = S.freshness(sid, end, max_days) if end else None
+            age_s = f"{f['age_days']}d" if f else "?"
+            fresh_s = ("STALE" if f["stale"] else "ok") if f else "?"
+            print(f"{sid:<18} {'yes':<3} {freq:<10} {units:<28} {start:<12} "
+                  f"{end:<12} {age_s:>6} {max_days:>5}d {fresh_s:<7} {title}")
+            if f and f["stale"]:
+                stale.append((sid, f))
         except Exception as e:
             failures.append((sid, expect, str(e)))
             print(f"{sid:<18} {'NO':<3} -- FAILED: {e}")
@@ -138,6 +207,13 @@ def verify() -> int:
     else:
         print("\nAll FRED series resolved. Review units/frequency above.")
 
+    if stale:
+        print(f"\n{len(stale)} FRED series FAILED the freshness guard (would fail a real "
+              f"build, not just --verify):")
+        for sid, f in stale:
+            print(f"  {sid}: latest obs {f['period']}, {f['age_days']}d old, "
+                  f"exceeds {f['max_age_days']}d threshold")
+
     # Treasury Fiscal Data (no key) — dumps real schema + the computed ratio,
     # plus the debt-service calibration matrix (see debt_service_matrix).
     # tax_receipts_monthly is the original brief's narrower denominator
@@ -151,6 +227,30 @@ def verify() -> int:
         print(f"(tax-receipts-only denominator unavailable for the matrix: {e})")
     treasury_ok = T.verify(tax_receipts_monthly)
 
+    # Total-debt calibration cross-check (STATUS.md §9): TCMDO (all sectors
+    # incl. financial) vs. TCMDODNS (domestic nonfinancial sectors only) —
+    # dumped side by side, as % of the same GDP observation. The nonfinancial
+    # hypothesis was tried and refuted live (TCMDODNS landed at 256.7%,
+    # TCMDO at 362.6%, vs. Dalio's Ch.17 340% "other debt" — TCMDO is much
+    # closer, so TCMDO is what "Total debt" uses; TCMDODNS stays dumped here
+    # for the record and in case a future session wants to revisit it).
+    print("\nTotal-debt series comparison (Dalio Ch.17 US 'other debt' target: 340%):")
+    try:
+        gdp_units, gdp_obs = series_obs("GDP")
+        gdp_latest_d, gdp_latest_v = gdp_obs[-1]
+        gdp_usd = S.to_dollars(gdp_latest_v, gdp_units)
+        for sid in ("TCMDO", "TCMDODNS"):
+            try:
+                units, obs = series_obs(sid)
+                d, v = obs[-1]
+                pct = S.to_dollars(v, units) / gdp_usd * 100.0
+                note = " <- used for 'Total debt' row" if sid == "TCMDO" else " (diagnostic only, not used — see series.py)"
+                print(f"  {sid}: {pct:.1f}% of GDP as of {d} (GDP as of {gdp_latest_d}){note}")
+            except Exception as e:  # noqa: BLE001
+                print(f"  {sid}: FAILED: {e}")
+    except Exception as e:  # noqa: BLE001
+        print(f"  comparison FAILED: {e}")
+
     # IMF COFER (no key) — non-fatal; dumps indicators + the computed USD share.
     I.verify()
 
@@ -158,7 +258,50 @@ def verify() -> int:
     # schemas + the computed market value.
     G.verify()
 
+    # Manual-value freshness audit (STATUS.md §19) — checked unconditionally
+    # here, not only when a fallback actually fires in a real build, so
+    # drift is visible during routine --verify runs too.
+    try:
+        manual = json.loads(MANUAL.read_text())
+        audit_manual_values(manual["US"])
+    except Exception as e:  # noqa: BLE001
+        print(f"\nManual-value freshness audit FAILED to run: {e}")
+
     return 0 if (fred_ok and treasury_ok) else 1
+
+
+def audit_manual_values(mu: dict) -> None:
+    """STATUS.md §19: (a) staleness-check every manual.json value that
+    carries its own date, unconditionally — not only when a fallback
+    actually fires in a real build, so drift is visible even while the
+    live sources it would replace are still healthy; (b) list every
+    manual value that has NO date of its own at all, relying solely on
+    the top-level `lastChecked` — the audit the task asked for."""
+    print("\nManual-value freshness audit (data/manual.json):")
+    dated = [
+        ("goldPriceManualFallback.asOf", mu["goldPriceManualFallback"]["asOf"],
+         S.GOLD_MANUAL_PRICE_FRESH_DAYS),
+        ("reserveCurrency.cbReserves.asOf", mu["reserveCurrency"]["cbReserves"]["asOf"],
+         S.CBRESERVES_MANUAL_FRESH_DAYS),
+        ("lastChecked (governs every dateless value below)", mu.get("lastChecked"),
+         S.MANUAL_FRESH_DAYS),
+    ]
+    for label, date_str, max_days in dated:
+        f = S.freshness(label, date_str, max_days)
+        status = "STALE" if f["stale"] else "ok"
+        print(f"  {label:<55} {date_str:<12} {f['age_days']:>4}d old  {max_days:>3}d threshold  {status}")
+
+    # Every other manual value shipped via manual_row() in build_us, checked
+    # by hand against data/manual.json's actual keys — none of these carry
+    # their own `asOf`/date field, only the global lastChecked above.
+    dateless = [
+        "govAssetsMinusDebt", "cboProjection", "holders.centralBank",
+        "holders.domestic", "holders.abroad", "shareHardFX", "sovereignWealth",
+        "reserveCurrency.trade", "reserveCurrency.equity", "reserveCurrency.debt",
+        "reservesInclGoldFallback (no own asOf; last-resort only — see its own note)",
+    ]
+    print(f"  {len(dateless)} manual values have NO individual date, relying solely on "
+          f"lastChecked above:\n    " + "\n    ".join(dateless))
 
 
 def _quarterly_saar_to_monthly(obs, units: str) -> dict:
@@ -227,6 +370,11 @@ def _check_move(key, new_val, prev, force):
 def build_us(manual: dict, force: bool) -> dict:
     mu = manual["US"]
     prev = _prev_values()
+    # Per-row provenance mismatches (STATUS.md §19) — populated by
+    # assert_provenance() at each fallback decision point, shipped in
+    # country.provenance.fallbacksFired so a fallback firing is visible in
+    # the data itself, not only in a CI log someone has to go read.
+    fallbacks_fired: list = []
 
     # --- fetch every FRED series we need ---
     need = ["FYGFGDQ188S", "GDP", "TCMDO", "IEABC", "TRESEGUSM052N", "DGS10", "CPIAUCSL"]
@@ -234,6 +382,17 @@ def build_us(manual: dict, force: bool) -> dict:
     for sid in need:
         units, obs = series_obs(sid)  # raises loudly on empty/404
         raw[sid] = (units, obs)
+        # Freshness guard (TASKgoldpricefreshness.md): a dead source can
+        # still return a plausible in-band NUMBER — this checks the DATE,
+        # so a frozen series fails loudly here instead of silently shipping
+        # as "live" (see S.require_fresh's docstring and STATUS.md). Special
+        # case: TRESEGUSM052N is IMF/BOP-sourced with a longer normal lag
+        # than domestic monthly series, same reasoning as COFER below.
+        if sid == "TRESEGUSM052N":
+            max_days = S.TRESEGUS_FRESH_DAYS
+        else:
+            max_days = S.FRESHNESS_DAYS_BY_FREQ.get(S.FRED_SERIES[sid]["freq"], 60)
+        S.require_fresh(sid, obs[-1][0], max_days)
 
     # --- live + derived metrics ---
     du, dobs = raw["FYGFGDQ188S"]
@@ -242,28 +401,136 @@ def build_us(manual: dict, force: bool) -> dict:
         "asOf": S.q_label(S.quarter_key(dobs[-1][0])),
         "history": S.quarterly_history(S.as_quarterly(dobs)),
     }
-    # Debt service vs revenue — gross interest (incl. GAS) / total receipts,
-    # budget basis, from Treasury (no FRED). Basis chosen 2026-07 to match
-    # Dalio's Ch.17 book value (22%); see treasury.py module docstring and
-    # STATUS.md §9. The 5-40% band still comfortably covers this basis's
-    # expected ~20-25% range (re-checked when the basis changed).
+    # Debt service, split net/gross — both TOTAL receipts, net of refunds,
+    # budget basis, from Treasury (no FRED). Basis revised 2026-07 twice in
+    # the same day: first to on-budget receipts (against Dalio's Ch.17 book
+    # value, 22%), then — after finding monthly_receipts() had been summing
+    # GROSS receipts instead of net-of-refunds, a ~7% overstatement checked
+    # against CBO's published FY totals — to TOTAL receipts, net of
+    # refunds, on definitional grounds (the on-budget choice's closeness to
+    # 22% turned out to be an artifact of that bug). See treasury.py module
+    # docstring and STATUS.md §13. Headline = NET interest to the public
+    # (pairs with debt_to_gdp, which is also debt *held by the public*);
+    # second row = GROSS incl. intragovernmental GAS interest. Separate
+    # sanity bands: net lands ~17-20%, gross ~22-26% (both live-confirmed
+    # on the current total-receipts basis), so the bands are set with
+    # headroom around each rather than sharing one range.
     service = T.debt_service_ratio()
-    if not (5.0 <= service["latest"] <= 40.0):
+    if not (10.0 <= service["latest"] <= 40.0):
         raise RuntimeError(
-            f"validation: Treasury debt-service ratio {service['latest']}% is "
-            "outside the sane 5-40% band — likely a wrong field/column mapping. "
+            f"validation: net debt-service ratio {service['latest']}% is "
+            "outside the sane 10-40% band — likely a wrong field/column mapping. "
             "Check the Treasury schema dumped by --verify before trusting it."
         )
+    S.require_fresh("Treasury net debt-service ratio", service["asOf"], S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
+    gross_service = T.gross_debt_service_ratio()
+    if not (15.0 <= gross_service["latest"] <= 50.0):
+        raise RuntimeError(
+            f"validation: gross debt-service ratio {gross_service['latest']}% is "
+            "outside the sane 15-50% band — likely a wrong field/column mapping. "
+            "Check the Treasury schema dumped by --verify before trusting it."
+        )
+    S.require_fresh("Treasury gross debt-service ratio", gross_service["asOf"], S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
     reserves = S.reserves_pct_gdp(raw["TRESEGUSM052N"][1], raw["TRESEGUSM052N"][0],
                                   raw["GDP"][1], raw["GDP"][0])
 
     # Reserves including gold at market value — resolves STATUS.md §5. Gold
-    # holdings (Treasury) and gold price (DBnomics) are each live; if either
-    # fetch fails, fall back to the manual snapshot rather than shipping a
+    # holdings (Treasury) and gold price (DBnomics/IMF PCPS) are each live but
+    # NOT necessarily from the same month — PCPS's gold price has run ~13
+    # months behind Treasury's holdings figure (STATUS.md §3/§7). Rather than
+    # bury that in `asOf` alone, `src` names both dates explicitly whenever
+    # they differ, so the hybrid is visible on the row itself, not just to
+    # someone who checks asOf against the other reserves row. If either fetch
+    # fails, fall back to the manual snapshot rather than shipping a
     # live-tagged number built on a stale price (same pattern as IMF COFER).
     reserves_incl_gold_tag = "live"
+    gold_src_detail = "Treasury (gold) + DBnomics (price)"
+    gold_stale_note = None
     try:
-        gold_value_monthly = G.gold_market_value_usd()
+        gold_oz_monthly = G.gold_holdings_troy_oz()
+        oz_asof = max(gold_oz_monthly)
+        # Freshness guard: gold oz (Treasury) is normally current — if even
+        # this fails, there's no live leg left at all, so let it propagate
+        # to the outer except and use the full manual fallback.
+        S.require_fresh("gold holdings (Treasury oz)", oz_asof, S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
+
+        # Gold price: try live first (DBnomics-mirrored IMF PCPS), freshness
+        # gated. It has been frozen since 2025-06 (STATUS.md §14.3/§16) — if
+        # it's still dead, fall back to a hand-entered manual PRICE applied
+        # to the still-live ounce count, rather than an all-manual OUTPUT.
+        # The ounce count has no reason to be stale just because the price
+        # source died elsewhere, and a manual price + live ounce count is a
+        # materially better estimate than a fully manual (and, until this
+        # round, Dalio's-own-book-figure-by-construction) fallback — see
+        # STATUS.md §18.
+        gold_price_monthly = {}
+        try:
+            gold_price_monthly = G.gold_price_usd_per_oz()
+            price_asof = max(gold_price_monthly)
+            S.require_fresh("gold price (DBnomics PCPS)", price_asof, S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
+            price_is_live = True
+        except Exception as price_e:  # noqa: BLE001
+            print(f"Gold price unavailable/stale, patching a manual price input across the gap: {price_e}")
+            gpf = mu["goldPriceManualFallback"]
+            # The manual price itself has a date and can go stale exactly
+            # like a fetched series (STATUS.md §19) — check it too, not
+            # just the live source it's replacing. Non-fatal (see
+            # check_manual_freshness's docstring): this is already the
+            # fallback, there's nowhere further live to go.
+            gold_manual_freshness = check_manual_freshness(
+                "gold price manual fallback (goldPriceManualFallback.asOf)",
+                gpf["asOf"], S.GOLD_MANUAL_PRICE_FRESH_DAYS)
+            # Keep any real (if stale) historical months the fetch did
+            # return -- only patch the months it's missing, so old chart
+            # history stays priced with real data and only the frozen
+            # tail (which otherwise wouldn't overlap TRESEGUSM052N's own
+            # lagging history -- STATUS.md §18) gets the manual price.
+            for ym in gold_oz_monthly.keys() - gold_price_monthly.keys():
+                gold_price_monthly[ym] = gpf["pricePerOz"]
+            price_asof = oz_asof
+            price_is_live = False
+
+        gold_value_monthly = {k: gold_oz_monthly[k] * gold_price_monthly[k]
+                               for k in gold_oz_monthly.keys() & gold_price_monthly.keys()}
+        if not gold_value_monthly:
+            raise RuntimeError("gold: no overlapping months between holdings and price")
+
+        if price_is_live:
+            reserves_incl_gold_tag = "live"
+            if oz_asof == price_asof:
+                gold_src_detail = f"Treasury (gold) + DBnomics (price), both {oz_asof[0]}-{oz_asof[1]:02d}"
+            else:
+                gold_src_detail = (f"Treasury (gold oz {oz_asof[0]}-{oz_asof[1]:02d}) "
+                                    f"+ DBnomics (price {price_asof[0]}-{price_asof[1]:02d})")
+                # Visible on the row itself, not only inferable from src/asOf —
+                # see STATUS.md §14.3 (root cause: IMF PCPS upstream, not the
+                # DBnomics mirror, as far as this project could confirm live).
+                lag_months = (oz_asof[0] - price_asof[0]) * 12 + (oz_asof[1] - price_asof[1])
+                if lag_months >= 2:
+                    gold_stale_note = (
+                        f"⚠ gold priced as of {price_asof[0]}-{price_asof[1]:02d} "
+                        f"({lag_months} months old) — market value may be off if gold has moved since"
+                    )
+        else:
+            reserves_incl_gold_tag = "manual_price"
+            gold_src_detail = (f"Treasury (gold oz, live, {oz_asof[0]}-{oz_asof[1]:02d}) "
+                                f"+ manual price (${gpf['pricePerOz']:,.0f}/oz as of {gpf['asOf']})")
+            gold_stale_note = (
+                f"⚠ manual gold price input: ${gpf['pricePerOz']:,.0f}/oz as of {gpf['asOf']} "
+                f"— the live price source is dead, but the ounce count is still live "
+                f"({oz_asof[0]}-{oz_asof[1]:02d})"
+            )
+            if gold_manual_freshness["stale"]:
+                # The hand-entered fallback is ITSELF now overdue for review
+                # (STATUS.md §19) — distinct from "the live source is dead"
+                # above, and surfaced on the row itself so a stale manual
+                # value isn't only visible to someone reading CI logs.
+                gold_stale_note += (
+                    f" — ⚠⚠ this manual price is also {gold_manual_freshness['age_days']}d "
+                    f"old itself, past its {S.GOLD_MANUAL_PRICE_FRESH_DAYS}d review threshold; "
+                    f"data/manual.json needs a human to update it"
+                )
+
         reserves_incl_gold = S.reserves_incl_gold_pct_gdp(
             raw["TRESEGUSM052N"][1], raw["TRESEGUSM052N"][0], gold_value_monthly,
             raw["GDP"][1], raw["GDP"][0])
@@ -274,10 +541,28 @@ def build_us(manual: dict, force: bool) -> dict:
                 "Check the gold schema dumped by --verify before trusting it."
             )
     except Exception as e:  # noqa: BLE001
-        print(f"Gold-inclusive reserves unavailable, using manual value: {e}")
+        print(f"Gold-inclusive reserves unavailable even with a manual price input "
+              f"(live ounce count itself failed), using the full manual fallback: {e}")
         reserves_incl_gold_tag = "manual"
         gf = mu["reservesInclGoldFallback"]
         reserves_incl_gold = {"latest": gf["value"], "asOf": mu.get("lastChecked"), "history": []}
+        gold_stale_note = gf.get("note")
+        # This last-resort fallback has no `asOf` of its own — it relies on
+        # manual.json's top-level lastChecked (STATUS.md §19's dateless-field
+        # audit). Check that for staleness too, same non-fatal treatment.
+        last_checked_freshness = check_manual_freshness(
+            "manual.json lastChecked (governs reservesInclGoldFallback, which "
+            "has no asOf of its own)", mu.get("lastChecked"), S.MANUAL_FRESH_DAYS)
+        if last_checked_freshness["stale"]:
+            gold_stale_note = (gold_stale_note or "") + (
+                f" — ⚠⚠ manual.json has not been reviewed in "
+                f"{last_checked_freshness['age_days']}d, past its "
+                f"{S.MANUAL_FRESH_DAYS}d threshold"
+            )
+
+    assert_provenance(
+        fallbacks_fired, "Reserves incl. gold (market)", "live", reserves_incl_gold_tag,
+        reason="live gold price and/or holdings fetch failed or exceeded its freshness threshold")
 
     total_debt = S.total_debt_pct_gdp(raw["TCMDO"][1], raw["TCMDO"][0],
                                       raw["GDP"][1], raw["GDP"][0])
@@ -287,18 +572,39 @@ def build_us(manual: dict, force: bool) -> dict:
                                                  raw["GDP"][1], raw["GDP"][0], annualized)
     real_rate = S.real_10y_rate(raw["DGS10"][1], raw["CPIAUCSL"][1])
 
+    # Debt held by the public / TOTAL receipts, net of refunds (TTM) —
+    # alongside debt_to_gdp, not replacing it (Dalio's Ch.17 table itself
+    # reports debt/GDP; debt/revenue is his Ch.3 preferred framing, added
+    # here as a second row). No new series: debt$ = FYGFGDQ188S (%) x GDP
+    # ($), same total-receipts denominator as both debt-service rows (see
+    # STATUS.md §13). Expected magnitude is a bug-detector, not a target —
+    # roughly $30T debt against a few trillion of receipts is several
+    # hundred percent; the band is wide (200-1200%) to allow real movement
+    # while still catching an order-of-magnitude unit error.
+    debt_to_revenue = S.debt_to_revenue_pct(raw["FYGFGDQ188S"][1], raw["GDP"][1], raw["GDP"][0],
+                                            T.revenue_ttm_dollars())
+    if not (200.0 <= debt_to_revenue["latest"] <= 1200.0):
+        raise RuntimeError(
+            f"validation: debt-to-revenue {debt_to_revenue['latest']}% is "
+            "outside the sane 200-1200% band — likely a units/scale error "
+            "(FYGFGDQ188S is a percent, GDP is billions SAAR — check both)."
+        )
+
     # --- move guards on the positive-level ratios ---
     _check_move("debt_to_gdp", debt["latest"], prev, force)
     _check_move("debt_service_to_revenue", service["latest"], prev, force)
     _check_move("reserves_to_gdp", reserves_incl_gold["latest"], prev, force)
 
-    def live_row(label, metric, tone, src, unit, decimals=None):
-        return {
+    def live_row(label, metric, tone, src, unit, decimals=None, note=None):
+        row = {
             "label": label, "value": num(metric["latest"]),
             "display": pct_display(metric["latest"], decimals), "unit": unit,
             "tone": tone, "tag": "live", "src": src, "asOf": metric["asOf"],
             "history": metric["history"],
         }
+        if note:
+            row["note"] = note
+        return row
 
     def manual_row(label, spec, tag="manual"):
         row = {"label": label, "display": spec["display"], "unit": spec.get("unit", ""),
@@ -318,8 +624,10 @@ def build_us(manual: dict, force: bool) -> dict:
             "Debt held by the public near one year of national income; projected to keep climbing.",
             "FRED: FYGFGDQ188S", "of GDP")},
         {"key": "debt_service_to_revenue", "label": "Debt service vs income", **_vital(service, "risk",
-            "Gross interest on the debt costs more than a fifth of federal revenue, closing in on a quarter — before principal.",
-            "derived · Treasury (gross interest, budget basis)", "of revenue")},
+            "Net interest to the public — cash actually leaving the government today — costs "
+            "about a fifth of total revenue. Gross interest, including bonds credited to "
+            "trust funds, runs higher still (see the panel below).",
+            "derived · Treasury (net interest, total receipts net of refunds)", "of revenue")},
         {"key": "real_rates", "label": "Rates vs inflation & growth", **_vital(real_rate, "neutral",
             "10-year Treasury yield minus trailing-12-month CPI inflation — the real cost of borrowing Dalio watches.",
             "derived · FRED (10y − CPI)", "real 10y")},
@@ -327,34 +635,44 @@ def build_us(manual: dict, force: bool) -> dict:
             **_vital(reserves_incl_gold, "risk",
                 "Reserves including gold at market value are still thin relative to the debt — "
                 "and most of the buffer is illiquid gold, not spendable FX.",
-                ("derived · Treasury (gold) + DBnomics (price) + FRED" if reserves_incl_gold_tag == "live"
+                (f"derived · {gold_src_detail} + FRED" if reserves_incl_gold_tag != "manual"
                  else mu["reservesInclGoldFallback"]["src"]),
                 "reserves / GDP", tag=reserves_incl_gold_tag)},
     ]
 
     gov_panel = {
         "eyebrow": "Government debt", "tag": "live",
-        "note": "Very large debt with little liquid backing. Who holds it matters: foreign holders can leave faster than domestic ones.",
+        "note": "Very large debt with little liquid backing. Who holds it matters: foreign holders can leave faster than domestic ones. Two debt-service rows below: net is what's actually leaving the government in cash today; gross adds interest credited to trust funds as bonds — a real claim, but not yet a cash outflow.",
         "rows": [
             manual_row("Gov assets − gov debt", mu["govAssetsMinusDebt"]),
             live_row("Government debt (held by public)", debt, "risk", "FRED: FYGFGDQ188S", "of GDP"),
+            live_row("Debt vs revenue", debt_to_revenue, "risk",
+                     "derived · FYGFGDQ188S x GDP / Treasury (total receipts, net of refunds, TTM)",
+                     "of revenue", decimals=0),
             manual_row("Debt, 10-yr projection", mu["cboProjection"]),
             manual_row("— held by central bank", mu["holders"]["centralBank"]),
             manual_row("— held by domestic players", mu["holders"]["domestic"]),
             manual_row("— held abroad", mu["holders"]["abroad"]),
             manual_row("Share in hard (foreign) FX", mu["shareHardFX"]),
-            live_row("Government interest (gross)", service, "risk", "derived · Treasury (gross incl. GAS)", "of revenue"),
+            live_row("Net interest (to the public)", service, "risk",
+                     "derived · Treasury (net interest, total receipts net of refunds)", "of revenue",
+                     note="The current situation — cash leaving the government today"),
+            live_row("Gross interest (incl. intragovernmental)", gross_service, "caution",
+                     "derived · Treasury (gross incl. GAS, total receipts net of refunds)", "of revenue",
+                     note="The leading indicator — the gap is obligation accruing before it's an outflow"),
         ],
     }
     reserves_incl_gold_row = {
         "label": "Reserves incl. gold (market)", "value": num(reserves_incl_gold["latest"]),
         "display": pct_display(reserves_incl_gold["latest"], 1), "unit": "of GDP",
         "tone": "risk", "tag": reserves_incl_gold_tag,
-        "src": ("derived · Treasury (gold) + DBnomics (price) + FRED" if reserves_incl_gold_tag == "live"
+        "src": (f"derived · {gold_src_detail} + FRED" if reserves_incl_gold_tag != "manual"
                 else mu["reservesInclGoldFallback"]["src"]),
         "asOf": reserves_incl_gold.get("asOf"),
         "history": reserves_incl_gold.get("history", []),
     }
+    if gold_stale_note:
+        reserves_incl_gold_row["note"] = gold_stale_note
     reserves_panel = {
         "eyebrow": "Liquid reserves", "tag": "live",
         "note": "The cushion a country can draw on before it must default or print. Gold is a "
@@ -370,14 +688,16 @@ def build_us(manual: dict, force: bool) -> dict:
         "eyebrow": "Broader health", "tag": "live",
         "note": "Economy-wide leverage and the external balance — how dependent the country is on foreign financing.",
         "rows": [
-            live_row("Total debt (all sectors)", total_debt, "caution", "FRED Z.1", "of GDP"),
+            live_row("Total debt (all sectors)", total_debt, "caution", "FRED: TCMDO (Z.1)", "of GDP"),
             live_row("Current account, 3-yr avg", current_acct, "caution", "BEA / FRED", "of GDP"),
             live_row("Real 10-year rate (10y − CPI)", real_rate, "neutral", "derived · FRED (DGS10 − CPI)", "real, 10y"),
         ],
     }
     # World CB reserves in USD: live from IMF COFER, else fall back to manual.
+    cb_reserves_tag = "live"
     try:
         cofer = I.cofer_usd_share()
+        S.require_fresh("IMF COFER USD share", cofer["asOf"], S.COFER_FRESH_DAYS)
         cb_reserves_row = {
             "label": "World CB reserves in USD", "value": num(cofer["latest"]),
             "display": pct_display(cofer["latest"], 1), "unit": "", "tone": "mitig",
@@ -385,7 +705,23 @@ def build_us(manual: dict, force: bool) -> dict:
         }
     except Exception as e:  # noqa: BLE001
         print(f"IMF COFER unavailable, using manual value: {e}")
+        cb_reserves_tag = "manual"
+        # This manual snapshot has its own asOf (unlike reservesInclGoldFallback)
+        # — check it against the same cadence COFER's own live threshold uses
+        # (STATUS.md §19), since it's a snapshot of that same series.
+        cbreserves_freshness = check_manual_freshness(
+            "reserveCurrency.cbReserves.asOf (manual COFER fallback)",
+            rc["cbReserves"]["asOf"], S.CBRESERVES_MANUAL_FRESH_DAYS)
         cb_reserves_row = manual_row("World CB reserves in USD", rc["cbReserves"])
+        if cbreserves_freshness["stale"]:
+            cb_reserves_row["note"] = (
+                f"⚠ this manual COFER figure is {cbreserves_freshness['age_days']}d old itself, "
+                f"past its {S.CBRESERVES_MANUAL_FRESH_DAYS}d review threshold; "
+                f"data/manual.json needs a human to check for a newer published figure"
+            )
+    assert_provenance(
+        fallbacks_fired, "World CB reserves in USD", "live", cb_reserves_tag,
+        reason="live IMF COFER fetch failed or exceeded its freshness threshold")
 
     reserve_ccy_panel = {
         "eyebrow": "Reserve-currency status", "tag": "manual", "accent": "#5B8DD6",
@@ -414,14 +750,54 @@ def build_us(manual: dict, force: bool) -> dict:
             "modelSnapshot": mu.get("modelSnapshot"),
             "manualLastChecked": mu.get("lastChecked"),
             "currentAccountAnnualizedInput": annualized,
-            "debtServiceBasis": "gross interest (incl. GAS) / total federal receipts, "
-                                 "Treasury budget basis — chosen 2026-07 to match Dalio's "
-                                 "Ch.17 US snapshot (22%); see STATUS.md",
-            "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz) "
-                              "x live gold price (DBnomics LBMA), gold valued at MARKET not the "
-                              "$42.2222/oz statutory book rate — resolved 2026-07 to match "
-                              "Dalio's Ch.17 US snapshot (3%); see STATUS.md",
+            "revenueDefinition": "TOTAL federal receipts, NET of refunds (Treasury MTS "
+                                  "mts_table_4, current_month_net_rcpt_amt) — the ONE revenue "
+                                  "denominator shared by all three revenue-denominated rows "
+                                  "below (net interest, gross interest, debt/revenue). Revised "
+                                  "2026-07 (third time same day) after finding this pipeline had "
+                                  "been summing GROSS receipts (before refunds), a ~7% "
+                                  "overstatement checked against CBO's published FY2024 ($4.920T) "
+                                  "and FY2025 ($5.235T) totals — net matched both almost exactly, "
+                                  "gross missed both by ~7%. The prior on-budget-receipts basis "
+                                  "is dropped: it was chosen partly for landing close to Dalio's "
+                                  "Ch.17 22%, which the gross-receipts bug made an artifact — with "
+                                  "the bug fixed, no basis reproduces 22% closely, so the "
+                                  "denominator is now chosen purely on definitional grounds (the "
+                                  "denominator every standard published interest-to-revenue "
+                                  "figure actually uses). See STATUS.md §13.",
+            "debtServiceBasis": "NET interest to the public (excl. intragovernmental GAS) / "
+                                 "TOTAL receipts, net of refunds — headline "
+                                 "`debt_service_to_revenue`. Net-to-public is the numerator "
+                                 "whose scope matches debt_to_gdp (debt held by the public); "
+                                 "gross interest incl. GAS ships as its own separate row instead. "
+                                 "See STATUS.md §13.",
+            "grossDebtServiceBasis": "GROSS interest (incl. intragovernmental Government "
+                                      "Account Series) / TOTAL receipts, net of refunds — the "
+                                      "explicit second debt-service row, same denominator as the "
+                                      "net headline (see revenueDefinition).",
+            "debtToRevenueBasis": "Debt held by the public ($, FYGFGDQ188S x GDP) / TOTAL "
+                                   "receipts, net of refunds (TTM, $) — same denominator as both "
+                                   "debt-service rows. Dalio's Ch.17 table reports only debt/GDP; "
+                                   "his Ch.3 debt-to-revenue figure (~580%, ~700% in ten years) "
+                                   "is a real anchor but not exactly reproduced by any tested "
+                                   "denominator — see STATUS.md §12/§13. debt_to_gdp remains the "
+                                   "headline.",
+            "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz, "
+                              "live) x gold price, valued at MARKET not the $42.2222/oz statutory "
+                              "book rate. Price is live (DBnomics: IMF PCPS, indicator PGOLD) when "
+                              "fresh; that source has been frozen at 2025-06 since at least "
+                              "2026-07, so the price currently falls back to a hand-entered manual "
+                              "value (data/manual.json: goldPriceManualFallback) applied to the "
+                              "still-live ounce count — see STATUS.md §18 for why this replaced "
+                              "the prior all-manual-output fallback (which matched Dalio's Ch.17 "
+                              "figure by construction, not by independent computation).",
             "reservesInclGoldTag": reserves_incl_gold_tag,
+            # Per-row provenance assertions (STATUS.md §19): every row whose
+            # tag can legitimately fall back from "live" is checked here at
+            # build time. Empty list = every fallback-capable row shipped as
+            # live this run; a non-empty list means at least one fallback
+            # fired and is loudly warned above, not just silently shipped.
+            "fallbacksFired": fallbacks_fired,
         },
     }
     _validate(country)

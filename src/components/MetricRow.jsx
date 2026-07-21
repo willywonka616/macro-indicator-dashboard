@@ -3,8 +3,11 @@ import { c, toneColor } from "../theme.js";
 import Chart from "./Chart.jsx";
 
 /* One metric line inside a Panel.
- * `r` = { label, value, display?, unit, tone, src, asOf?, history? }.
+ * `r` = { label, value, display?, unit, tone, src, asOf?, history?, note? }.
  * Renders `display` (pre-formatted string) when present, else `value`.
+ * `note`, if present, is a short framing caption shown under label/src —
+ * for a row that means little without context (e.g. "net" vs "gross"
+ * interest), not a full explanation (that's Panel.jsx's longNote).
  * When there's history, a full-width chart is drawn below the row. */
 export default function MetricRow({ r }) {
   const shown = r.display ?? r.value;
@@ -14,6 +17,9 @@ export default function MetricRow({ r }) {
       <div className="flex items-center justify-between">
         <div className="min-w-0">
           <div style={{ fontSize: 13, color: c.text }}>{r.label}</div>
+          {r.note && (
+            <div style={{ fontSize: 11, color: c.muted, marginTop: 1 }}>{r.note}</div>
+          )}
           {r.src && r.src !== "—" && (
             <div style={{ fontSize: 10, color: c.faint }}>
               {r.src}
