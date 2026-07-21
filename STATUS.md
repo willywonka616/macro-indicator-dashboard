@@ -2327,6 +2327,158 @@ correct fallback until a working live source is found.
 
 ---
 
+## 19. Freshness guard extended to manual inputs; per-row provenance assertion (2026-07-21, tenth pass)
+
+**What this round covers:** a follow-up correction identifying two classes
+of silently-wrong-data this project hadn't yet closed. (1) §17's
+freshness guard only ever checked FETCHED series' dates — a hand-entered
+manual value (the new `goldPriceManualFallback`, §18) is exactly as
+capable of going stale, and had no threshold of its own at all. (2) A
+fallback firing (live → manual/manual_price) was only ever visible as an
+incidental `print()` line in the middle of a long build log — nothing
+asserted that the shipped tag matched what a healthy run should have
+produced, and nothing made a fallback firing structurally impossible to
+miss. Both closed this round; a third, narrower ask (retry World Bank/
+ECB/IMF IFS) doesn't apply here — that was §18's task, not this one.
+
+### 19.1 Manual-value freshness thresholds
+
+Three new thresholds in `series.py`, each reasoned from what the value
+stands in for, not an arbitrary number:
+- `GOLD_MANUAL_PRICE_FRESH_DAYS` (60d) — same cadence as the live Monthly
+  threshold it replaces; the hand-entered gold price shouldn't go
+  unreviewed longer than the live source it's standing in for would.
+- `CBRESERVES_MANUAL_FRESH_DAYS` (270d, = `COFER_FRESH_DAYS`) — the
+  manual COFER snapshot is a snapshot of the same series, so it gets the
+  same cadence reasoning.
+- `MANUAL_FRESH_DAYS` (180d) — the catch-all for `lastChecked`, which is
+  the *implicit* date for every manual value that has no `asOf` of its
+  own (§19.2). A review cadence, not a data cadence — most of what it
+  governs (TIC holder shares, CBO's projection, market-cap shares) has no
+  natural update schedule at all.
+
+All three are checked with the non-raising `S.freshness()`, not
+`require_fresh()` — deliberately non-fatal. These are already the
+fallback of last resort; there's no further live source behind them to
+degrade to, so failing the build over their own staleness would take the
+whole site down over a metadata gap, the opposite of the "degrade rather
+than break" principle §17/§18 built the fallback chains around in the
+first place. Instead, staleness triggers `fetch.py`'s new `loud_warn()` —
+a console banner AND a GitHub Actions `::warning::` annotation (a real
+Annotation on the run's Checks page, not just a line in a log a human
+has to go find) — and, when the stale manual value is the one actually
+shipped, the staleness is folded into the row's own `note` field, so a
+site visitor sees it too, not only a CI log:
+```python
+def check_manual_freshness(label, date_str, max_age_days, today=None):
+    f = S.freshness(label, date_str, max_age_days, today)
+    if f["stale"]:
+        loud_warn(f"manual value '{label}' is {f['age_days']}d old ...")
+    return f
+```
+Wired in at all three of the places a manual value can actually ship:
+the gold-price manual-input branch (checks `goldPriceManualFallback.asOf`),
+the full-manual gold-output branch (checks `lastChecked`, since
+`reservesInclGoldFallback` has no `asOf` of its own), and the COFER
+manual-fallback branch (checks `reserveCurrency.cbReserves.asOf`). Also
+wired into `--verify` unconditionally (`audit_manual_values()`), so
+drift is visible during routine health checks even while the live
+sources these values would replace are still healthy — not only at the
+moment a fallback actually fires.
+
+### 19.2 Audit: which manual values have no date at all
+
+Ran `audit_manual_values()` against the current `data/manual.json`:
+```
+Manual-value freshness audit (data/manual.json):
+  goldPriceManualFallback.asOf                            2026-07-20      1d old   60d threshold  ok
+  reserveCurrency.cbReserves.asOf                         2026-Q1       201d old  270d threshold  ok
+  lastChecked (governs every dateless value below)        2026-07-18      3d old  180d threshold  ok
+  11 manual values have NO individual date, relying solely on
+    lastChecked above:
+    govAssetsMinusDebt
+    cboProjection
+    holders.centralBank
+    holders.domestic
+    holders.abroad
+    shareHardFX
+    sovereignWealth
+    reserveCurrency.trade
+    reserveCurrency.equity
+    reserveCurrency.debt
+    reservesInclGoldFallback (no own asOf; last-resort only — see its own note)
+```
+**Finding: 11 of the 14 manual values in `manual.json["US"]` carry no
+date of their own** — TIC holder-composition shares, the CBO 10-year
+projection, sovereign-wealth/hard-FX facts, and the three reserve-
+currency market-share figures (world trade/debt/equity in USD) all rely
+solely on the single top-level `lastChecked` for any notion of
+"how old is this." That's a real gap for the ones with an actual
+natural update cadence (TIC data, CBO baselines) — currently
+indistinguishable in age from `sovereignWealth: "None"`, a fact that
+doesn't go stale at all. Not fixed this round (would mean sourcing 11
+new independently-tracked dates, out of scope for a freshness-guard
+pass) — recorded here as the honest answer to "check whether any other
+manual value lacks a date entirely," per the task.
+
+### 19.3 Per-row provenance assertion
+
+New `assert_provenance(fallbacks_fired, row_label, expected_tag,
+actual_tag, reason)` in `fetch.py`, called at both places a row's tag can
+legitimately diverge from `"live"`:
+```python
+assert_provenance(fallbacks_fired, "Reserves incl. gold (market)", "live",
+                   reserves_incl_gold_tag, reason="...")
+assert_provenance(fallbacks_fired, "World CB reserves in USD", "live",
+                   cb_reserves_tag, reason="...")
+```
+A mismatch is loudly warned (same `loud_warn()` mechanism as §19.1) and
+recorded in a new `country.provenance.fallbacksFired` array — empty on a
+fully-healthy run, non-empty (with row, expected tag, actual tag, and
+reason) whenever a fallback fired. This is the structural fix for the
+actual failure mode found in §18.2: that bug's symptom was a legitimate
+`print()` line sitting in the CI log, easy to miss unless someone read
+the whole build log start to finish — now a fallback firing is a
+first-class, machine-checkable field in the shipped data itself, not
+just prose in a log.
+
+**Deliberately non-fatal, same reasoning as §19.1**: the two rows this
+guards (gold reserves, COFER) exist specifically so a dead source
+degrades the site rather than takes it down. Asserting and then failing
+the build on every mismatch would defeat the fallback chains §17/§18
+built for exactly this scenario. The assertion's job is to make a
+fallback firing *undeniable*, not to treat "a fallback fired" as itself
+an error — that would conflate "the underlying source is unhealthy"
+(true, and already surfaced via the `manual`/`manual_price` tag and the
+row's own `note`) with "the pipeline behaved incorrectly" (false — this
+is the pipeline working as designed under a real source outage).
+
+### 19.4 Verified locally
+
+Extended the scratchpad mock test (not part of the repo) with three new
+assertions: (1) a fully-live run produces `provenance.fallbacksFired ==
+[]`; (2) the manual-price scenario (stale gold price, live oz) records a
+`manual_price` mismatch entry; (3) the full-manual scenario (both stale)
+records a `manual` mismatch entry. All three pass, and the loud-warning
+banners + `::warning::` annotations print correctly in each fallback
+case, confirmed by inspecting the raw test output.
+
+### 19.5 Live production run
+
+<!-- filled in once the workflow_dispatch run for commit 13c0a76 completes -->
+
+### 19.6 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| §17's freshness guard only checked fetched series, not manual.json's own dated values | **VERIFIED** — read directly from the pre-this-round code: `require_fresh()` was only ever called on `raw[sid]`/Treasury/COFER/gold fetch results, never on `goldPriceManualFallback.asOf` or `cbReserves.asOf` |
+| A fallback firing was only visible as a `print()` line, not a structured/asserted signal | **VERIFIED** — this is exactly how §18.2's bug was found: by reading the build log line-by-line, not by any automated check catching the mismatch |
+| 11 of 14 manual.json values have no date of their own | **VERIFIED** — `audit_manual_values()` output above, cross-checked by hand against `data/manual.json`'s actual keys |
+| The new manual-value freshness checks and provenance assertion don't false-positive on a healthy run | **VERIFIED** — local mock test, fully-live scenario asserts `fallbacksFired == []` and no staleness warnings fire (all three manual dates are within their thresholds as of 2026-07-21) |
+| The provenance assertion correctly fires for both fallback tiers (`manual_price`, `manual`) | **VERIFIED** — local mock test, both scenarios explicitly assert the recorded entry's `actualTag` |
+
+---
+
 ## Meta: how to keep this file honest
 
 - Don't hand-wave dates or run outcomes — check the Actions tab
