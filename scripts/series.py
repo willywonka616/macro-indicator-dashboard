@@ -400,3 +400,91 @@ def real_10y_rate(dgs10_obs, cpi_obs):
         real_q[(yr, (m - 1) // 3 + 1)] = v
     latest, asof = _latest(real_q)
     return {"latest": round(latest, 2), "asOf": asof, "history": quarterly_history(real_q)}
+
+
+# --- CBO projections (TASKprojections.md) --------------------------------
+# Every function below reads only CBO's own published baseline (see
+# cbo.py) — no extrapolation, no fitted models, no scenario output. A
+# fiscal-year point is placed at FY + 8/12 (~Sept 30, the federal fiscal
+# year-end) so it lines up sensibly on the same decimal-year x-axis as the
+# calendar-quarter live series it extends.
+
+def _fy_decimal(fy: int) -> float:
+    return round(fy + 8 / 12.0, 3)
+
+
+def cbo_gdp_share_series(cbo_data: dict, field_key: str, projected_only: bool = True) -> list:
+    """[{"y", "v", "projected": True}, ...] from a CBO `*_gdp_share` field
+    (already a percentage of GDP — CBO publishes the ratio directly, no
+    division needed here). `projected_only=True` (the default) skips the
+    vintage's own first fiscal year, which schema.json documents as
+    "actual (realized)," not a CBO projection — that year overlaps what
+    the live FRED-sourced series already shows, so including it here
+    would be a duplicate point, not a genuine extension."""
+    series = cbo_data[field_key]
+    fy_min = cbo_data["fyMin"]
+    return [
+        {"y": _fy_decimal(fy), "v": round(series[fy], 2), "projected": True}
+        for fy in sorted(series) if not (projected_only and fy <= fy_min)
+    ]
+
+
+def cbo_dollar_ratio_series(cbo_data: dict, numerator_key: str, denominator_key: str,
+                             projected_only: bool = True) -> list:
+    """Same shape as cbo_gdp_share_series, for a ratio of two CBO
+    dollar-level fields that CBO doesn't already publish as its own
+    `*_gdp_share` field — e.g. debt held by the public ÷ total revenue,
+    Dalio's Ch.3-preferred debt/revenue framing, which CBO's own tables
+    don't carry as a single published ratio."""
+    num, den = cbo_data[numerator_key], cbo_data[denominator_key]
+    fy_min = cbo_data["fyMin"]
+    out = []
+    for fy in sorted(num.keys() & den.keys()):
+        if projected_only and fy <= fy_min:
+            continue
+        if den[fy]:
+            out.append({"y": _fy_decimal(fy), "v": round(num[fy] / den[fy] * 100.0, 2), "projected": True})
+    return out
+
+
+def interest_rate_to_keep_debt_flat(cbo_data: dict) -> dict:
+    """Dalio's Ch.3 equation #3 — computed for every projected fiscal year
+    in CBO's baseline, entirely from CBO's own published figures:
+
+        i_required = Revenue Growth
+                     − (Future Expenses Excl. Interest − Future Revenue)
+                       ─────────────────────────────────────────────────
+                                    Starting Debt Level
+
+    "Future Expenses Excl. Interest − Future Revenue" is CBO's own
+    `proj_primary_deficit`, sign-flipped (that field is negative for a
+    deficit; verified live to equal exactly
+    `outlays_total − outlays_net_interest − rev_total`, to the dollar, in
+    every fiscal year checked — see STATUS.md). "Starting Debt Level" is
+    CBO's own `proj_debt_held_by_public_begin`, not a prior-year lookup
+    into `proj_debt_held_by_public` — avoids an off-by-one at the first
+    projected year and uses the field CBO itself designed for this. Every
+    term is CBO's baseline; nothing here is fitted, extrapolated, or a
+    scenario output (TASKprojections.md §1: "Do not build: our own
+    forecasts").
+
+    Diagnostic by design (TASKprojections.md §1): the caller compares this
+    series against the ACTUAL average effective rate on the debt
+    (treasury.avg_interest_rate_marketable(), live) — the gap between them
+    is "how far from stabilising the debt currently is," Dalio's own
+    framing (i = g keeps debt flat with no primary deficit).
+    """
+    fy_min, fy_max = cbo_data["fyMin"], cbo_data["fyMax"]
+    rev = cbo_data["rev_total"]
+    begin_debt = cbo_data["debt_held_by_public_begin"]
+    primary_deficit = cbo_data["primary_deficit"]
+    out = []
+    for fy in range(fy_min + 1, fy_max + 1):
+        if fy not in rev or (fy - 1) not in rev or fy not in begin_debt or fy not in primary_deficit:
+            continue
+        growth = (rev[fy] / rev[fy - 1] - 1.0) * 100.0
+        gap = -primary_deficit[fy] / begin_debt[fy] * 100.0  # (expenses excl. interest − revenue) / starting debt
+        out.append({"y": _fy_decimal(fy), "v": round(growth - gap, 2), "projected": True})
+    if not out:
+        raise RuntimeError("interest_rate_to_keep_debt_flat: no computable fiscal years")
+    return {"history": out}

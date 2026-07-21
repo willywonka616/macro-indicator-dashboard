@@ -84,6 +84,26 @@ INTEREST_ENDPOINT = "/v2/accounting/od/interest_expense"
 
 TTM = 12  # trailing months used to annualise both numerator and denominator
 
+# --- TASKprojections.md §2: Average Interest Rates on U.S. Treasury
+# Securities — Dalio's "average effective interest rate on debt," the ACTUAL
+# figure equation #3 compares its computed required rate against.
+AVG_INTEREST_RATE_ENDPOINT = "/v2/accounting/od/avg_interest_rates"
+_AVG_RATE_LABEL_CANDIDATES = ["total marketable"]
+
+# Candidate MSPD maturity-profile endpoints — Dalio's "share of debts coming
+# due." Not actually needed by equation #3 (its terms are all CBO-baseline;
+# see series.py), but the task's acceptance criteria ask for this endpoint
+# to be "confirmed and dumped" as groundwork for equation #2's numerator
+# (debt service = interest + principal) in a future pass. Best-effort,
+# diagnostic only (see maturity_profile_probe below) — genuinely uncertain
+# which of these resolves without a live run; verify() reports whichever
+# one (if any) actually does, honestly, rather than assuming.
+MATURITY_ENDPOINT_CANDIDATES = [
+    "/v1/debt/mspd/mspd_table_3_market",
+    "/v1/debt/mspd/mspd_table_3",
+    "/v1/debt/mspd/mspd_table_1",
+]
+
 
 # --- http ----------------------------------------------------------------
 
@@ -432,6 +452,71 @@ def _table5_on_budget_probe() -> dict:
     return out
 
 
+# --- TASKprojections.md: average interest rate (live) + maturity probe ----
+
+def avg_interest_rate_marketable() -> dict:
+    """{"latest": pct, "asOf": "YYYY-MM", "history": [...], "label": str} —
+    Treasury's own published average interest rate across all MARKETABLE
+    debt (the ACTUAL effective rate the government is paying today), for
+    Dalio's equation #3 comparison ("compare it to the actual average
+    effective interest rate on the debt"). Marketable-only, not the
+    blended total including non-marketable Government Account Series
+    securities (a different, largely-imputed rate) — matches the scope of
+    "debt held by the public" that equation #3's Starting Debt Level term
+    uses (CBO's proj_debt_held_by_public_begin), an apples-to-apples
+    comparison rather than a mismatched-basis one.
+    """
+    rows = _get(AVG_INTEREST_RATE_ENDPOINT, {"sort": "record_date"})
+    if not rows:
+        raise RuntimeError("avg_interest_rates: no rows returned")
+    s = rows[0]
+    desck = _pick(s, ["security_desc"], contains=["security", "desc"])
+    amtk = _pick(s, ["avg_interest_rate_amt"], contains=["interest", "rate"])
+    if not (desck and amtk):
+        raise RuntimeError(f"avg_interest_rates: could not map fields from {list(s)}")
+    distinct = {str(r.get(desck, "")).strip() for r in rows}
+    label = next((d for d in distinct if d.strip().lower() in _AVG_RATE_LABEL_CANDIDATES), None)
+    if not label:
+        raise RuntimeError(f"avg_interest_rates: no 'Total Marketable' row found among {sorted(distinct)}")
+    monthly = {}
+    for row in rows:
+        if str(row.get(desck, "")).strip() != label:
+            continue
+        amt = _num(row.get(amtk))
+        if amt is not None:
+            monthly[_ym(row["record_date"])] = amt
+    if not monthly:
+        raise RuntimeError("avg_interest_rates: no numeric values for the matched label")
+    last = max(monthly)
+    hist = [{"y": round(y + (m - 1) / 12.0, 3), "v": round(v, 2)} for (y, m), v in sorted(monthly.items())]
+    return {"latest": round(monthly[last], 2), "asOf": f"{last[0]}-{last[1]:02d}",
+            "history": hist, "label": label}
+
+
+def maturity_profile_probe() -> dict:
+    """Diagnostic only, never used to build data.json (see module docstring
+    for MATURITY_ENDPOINT_CANDIDATES): tries each candidate MSPD endpoint in
+    order and reports the first that resolves, dumping its fields and any
+    maturity-range classification found — or reports that none resolved,
+    an honest negative rather than a guessed field name."""
+    for ep in MATURITY_ENDPOINT_CANDIDATES:
+        try:
+            rows = _get(ep, {"sort": "-record_date", "page[size]": "300"}, max_pages=1)
+            if not rows:
+                continue
+            s = rows[0]
+            maturity_k = _pick(s, [], contains=["maturity"]) or _pick(s, [], contains=["security", "term"])
+            return {
+                "endpoint": ep, "fields": list(s),
+                "maturity_field": maturity_k,
+                "distinct_maturity_values": _distinct(rows, maturity_k) if maturity_k else None,
+                "latest_record_date": s.get("record_date"),
+            }
+        except Exception:  # noqa: BLE001
+            continue
+    return {"endpoint": None, "error": "none of the candidate endpoints resolved"}
+
+
 # --- TTM dollar sums (not ratios) — feeds debt_to_revenue ----------------
 
 def _ttm_sum(monthly: dict) -> dict:
@@ -633,6 +718,33 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
     else:
         for label, fields in probe.items():
             print(f"    {label}: {fields}")
+
+    print("\n  Average Interest Rates on U.S. Treasury Securities "
+          "(TASKprojections.md — the ACTUAL rate equation #3 compares against):")
+    try:
+        avg = avg_interest_rate_marketable()
+        f = S.freshness("avg interest rate (marketable)", avg["asOf"], S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
+        fresh_s = "STALE" if f["stale"] else "ok"
+        print(f"    '{avg['label']}': {avg['latest']}% as of {avg['asOf']} "
+              f"({len(avg['history'])} history pts) — freshness: {f['age_days']}d old, "
+              f"{S.FRESHNESS_DAYS_BY_FREQ['Monthly']}d threshold, {fresh_s}")
+    except Exception as e:  # noqa: BLE001
+        print(f"    FAILED: {e}")
+
+    print("\n  MSPD maturity-profile probe (diagnostic only, best-effort — "
+          "'share of debts coming due' isn't used by equation #3, which is "
+          "entirely CBO-baseline; this is groundwork for equation #2, see "
+          "treasury.py's MATURITY_ENDPOINT_CANDIDATES):")
+    mprobe = maturity_profile_probe()
+    if mprobe.get("endpoint"):
+        print(f"    resolved: {mprobe['endpoint']}")
+        print(f"    fields: {mprobe['fields']}")
+        print(f"    maturity field: {mprobe['maturity_field']} -> "
+              f"{mprobe['distinct_maturity_values']}")
+    else:
+        print(f"    none of {MATURITY_ENDPOINT_CANDIDATES} resolved "
+              f"({mprobe.get('error')}) — recorded as an honest open item, "
+              f"not guessed")
 
     max_days = S.FRESHNESS_DAYS_BY_FREQ["Monthly"]
     try:

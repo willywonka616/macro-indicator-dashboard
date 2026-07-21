@@ -16,7 +16,11 @@
       "abroad": { "display": "29%", "tone": "caution", "src": "TIC" }
     },
     "govAssetsMinusDebt": { "display": "−96%", "unit": "of GDP", "tone": "risk", "src": "derived" },
-    "cboProjection": { "display": "122%", "unit": "of GDP", "tone": "risk", "src": "CBO · forward" },
+    "cboProjectionFallback": {
+      "display": "120%", "value": 120.2, "unit": "of GDP", "tone": "risk",
+      "src": "CBO 10-Year Budget Projections, February 2026 baseline (FY2036), last-resort snapshot",
+      "note": "Last-resort fallback ONLY — used if the live CBO GitHub data mirror (US-CBO/cbo-data) is unreachable or its latest vintage is stale past the ~400d threshold. TASKprojections.md replaced the old hand-carried 122% (June 2024 CBO vintage, no date, one of the 11 undated manual values STATUS.md §19.2 found) with a live fetch of CBO's current vintage; this snapshot is that vintage's own FY2036 value, captured 2026-07-21 as the emergency fallback, not an independent figure."
+    },
     "sovereignWealth": { "display": "None", "tone": "risk", "src": "—" },
     "shareHardFX": { "display": "No", "tone": "mitig", "src": "—" },
     "goldPriceManualFallback": {
