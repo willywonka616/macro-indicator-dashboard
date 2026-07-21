@@ -34,6 +34,7 @@ import series as S
 import treasury as T
 import imf as I
 import gold as G
+import cbo as C
 
 FRED = "https://api.stlouisfed.org/fred"
 ROOT = Path(__file__).resolve().parent.parent
@@ -258,6 +259,11 @@ def verify() -> int:
     # schemas + the computed market value.
     G.verify()
 
+    # CBO 10-Year Budget Projections (TASKprojections.md) — non-fatal; dumps
+    # the schema, available vintages, latest values, and the calibration
+    # check against Dalio's own vintage (June 2024).
+    C.verify()
+
     # Manual-value freshness audit (STATUS.md §19) — checked unconditionally
     # here, not only when a fallback actually fires in a real build, so
     # drift is visible during routine --verify runs too.
@@ -295,7 +301,7 @@ def audit_manual_values(mu: dict) -> None:
     # by hand against data/manual.json's actual keys — none of these carry
     # their own `asOf`/date field, only the global lastChecked above.
     dateless = [
-        "govAssetsMinusDebt", "cboProjection", "holders.centralBank",
+        "govAssetsMinusDebt", "holders.centralBank",
         "holders.domestic", "holders.abroad", "shareHardFX", "sovereignWealth",
         "reserveCurrency.trade", "reserveCurrency.equity", "reserveCurrency.debt",
         "reservesInclGoldFallback (no own asOf; last-resort only — see its own note)",
@@ -626,6 +632,96 @@ def build_us(manual: dict, force: bool) -> dict:
             "(FYGFGDQ188S is a percent, GDP is billions SAAR — check both)."
         )
 
+    # --- CBO 10-Year Budget Projections (TASKprojections.md) ---
+    # Non-fatal: CBO republishes ~twice a year, not monthly, and a genuine
+    # outage here shouldn't take down every other live row. If unavailable
+    # or stale, the projection-dependent rows below degrade gracefully
+    # (the 10-yr projection row keeps its old manual figure, the
+    # debt/revenue chart has no projected tail, equation #3 is omitted)
+    # rather than failing the whole build — same "degrade rather than
+    # break" convention as gold/COFER (STATUS.md §17-19).
+    cbo_data = None
+    cbo_vintage_label = None
+    try:
+        cbo_data = C.current_vintage_data()
+        S.require_fresh("CBO 10-year budget projections", f"{cbo_data['vintage']}-01",
+                         S.FRESHNESS_DAYS_BY_FREQ["Annual"])
+        cbo_vintage_label = C.vintage_label(cbo_data)
+    except Exception as e:  # noqa: BLE001
+        print(f"CBO 10-year budget projections unavailable/stale, no projection layer this run: {e}")
+        cbo_data = None
+    assert_provenance(fallbacks_fired, "Debt, 10-yr projection", "projection",
+                       "projection" if cbo_data else "manual",
+                       reason="CBO 10-Year Budget Projections fetch failed or exceeded its freshness threshold")
+
+    # Extend "Debt vs revenue"'s existing (live) chart with CBO's projected
+    # tail — the headline value/asOf stay the live current figure; only the
+    # chart gains a dashed forward extension (TASKprojections.md §1: "show
+    # the forward path of the ratios already on the dashboard").
+    if cbo_data:
+        debt_to_revenue = {
+            **debt_to_revenue,
+            "history": debt_to_revenue["history"]
+            + S.cbo_dollar_ratio_series(cbo_data, "debt_held_by_public", "rev_total"),
+        }
+
+    # The "Debt, 10-yr projection" row (was a hand-carried 122% with no
+    # date in manual.json — see STATUS.md §19.2's dateless-value audit and
+    # TASKprojections.md §4) — now live from the current CBO vintage.
+    # Deliberately NOT merged into the live debt_to_gdp row itself: that
+    # row's own historical chart (FRED FYGFGDQ188S) needs no projected
+    # tail duplicating this one, and giving the projection its own
+    # dedicated row/chart keeps "this is a projection, not a measurement"
+    # unambiguous (TASKprojections.md §1's central design constraint).
+    if cbo_data:
+        fy_end = cbo_data["fyMax"]
+        debt_gdp_at_end = cbo_data["debt_held_by_public_gdp_share"][fy_end]
+        debt_projection_row = {
+            "label": "Debt, 10-yr projection", "value": num(debt_gdp_at_end),
+            "display": pct_display(debt_gdp_at_end, 0), "unit": "of GDP",
+            "tone": "risk", "tag": "projection", "key": "debt_10yr_projection",
+            "src": f"CBO 10-Year Budget Projections (publication #{51118}), FY{fy_end}",
+            "asOf": f"FY{fy_end}",
+            "history": debt["history"] + S.cbo_gdp_share_series(cbo_data, "debt_held_by_public_gdp_share"),
+            "note": f"{cbo_vintage_label} — a current-law baseline, not a prediction; "
+                    f"changes when CBO republishes a new baseline, not necessarily when the "
+                    f"fiscal outlook itself changes.",
+        }
+    else:
+        gf = mu["cboProjectionFallback"]
+        debt_projection_row = {
+            "label": "Debt, 10-yr projection", "display": gf["display"], "value": gf.get("value"),
+            "unit": "of GDP", "tone": "risk", "tag": "manual", "key": "debt_10yr_projection",
+            "src": gf["src"],
+        }
+
+    # Dalio's equation #3 (Ch.3): the interest rate that would keep debt
+    # flat, computed across CBO's baseline, shown alongside the ACTUAL
+    # average effective rate (Treasury, live) so the gap is legible.
+    equation3_row = None
+    if cbo_data:
+        try:
+            required = S.interest_rate_to_keep_debt_flat(cbo_data)
+            actual_rate = T.avg_interest_rate_marketable()
+            latest_required = required["history"][0]["v"]
+            gap = round(actual_rate["latest"] - latest_required, 2)
+            equation3_row = {
+                "label": "Interest rate to keep debt flat (Dalio eq. #3)",
+                "value": num(latest_required), "display": pct_display(latest_required, 1),
+                "unit": "required rate", "tone": "neutral", "tag": "projection",
+                "key": "interest_rate_to_keep_debt_flat",
+                "src": "derived · CBO 10-Year Budget Projections (publication #51118)",
+                "asOf": f"FY{cbo_data['fyMin'] + 1}", "history": required["history"],
+                "note": (f"{cbo_vintage_label}. Actual average effective rate on marketable debt "
+                         f"held by the public (Treasury, live, {actual_rate['asOf']}): "
+                         f"{actual_rate['latest']}% — gap vs. the rate required to keep debt flat: "
+                         f"{'+' if gap >= 0 else ''}{gap}pt "
+                         f"({'debt burden trending up' if gap > 0 else 'debt burden trending down'} "
+                         f"at the actual rate, all else equal)."),
+            }
+        except Exception as e:  # noqa: BLE001
+            print(f"Equation #3 (interest rate to keep debt flat) unavailable: {e}")
+
     # --- move guards on the positive-level ratios ---
     _check_move("debt_to_gdp", debt["latest"], prev, force)
     _check_move("debt_service_to_revenue", service["latest"], prev, force)
@@ -720,7 +816,7 @@ def build_us(manual: dict, force: bool) -> dict:
             live_row("Debt vs revenue", debt_to_revenue, "risk",
                      "derived · FYGFGDQ188S x GDP / Treasury (total receipts, net of refunds, TTM)",
                      "of revenue", decimals=0, key="debt_to_revenue", terms=debt_to_revenue_terms),
-            manual_row("Debt, 10-yr projection", mu["cboProjection"], key="debt_10yr_projection"),
+            debt_projection_row,
             manual_row("— held by central bank", mu["holders"]["centralBank"], key="held_by_central_bank"),
             manual_row("— held by domestic players", mu["holders"]["domestic"], key="held_by_domestic"),
             manual_row("— held abroad", mu["holders"]["abroad"], key="held_abroad"),
@@ -733,6 +829,7 @@ def build_us(manual: dict, force: bool) -> dict:
                      "derived · Treasury (gross incl. GAS, total receipts net of refunds)", "of revenue",
                      note="The leading indicator — the gap is obligation accruing before it's an outflow",
                      key="gross_interest_to_revenue", terms=gross_interest_terms),
+            *([equation3_row] if equation3_row else []),
         ],
     }
     reserves_incl_gold_row = {
@@ -878,6 +975,12 @@ def build_us(manual: dict, force: bool) -> dict:
             # live this run; a non-empty list means at least one fallback
             # fired and is loudly warned above, not just silently shipped.
             "fallbacksFired": fallbacks_fired,
+            # CBO vintage (TASKprojections.md §3): a projection changes when
+            # CBO republishes, not when the economy moves — recorded here
+            # AND on every projected row's own note, so a jump in the
+            # projected rows reads as "new baseline landed," not "data
+            # error"/"news about the fiscal position."
+            "cboVintage": cbo_vintage_label,
         },
     }
     _validate(country)

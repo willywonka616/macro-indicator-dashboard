@@ -39,6 +39,12 @@ function yearTicks(minY, maxY) {
 const fmtPct = (v) => `${Number.isInteger(v) ? v : v.toFixed(1)}%`;
 
 export default function Chart({ data, color, unit = "", height = 300 }) {
+  // TASKprojections.md §6: a projection must never be mistaken for a
+  // measurement. Points carrying `projected: true` (CBO baseline, not a
+  // fetched observation) get their own dashed polyline plus a shaded
+  // background region, both starting at the last historical point so the
+  // line reads as continuous, not disconnected. Charts with no projected
+  // points behave exactly as before — this is purely additive.
   const wrap = useRef(null);
   const [w, setW] = useState(720);
   const [hoverI, setHoverI] = useState(null);
@@ -70,9 +76,25 @@ export default function Chart({ data, color, unit = "", height = 300 }) {
 
   const yT = niceTicks(loY, hiY, 5);
   const xT = yearTicks(minX, maxX);
-  const line = data.map((d) => `${px(d.y).toFixed(1)},${py(d.v).toFixed(1)}`).join(" ");
-  const area = `${px(minX).toFixed(1)},${py(loY).toFixed(1)} ${line} ${px(maxX).toFixed(1)},${py(loY).toFixed(1)}`;
+
+  // Historical (solid) vs. projected (dashed) split — see the note above
+  // the component. projPoints repeats the last historical point so the
+  // dashed segment starts exactly where the solid one ends.
+  const firstProjIdx = data.findIndex((d) => d.projected);
+  const hasProjection = firstProjIdx > -1;
+  const histPoints = hasProjection ? data.slice(0, firstProjIdx) : data;
+  const projPoints = hasProjection ? data.slice(Math.max(firstProjIdx - 1, 0)) : [];
+  const transitionX = hasProjection && histPoints.length ? px(histPoints[histPoints.length - 1].y) : null;
+
+  const line = histPoints.map((d) => `${px(d.y).toFixed(1)},${py(d.v).toFixed(1)}`).join(" ");
+  const area = histPoints.length > 1
+    ? `${px(histPoints[0].y).toFixed(1)},${py(loY).toFixed(1)} ${line} ` +
+      `${px(histPoints[histPoints.length - 1].y).toFixed(1)},${py(loY).toFixed(1)}`
+    : "";
+  const projLine = projPoints.map((d) => `${px(d.y).toFixed(1)},${py(d.v).toFixed(1)}`).join(" ");
+
   const last = data[data.length - 1];
+  const lastIsProjected = !!last.projected;
   const zeroInRange = loY < 0 && hiY > 0;
   // Cascade crisis labels left-to-right with a guaranteed minimum gap so
   // clusters of 2+ close markers (e.g. 1973/1979/1980 on a narrow phone
@@ -131,6 +153,16 @@ export default function Chart({ data, color, unit = "", height = 300 }) {
           <line x1={m.left} x2={m.left + iw} y1={py(0)} y2={py(0)} stroke={c.line} strokeWidth={1} />
         )}
 
+        {/* shaded forward region (TASKprojections.md §6) — drawn first, as a
+            background layer, so the observed-to-projected transition is
+            obvious even before noticing the dashed line itself */}
+        {hasProjection && transitionX != null && (
+          <rect
+            x={transitionX} y={m.top} width={Math.max(0, m.left + iw - transitionX)} height={ih}
+            fill={c.mitig} opacity={0.06}
+          />
+        )}
+
         {/* x axis ticks + labels */}
         <line x1={m.left} x2={m.left + iw} y1={m.top + ih} y2={m.top + ih} stroke={c.line} strokeWidth={1} />
         {xT.map((t, i) => (
@@ -163,10 +195,38 @@ export default function Chart({ data, color, unit = "", height = 300 }) {
           );
         })}
 
-        {/* series */}
-        <polygon points={area} fill={color} opacity={0.1} />
-        <polyline points={line} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-        <circle cx={px(last.y)} cy={py(last.v)} r={3} fill={color} />
+        {/* series: solid historical, dashed projected tail (TASKprojections.md
+            §6 — "a reader must never mistake a projection for a
+            measurement") */}
+        {area && <polygon points={area} fill={color} opacity={0.1} />}
+        {line && (
+          <polyline points={line} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        )}
+        {hasProjection && (
+          <>
+            <polyline
+              points={projLine} fill="none" stroke={color} strokeWidth={2}
+              strokeDasharray="6 4" strokeLinejoin="round" strokeLinecap="round" opacity={0.85}
+            />
+            {transitionX != null && (
+              <line
+                x1={transitionX} x2={transitionX} y1={m.top} y2={m.top + ih}
+                stroke={c.mitig} strokeWidth={1} strokeDasharray="2 3" opacity={0.6}
+              />
+            )}
+            <text
+              x={Math.min(transitionX ?? m.left, m.left + iw) + 4} y={m.top + 11}
+              fontSize={9} letterSpacing="0.06em" fill={c.mitig}
+            >
+              PROJECTED
+            </text>
+          </>
+        )}
+        {lastIsProjected ? (
+          <circle cx={px(last.y)} cy={py(last.v)} r={3.5} fill={c.bg} stroke={color} strokeWidth={2} />
+        ) : (
+          <circle cx={px(last.y)} cy={py(last.v)} r={3} fill={color} />
+        )}
 
         {/* y-axis caption (unit) */}
         <text x={m.left - 8} y={m.top - 8} textAnchor="start" fontSize={10} fill={c.muted}>

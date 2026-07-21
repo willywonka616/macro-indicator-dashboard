@@ -61,6 +61,7 @@ export const equations = {
     },
     caveats: [
       "This is Dalio's indicator #1 and his preferred framing (Ch. 3): debt against what government can actually collect, not against GDP, which it can't spend.",
+      "The chart's dashed tail (TASKprojections.md) is CBO's own 10-year baseline for this same ratio — a current-law projection, not this pipeline's forecast. It changes when CBO republishes, not when the fiscal position itself changes.",
     ],
   },
 
@@ -73,7 +74,32 @@ export const equations = {
   debt_10yr_projection: {
     kind: "observed",
     definition:
-      "CBO's own 10-year forward debt/GDP projection — a manually hand-entered figure from CBO's published baseline, not computed by this pipeline.",
+      "Debt held by the public as a percentage of GDP, at the end of CBO's published 10-year baseline window — CBO's own figure, not computed by this pipeline (see the “Debt vs revenue” row above for the pipeline's derived Ch. 3 framing).",
+    caveats: [
+      "Live from CBO's current-law baseline (TASKprojections.md) — a benchmark assuming no change in law, not a prediction of what will happen. Changes when CBO republishes a new baseline (roughly twice a year), not necessarily when the fiscal outlook itself changes.",
+      "Reproduces Dalio's own stated 122%-in-10-years figure almost exactly if computed at his book's vintage (June 2024 CBO baseline) — see STATUS.md §9. The currently-displayed figure uses the latest vintage instead, which is expected to differ from his book value.",
+    ],
+  },
+
+  interest_rate_to_keep_debt_flat: {
+    kind: "derived",
+    definition:
+      "The interest rate that would hold debt flat relative to income, computed for every fiscal year in CBO's 10-year baseline — this row is inherently forward-looking end to end, not a current measurement with a projected extension.",
+    formula: {
+      label: "Dalio's equation #3 (Ch. 3) — every term from CBO's own baseline",
+      lines: [
+        [
+          "Interest Rate Required to Keep Debt Flat", "=", "Revenue Growth", "−",
+          { num: "Future Expenses Excl. Interest − Future Revenue", den: "Starting Debt Level" },
+        ],
+      ],
+      prose:
+        "His rule of thumb: with no primary deficit, debt stays flat relative to income when i = g. When i > g, existing debt compounds faster than income and the burden rises regardless of new borrowing — he calls this the single most important variable in the calculation.",
+    },
+    caveats: [
+      "Diagnostic by design: compare the plotted required rate against the row's own note, which states the ACTUAL average effective rate on marketable debt (Treasury, live) — the gap between them is how far from stabilising the debt currently is, not a number to read on its own.",
+      "Every term is CBO's own published baseline (Revenue Growth, the primary deficit, and the starting debt level) — nothing here is extrapolated, fitted, or a scenario output.",
+    ],
   },
 
   held_by_central_bank: {
