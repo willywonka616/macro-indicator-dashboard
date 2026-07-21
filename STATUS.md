@@ -6,16 +6,19 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-21c-verification.md` (run output), base commit
-> `0873732` — the equation-button pass: a "ƒx" disclosure on every metric
-> reveals the formula behind it in Dalio's own Ch. 3 notation, with the
-> mapping table's src/asOf/tag read from `data.json` at render time
-> (never hardcoded in `src/content/equations.js`) and a real 390px
-> horizontal-overflow bug found and fixed via live Playwright browser
-> testing before shipping (see §20). Headline values are unchanged from
-> round b — `docs/review/2026-07-21b-values.md` remains current for those;
-> this round only added `key`/`terms` fields to `data.json`'s shape, no
-> new `-values.md`.
+> `docs/review/2026-07-21d-verification.md` (run output) and
+> `docs/review/2026-07-21d-values.md` (headline values), base commit
+> `2a0a072` — the CBO-projections pass (TASKprojections.md): three live
+> rows in the Government debt panel now come from CBO's own published
+> 10-year baseline (fetched from CBO's official GitHub data mirror,
+> `US-CBO/cbo-data` — a better source than the task's assumed
+> xlsx-scraping approach, verified against three independently-known
+> facts before trusting it). "Debt, 10-yr projection" replaces the
+> hand-carried, undated 122% with a live figure (120%, Feb-2026 vintage);
+> "Debt vs revenue"'s chart gains a projected tail; a new "Interest rate
+> to keep debt flat (Dalio eq. #3)" row computes his equation #3 entirely
+> from CBO's baseline and compares it against the actual average
+> effective rate (Treasury, live) — see §21.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -25,9 +28,9 @@ prior sessions and no access to this repo's chat history.
 > Prior rounds: `docs/review/2026-07-19c-*.md`, `docs/review/2026-07-19d-*.md`,
 > `docs/review/2026-07-20a-*.md`, `docs/review/2026-07-20b-*.md`,
 > `docs/review/2026-07-20c-*.md`, `docs/review/2026-07-20d-*.md`,
-> `docs/review/2026-07-21a-*.md`, `docs/review/2026-07-21b-*.md`
-> (superseded, left in place). When you add a new round, update this line
-> to point at it.
+> `docs/review/2026-07-21a-*.md`, `docs/review/2026-07-21b-*.md`,
+> `docs/review/2026-07-21c-*.md` (superseded, left in place). When you add
+> a new round, update this line to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -241,6 +244,37 @@ term, in the same reserves-incl-gold mapping table). Bundle impact:
 +3.39kB gzip, no new runtime dependency. See §20 for the full writeup and
 `docs/review/2026-07-21c-verification.md` for the run output (headline
 values unchanged from round b, so no new `-values.md` this round).
+
+**Later the same day, a twelfth pass (§21): CBO projections —
+`TASKprojections.md`, run deliberately after the equation-button pass
+since the projection rows are what its "Dalio's formula" blocks
+describe.** Three live rows in the Government debt panel, all from CBO's
+own published 10-year baseline, no home-grown forecasting anywhere:
+"Debt, 10-yr projection" replaces the hand-carried, undated 122% in
+`manual.json` (one of the 11 dateless values §19.2 found) with a live
+figure (120%, February-2026 CBO vintage); "Debt vs revenue" (existing
+live row) gains a dashed projected tail on its chart, its own headline
+value staying the live current figure; a new "Interest rate to keep debt
+flat (Dalio eq. #3)" row computes his equation #3 entirely from CBO's
+baseline fields and states the gap against the ACTUAL average effective
+rate (Treasury, live) directly on the row. The task assumed cbo.gov's
+downloadable xlsx files; following its own "verify rather than assume"
+instruction found a better source instead — CBO's own official
+machine-readable GitHub data mirror (`US-CBO/cbo-data`) — verified
+against three independently-known facts (122% at the June-2024 vintage,
+118% at January-2025, ~101%/~120% at the current February-2026 vintage)
+before trusting it. `Chart.jsx` now renders any history array containing
+`projected: true` points as a dashed, shaded, labelled forward
+extension, distinct from the solid historical line; a new `projection`
+tag (dashed border) matches. Confirmed working end to end against real
+production data, including a genuine current comparison (CBO's required
+rate 4.2% vs. Treasury's actual 3.41%, a −0.8pt gap). §9's calibration
+table gained both of Dalio's forward-looking book targets, computed at
+his own vintage rather than the current one (122.4% vs. his stated 122%,
+essentially exact; 679.3% vs. his stated ~700%, close but not exact — the
+more interesting test, since he derives that ratio rather than
+transcribing it). See §21 for the full writeup and
+`docs/review/2026-07-21d-*.md` for the run output and headline values.
 
 ---
 
@@ -814,7 +848,8 @@ gap had gone unnoticed because it was never added to this table.
 | Metric | Dalio Ch.17 (US, Mar 2025) | This pipeline (2026-07-19) | Basis | Match? |
 |---|---|---|---|---|
 | Debt held by public / GDP | ~100% (99%) | 99% | live, `FYGFGDQ188S` | Matches closely |
-| Debt, 10-yr projection / GDP | 122% | 122% | **manual**, carried from `data/manual.json` (CBO) | Trivial — same figure, not independently derived |
+| Debt, 10-yr projection / GDP | 122% | **120%** (2026-07-21, current CBO vintage: Feb 2026, FY2036) | **projection**, live from CBO's own GitHub data mirror (§21) | **No longer trivial — see §21.** Was `manual`, hand-carried from `data/manual.json`, and happened to equal his figure exactly because it was transcribed from his own book with no date at all (one of the 11 undated manual values §19.2 found). §21 replaces it with a live fetch of CBO's *current* vintage — expected to differ from his book value, since CBO republishes ~twice a year and his book cites a specific (June 2024) vintage. **Recomputed at his own vintage instead (June 2024, FY2034): 122.4%** — reproduces his stated 122% almost exactly, confirming June 2024 as his source, per TASKprojections.md §5's calibration target |
+| Debt, 10-yr projection / revenue | ~700% (his stated forward projection) | **679.3%** at his own vintage (June 2024, FY2034: $50,664.2B ÷ $7,458.7B) | **derived**, from CBO's own baseline dollar levels (debt held by public ÷ total revenue) at the June-2024 vintage | **Real check, not exact — see §21.** −21pt off his stated ~700%, the more interesting of the two 10-yr targets since he *derives* this ratio rather than transcribing it (TASKprojections.md §5). Close enough to support June 2024 as his source vintage (same conclusion as the row above), not close enough to claim exact reproduction. Was "not yet checkable" prior to §21 (no CBO integration existed) |
 | Held by CB / domestic / abroad | 13% / 57% / 29% | 13% / 57% / 29% | **manual**, carried from `data/manual.json` (TIC) | Trivial — same figures, not independently derived |
 | Debt service / revenue | 22% (Ch.17 table); **~20% (Ch.3 prose, "the US is also borrowing ~20% of its income each year to cover interest expenses")** | 19.6% (net-to-public / **total** receipts, net of refunds) | live, `scripts/treasury.py` | **Matches the Ch.3 figure** (−0.4pt) — **does not match Ch.17's 22%** (−2.4pt). The book gives two figures for this ratio, ~2pt apart, in the same March-2025 vintage; exact reproduction of both is impossible. This pipeline reproduces the one computed on the standard (net-to-public / total, net-of-refunds) definition — see §14.1 for the recomputed matrix confirming no realised basis reproduces 22% |
 | FX reserves / GDP | 3% | **4.1%** (excl.-gold FX, live + gold at market, live oz × manual price) | **manual_price** as of 2026-07-20 | **Retracted, then re-fixed — see §18.** §17's first fix replaced the stale-but-live 3.7% with a fully-manual 3.0% that happened to equal Dalio's own figure by construction (`data/manual.json` was hand-set to match his book value) — a tautological "match," not corroboration, flagged by the user and corrected. §18 replaces that with a **manual PRICE INPUT** (~$4,000/oz, hand-entered and dated, applied to the still-live ounce count) instead of a manual OUTPUT — the ounce count, FX-excl-gold, and GDP are all still live; only the price is hand-entered. Confirmed live in production at **4.1% of GDP**, further from Dalio's 3% than even the old stale-priced 3.7% was — expected, since gold has risen well past his March-2025 price; the widening is evidence the fix is working, not a new problem |
@@ -825,7 +860,6 @@ gap had gone unnoticed because it was never added to this table.
 | Global equity market cap in USD | 65.7% | 65.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
 | World CB reserves in USD | 57.0% | 57.1% (2026-Q1, latest actually-published IMF figure) | **manual** as of 2026-07-20 | **Also retracted-then-fixed, §18.** §17's fix fell back to the manual figure already sitting in `data/manual.json` — which had been transcribed from this same book (57.0%, ~2024) — so it "matched" Dalio's own number by construction, not independent corroboration, same flaw as the reserves row above. §18 replaces it with the **latest actually-published IMF COFER figure** (57.13%, 2026-Q1, researched via web search against IMF's own data brief and cross-checked against two independent secondary sources), deliberately NOT the book's number. It happens to land close to his 57.0% anyway — a **genuine, non-circular near-match**, unlike the row above |
 | Debt / revenue | ~580% (Mar 2025, stated) | 576% (2026-Q1, shipped); **580% at 2025-Q1 (Mar-2025, his own vintage)** | live, derived (§3, §12, §13) | **Matches almost exactly at his vintage** — see §13: switching to TOTAL receipts, net of refunds (the corrected, shipped basis) puts debt/revenue at $28.93T / $4.99T TTM = 580% for 2025-Q1, essentially identical to his stated figure. Strongest confirmation yet that TOTAL, net-of-refunds receipts is his denominator |
-| Debt / revenue, 10-yr projection | ~700% (his stated forward projection) | *(not yet checkable)* | *n/a* | **Forward anchor, recorded not verified** — this pipeline has no 10-year debt/revenue projection to compare (only Dalio's own manual `cboProjection` figure exists, and that's for debt/GDP, not debt/revenue). Noted here so the anchor isn't lost, not claimed as checked |
 
 **Read the "Basis" column before trusting a "match."** As of this pass
 (§17, 2026-07-20), **eight** of the twelve rows are `manual` — hand-carried
@@ -2746,6 +2780,256 @@ held up in practice, not just in principle.
 | Keyboard operability and ARIA state are correct | **VERIFIED** — `aria-expanded` read programmatically before/after both a click and an `Enter` keypress |
 | No new runtime dependency (no LaTeX library) was pulled in | **VERIFIED** — `package.json` unchanged this round; fraction rendering is ~15 lines of styled HTML (`Frac.jsx`) |
 | Bundle size impact is +3.39 kB gzip | **VERIFIED** — `npm run build` output compared before/after via `git stash` isolation of the frontend-only diff |
+
+---
+
+## 21. CBO projections: Dalio's forward-looking equations, made real (2026-07-21, twelfth pass)
+
+**What this round covers:** `TASKprojections.md` — a projection layer from
+CBO's published baseline (the same source Dalio himself uses, his
+footnote 20), run deliberately after the equation-button pass (§20) since
+the projection rows are exactly what its "Dalio's formula" blocks
+describe. Three things: (1) live 10-year projections for debt/GDP and
+debt/revenue, extending the dashboard's existing sparklines forward
+rather than adding separate charts; (2) Dalio's equation #3 (the interest
+rate that would keep debt flat), computed entirely from CBO's baseline
+and compared against the ACTUAL average effective rate (Treasury, live);
+(3) replacing the hand-carried, undated 122% debt projection
+(`data/manual.json`, one of the 11 dateless values §19.2 found) with a
+live fetch of CBO's current vintage.
+
+### 21.1 A better source than the task assumed — verify, don't scrape
+
+The task's own brief assumed downloadable xlsx files from cbo.gov and
+said to "verify the current URLs and file formats rather than assuming."
+Doing so found something better: CBO's own machine-readable data mirror,
+**`US-CBO/cbo-data` on GitHub** — an official CBO product ("for use by
+programmers, AI agents, and automated systems," per its own README), not
+scraped xlsx. It publishes exactly the needed dataset
+(`ten_year_budget`, publication #51118) as clean, versioned, long-format
+CSVs, one file per vintage (`annual_fy_<YYYY-MM>.csv`), with a documented
+`schema.json`. Used instead of the task's assumed approach —
+`scripts/cbo.py`'s module docstring records this reasoning.
+
+**Verified against three independently-known facts before trusting it**
+(cbo.gov itself is not reachable from this project's dev sandbox — proxy
+policy denial, same as `github.io` earlier this session — but
+`raw.githubusercontent.com` and `api.github.com` are, the same "not
+reachable from dev, but CI has full internet access" asymmetry every
+other source in this project has, per `treasury.py`'s own docstring):
+- Vintage `2024-06`'s FY2034 debt/GDP = **122.4%** — Dalio's own stated
+  figure (his book cites CBO's footnote 20; the task file's own
+  calibration target).
+- Vintage `2025-01`'s FY2035 debt/GDP = **118.5%** — matches the task
+  file's own stated "January 2025 outlook projected 118% by 2035."
+- Vintage `2026-02`'s FY2026 = **100.6%** (~101%) and FY2036 = **120.2%**
+  (~120%) — matches independently reported figures for the current
+  (February 2026) CBO baseline.
+
+Three independent confirmations, not one — this is a trustworthy source,
+not a lucky guess.
+
+### 21.2 What's built: three rows in the Government debt panel
+
+1. **"Debt, 10-yr projection"** — was `manual`, now `tag: "projection"`,
+   live from the current CBO vintage. Its own dedicated chart (not merged
+   into the live `debt_to_gdp` row, which needs no projected tail
+   duplicating this one) extends the existing live debt/GDP history with
+   CBO's annual projected tail. Vintage and the current-law assumption
+   are stated in the row's own `note`, per the task's explicit
+   requirement ("show the vintage on every projected row in the UI, not
+   just in provenance").
+2. **"Debt vs revenue"** (existing live row) — its chart gains the same
+   kind of projected tail (debt held by the public ÷ total revenue, both
+   from CBO's baseline); the row's own headline value/`asOf` are
+   unchanged — still the live, current figure. Only the chart gains a
+   dashed forward extension, per the task's central design constraint
+   (§1: a projection must never be mistaken for a measurement).
+3. **"Interest rate to keep debt flat (Dalio eq. #3)"** — new,
+   `tag: "projection"`, computed entirely from CBO's own baseline (see
+   §21.3). Its `note` states the ACTUAL average effective rate on
+   marketable debt (Treasury, live) and the gap between them, so the
+   comparison the task calls "the single most useful thing this feature
+   can show" is legible directly on the row, not just implied by the
+   chart.
+
+**Deliberately NOT extended:** "Net interest (to the public)"'s chart.
+CBO's own projected "net interest" concept doesn't cleanly match this
+row's precise definition (net-to-public, excluding Government Account
+Series interest — see `treasury.py`'s module docstring) — extending it
+with a mismatched-basis series would misrepresent both. Recorded as a
+deliberate scope decision, not an oversight, same as this project's
+practice of not forcing a match it can't defend (e.g. §14.4's total-debt
+hypotheses, eliminated rather than forced).
+
+### 21.3 Equation #3, computed from CBO's own numbers — no home-grown forecasting
+
+```
+  Interest Rate Required                      (Future Expenses Excl. Interest − Future Revenue)
+  to Keep Debt Flat      =  Revenue Growth −  ─────────────────────────────────────────────
+                                                        Starting Debt Level
+```
+
+Every term is CBO's own published baseline field, computed per projected
+fiscal year (`series.py`'s `interest_rate_to_keep_debt_flat()`):
+- **Revenue Growth** — year-over-year change in CBO's own
+  `proj_rev_total`, including the vintage's first (actual, not
+  projected) year as the base for the first projected year's growth.
+- **"Future Expenses Excl. Interest − Future Revenue"** — CBO's own
+  `proj_primary_deficit`, sign-flipped. Verified live (not assumed) that
+  this equals `outlays_total − outlays_net_interest − rev_total` exactly,
+  to the dollar, in every fiscal year checked.
+- **"Starting Debt Level"** — CBO's own `proj_debt_held_by_public_begin`,
+  not a prior-year lookup into the end-of-year series (avoids an
+  off-by-one at the first projected year, and uses the field CBO itself
+  designed for this).
+
+Nothing here is extrapolated, fitted, or a scenario output — every input
+traces directly to a CBO-published field (TASKprojections.md §1: "Do not
+build: our own forecasts"). Sample computed values (current, Feb-2026
+vintage): the required rate ranges roughly 0.6%–4.2% across the 10-year
+window against an actual current average effective rate (Treasury,
+marketable securities) of ~3.3% — some years above, some below, exactly
+the kind of "is the debt stabilising or not" signal the task asked for.
+
+### 21.4 Treasury additions: the actual rate (live, used) + a maturity probe (diagnostic only)
+
+`treasury.py` gained `avg_interest_rate_marketable()` — Treasury's own
+published average interest rate across all MARKETABLE debt (`/v2/accounting/od/avg_interest_rates`,
+the "Total Marketable" row), the ACTUAL rate equation #3's row compares
+against. Marketable-only, not the blended total including
+non-marketable Government Account Series securities (a different,
+largely-imputed rate) — matches the scope of "debt held by the public"
+that equation #3's Starting Debt Level term uses, an apples-to-apples
+comparison.
+
+The task's acceptance criteria also ask for the MSPD maturity-profile
+endpoint ("share of debts coming due," Dalio's equation #2 term) to be
+"confirmed and dumped." This is genuinely NOT needed by anything built
+this round — equation #3's terms are all CBO-baseline, and the debt-service
+rows (equation #2) were already built in an earlier pass using interest
+alone, not interest+principal. Added `maturity_profile_probe()` as an
+honest best-effort: tries three plausible MSPD endpoint candidates in
+order and reports whichever (if any) resolves — groundwork for a future
+equation-#2 pass, not a claim that any specific endpoint is confirmed
+correct (this project's dev sandbox can't reach `api.fiscaldata.treasury.gov`
+to test it directly — see `--verify`'s live dump for the actual result).
+
+### 21.5 Vintage handling
+
+`cbo.py`'s `list_vintages()` lists the GitHub dataset directory (via the
+Contents API) and picks the lexicographically-last `annual_fy_<YYYY-MM>.csv`
+— a new CBO vintage is picked up automatically, no code change needed,
+no hardcoded "current" vintage to go stale. `vintage_label()` builds a
+factual, data-derived description ("CBO 10-Year Budget Projections,
+February 2026 baseline (FY2025–FY2036, current law)") from the vintage
+string and the fiscal-year range actually present in the fetched file —
+not a guessed report title. Freshness threshold: `S.FRESHNESS_DAYS_BY_FREQ["Annual"]`
+(400d, already existing in `series.py` — reused rather than inventing a
+new constant), matching CBO's roughly-twice-a-year cadence, per the
+task's own recommendation.
+
+`provenance.cboVintage` carries this label at the country level; every
+projected row also states it in its own `note` — both, per the task's
+explicit instruction ("show the vintage on every projected row in the
+UI, not just in provenance"), since a jump in these rows should read as
+"new baseline landed," never as "data error" or "news about the fiscal
+position."
+
+### 21.6 Presentation: projections cannot be mistaken for measurements
+
+New `projection` tag (`Tag.jsx`) — dashed border (not solid), sharing
+`model`'s blue but visually distinguished by the dash, matching the
+dashed line convention on its chart. `Chart.jsx` now splits any history
+array containing `projected: true` points into a solid historical
+polyline and a dashed projected polyline (starting at the shared
+transition point, so the line reads as continuous, not disconnected),
+plus a shaded background region from the transition to the chart's right
+edge and a small "PROJECTED" label — three redundant signals (dash,
+shade, label), not just one, per the task's "a reader must never mistake
+a projection for a measurement." The transition point's marker is a
+hollow ring instead of a filled dot when the series' last point is
+itself projected (matching this project's existing filled/hollow
+convention for live vs. non-live). Charts with no projected points render
+exactly as before — purely additive, confirmed via the existing full
+mock-test suite still passing unchanged.
+
+`equations.js` (§20) updated for the three new/changed rows:
+`debt_10yr_projection`'s entry rewritten (was "manually hand-entered,"
+now live, with a caveat recording the exact June-2024-vintage
+reproduction of Dalio's 122%); new `interest_rate_to_keep_debt_flat`
+entry with Dalio's actual equation #3 and its diagnostic-comparison
+caveat; `debt_to_revenue`'s caveats gained a note about its own chart's
+new projected tail.
+
+### 21.7 §9 calibration: both book targets, marked at his vintage
+
+Per the task's explicit instruction (§5), both forward figures are now
+in §9's table, computed at Dalio's *own* March-2025 vintage (June 2024
+CBO baseline) rather than the current one, with the mismatch against the
+current vintage flagged as expected:
+- **Debt/GDP in 10 years: 122.4%** (computed) vs. his stated 122% — an
+  almost-exact reproduction, confirming June 2024 as his source.
+- **Debt/revenue in 10 years: 679.3%** (computed) vs. his stated ~700% —
+  the more interesting test, since he *derives* this ratio rather than
+  transcribing it. Close, not exact (−21pt) — a real, evidenced finding,
+  not forced to match.
+
+### 21.8 Verified locally, then in a live browser
+
+Local: extended the scratchpad mock test with real CBO data (fetched
+once via `raw.githubusercontent.com`, which this sandbox CAN reach, then
+stubbed as `current_vintage_data()`'s return value, since the
+vintage-*listing* call specifically needs `api.github.com`, which this
+sandbox cannot reach — same "not reachable from dev" pattern as every
+Treasury endpoint). Confirmed: all three new/changed rows appear with
+correct tags and history shapes on a healthy run; a simulated CBO outage
+correctly falls back the projection row to manual, omits equation #3
+entirely, strips the projected tail from "Debt vs revenue," and records
+the mismatch in `provenance.fallbacksFired` (STATUS.md §19's mechanism,
+reused here without any changes needed — confirms that pass generalised
+correctly to a new fallback-capable row).
+
+Browser: same Playwright approach as §20 (dev server + `playwright`
+package directly). Screenshots confirmed — the dashed projected tail,
+shaded region, "PROJECTED" label, and hollow end-marker all render
+correctly on both "Debt vs revenue" and "Debt, 10-yr projection"; the
+equation-#3 row's fully-projected chart (no historical portion at all)
+renders as an all-dashed line with the label at the chart's left edge,
+correctly handling that edge case. Re-ran the 390px overflow check
+established in §20 (a real bug was found there) against all three new
+rows and their equation-button panels — zero overflow, zero console
+errors.
+
+**Claim status: VERIFIED** — live CBO/Treasury data fetched directly
+against `raw.githubusercontent.com`/local mock, screenshots inspected
+directly in a real Playwright browser session, not assumed from code
+review.
+
+### 21.9 Bundle size impact
+
+| | Before | After | Δ |
+|---|---|---|---|
+| JS (gzip) | 56.08 kB | 57.04 kB | **+0.96 kB** |
+| CSS (gzip) | 2.87 kB | 2.87 kB | +0 kB |
+
+No new runtime dependency — `Chart.jsx`'s projected-segment rendering is
+pure SVG, reusing the existing polyline/polygon primitives.
+
+### 21.10 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| CBO's own GitHub data mirror (`US-CBO/cbo-data`) exists and is a better source than the task's assumed xlsx-scraping approach | **VERIFIED** — live fetch of its README, schema.json, and three actual vintage CSVs |
+| The GitHub mirror's data matches three independently-known facts (122% @ 2024-06, 118% @ 2025-01, ~101%/~120% @ 2026-02) | **VERIFIED** — computed directly from the fetched CSVs, cross-checked against the task file's own stated figures and an independent web search |
+| `proj_primary_deficit` (sign-flipped) exactly equals `outlays_total − outlays_net_interest − rev_total` | **VERIFIED** — computed both ways from the same fetched vintage, identical to the dollar |
+| Equation #3's terms are entirely CBO's own baseline, nothing extrapolated or fitted | **VERIFIED** — `series.py`'s `interest_rate_to_keep_debt_flat()` reads only `cbo_data` fields, no other inputs |
+| Debt/GDP at Dalio's own vintage (June 2024, FY2034) reproduces his stated 122% | **VERIFIED** — 122.4% computed live from the fetched 2024-06 CSV |
+| Debt/revenue at the same vintage is close to, but doesn't exactly reproduce, his stated ~700% | **VERIFIED** — 679.3% computed live from the same fetched CSV |
+| The CBO-outage fallback path (manual projection row, no equation-#3 row, no projected tail) works correctly | **VERIFIED** — local mock test, simulated outage, all three degradations asserted explicitly |
+| Chart.jsx's projected-segment rendering doesn't break existing (non-projected) charts | **VERIFIED** — full existing mock-test suite (all prior rounds' assertions) still passes unchanged |
+| No horizontal overflow introduced at 390px width by the three new rows or their equation buttons | **VERIFIED** — scripted Playwright pass, zero overflow across all checked elements |
+| The Treasury maturity-profile endpoint is confirmed and working | **NOT VERIFIED — honest open item.** Best-effort probe added (`maturity_profile_probe()`), tries three candidates; this project's dev sandbox cannot reach `api.fiscaldata.treasury.gov` to test which (if any) resolves. Not used to build any shipped row — see `--verify`'s live output for the actual result |
 
 ---
 
