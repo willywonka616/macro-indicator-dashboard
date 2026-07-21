@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-20T18:24:08Z",
+  "generatedAt": "2026-07-21T06:26:59Z",
   "meta": {
     "seed": false,
     "schema": 1
@@ -2173,15 +2173,244 @@
         {
           "key": "reserves_to_gdp",
           "label": "Debt & service vs savings",
-          "value": 3.0,
-          "display": "3.0%",
+          "value": 4.1,
+          "display": "4.1%",
           "unit": "reserves / GDP",
           "tone": "risk",
           "read": "Reserves including gold at market value are still thin relative to the debt — and most of the buffer is illiquid gold, not spendable FX.",
-          "tag": "manual",
-          "src": "manual · Dalio Ch.17 (gold at market)",
-          "asOf": "2026-07-18",
-          "history": []
+          "tag": "manual_price",
+          "src": "derived · Treasury (gold oz, live, 2026-06) + manual price ($4,000/oz as of 2026-07-20) + FRED",
+          "asOf": "2026-Q1",
+          "history": [
+            {
+              "y": 2012.0,
+              "v": 3.583
+            },
+            {
+              "y": 2012.25,
+              "v": 3.409
+            },
+            {
+              "y": 2012.5,
+              "v": 3.466
+            },
+            {
+              "y": 2012.75,
+              "v": 3.536
+            },
+            {
+              "y": 2013.0,
+              "v": 3.384
+            },
+            {
+              "y": 2013.25,
+              "v": 3.133
+            },
+            {
+              "y": 2013.5,
+              "v": 2.887
+            },
+            {
+              "y": 2013.75,
+              "v": 2.72
+            },
+            {
+              "y": 2014.0,
+              "v": 2.758
+            },
+            {
+              "y": 2014.25,
+              "v": 2.684
+            },
+            {
+              "y": 2014.5,
+              "v": 2.527
+            },
+            {
+              "y": 2014.75,
+              "v": 2.402
+            },
+            {
+              "y": 2015.0,
+              "v": 2.452
+            },
+            {
+              "y": 2015.25,
+              "v": 2.288
+            },
+            {
+              "y": 2015.5,
+              "v": 2.185
+            },
+            {
+              "y": 2015.75,
+              "v": 2.231
+            },
+            {
+              "y": 2016.0,
+              "v": 2.346
+            },
+            {
+              "y": 2016.25,
+              "v": 2.338
+            },
+            {
+              "y": 2016.5,
+              "v": 2.425
+            },
+            {
+              "y": 2016.75,
+              "v": 2.134
+            },
+            {
+              "y": 2017.0,
+              "v": 2.23
+            },
+            {
+              "y": 2017.25,
+              "v": 2.266
+            },
+            {
+              "y": 2017.5,
+              "v": 2.279
+            },
+            {
+              "y": 2017.75,
+              "v": 2.234
+            },
+            {
+              "y": 2018.0,
+              "v": 2.277
+            },
+            {
+              "y": 2018.25,
+              "v": 2.183
+            },
+            {
+              "y": 2018.5,
+              "v": 2.049
+            },
+            {
+              "y": 2018.75,
+              "v": 2.064
+            },
+            {
+              "y": 2019.0,
+              "v": 2.146
+            },
+            {
+              "y": 2019.25,
+              "v": 2.209
+            },
+            {
+              "y": 2019.5,
+              "v": 2.346
+            },
+            {
+              "y": 2019.75,
+              "v": 2.286
+            },
+            {
+              "y": 2020.0,
+              "v": 2.46
+            },
+            {
+              "y": 2020.25,
+              "v": 2.795
+            },
+            {
+              "y": 2020.5,
+              "v": 2.905
+            },
+            {
+              "y": 2020.75,
+              "v": 2.796
+            },
+            {
+              "y": 2021.0,
+              "v": 2.668
+            },
+            {
+              "y": 2021.25,
+              "v": 2.599
+            },
+            {
+              "y": 2021.5,
+              "v": 2.955
+            },
+            {
+              "y": 2021.75,
+              "v": 2.882
+            },
+            {
+              "y": 2022.0,
+              "v": 2.872
+            },
+            {
+              "y": 2022.25,
+              "v": 2.737
+            },
+            {
+              "y": 2022.5,
+              "v": 2.503
+            },
+            {
+              "y": 2022.75,
+              "v": 2.542
+            },
+            {
+              "y": 2023.0,
+              "v": 2.706
+            },
+            {
+              "y": 2023.25,
+              "v": 2.733
+            },
+            {
+              "y": 2023.5,
+              "v": 2.617
+            },
+            {
+              "y": 2023.75,
+              "v": 2.695
+            },
+            {
+              "y": 2024.0,
+              "v": 2.654
+            },
+            {
+              "y": 2024.25,
+              "v": 2.885
+            },
+            {
+              "y": 2024.5,
+              "v": 3.088
+            },
+            {
+              "y": 2024.75,
+              "v": 3.098
+            },
+            {
+              "y": 2025.0,
+              "v": 3.38
+            },
+            {
+              "y": 2025.25,
+              "v": 3.678
+            },
+            {
+              "y": 2025.5,
+              "v": 4.149
+            },
+            {
+              "y": 2025.75,
+              "v": 4.103
+            },
+            {
+              "y": 2026.0,
+              "v": 4.051
+            }
+          ]
         }
       ],
       "panels": [
@@ -3697,15 +3926,244 @@
           "rows": [
             {
               "label": "Reserves incl. gold (market)",
-              "value": 3.0,
-              "display": "3.0%",
+              "value": 4.1,
+              "display": "4.1%",
               "unit": "of GDP",
               "tone": "risk",
-              "tag": "manual",
-              "src": "manual · Dalio Ch.17 (gold at market)",
-              "asOf": "2026-07-18",
-              "history": [],
-              "note": "Last-resort fallback ONLY — used if the live Treasury gold-holdings fetch itself fails (not just the price). If holdings are live but the price source is dead, goldPriceManualFallback (above) is used instead, keeping the ounce count live. This value is Dalio's own book figure, hand-carried for the double-failure case; it is NOT an independent check and reads as a match against his figure by construction — see STATUS.md §9/§18."
+              "tag": "manual_price",
+              "src": "derived · Treasury (gold oz, live, 2026-06) + manual price ($4,000/oz as of 2026-07-20) + FRED",
+              "asOf": "2026-Q1",
+              "history": [
+                {
+                  "y": 2012.0,
+                  "v": 3.583
+                },
+                {
+                  "y": 2012.25,
+                  "v": 3.409
+                },
+                {
+                  "y": 2012.5,
+                  "v": 3.466
+                },
+                {
+                  "y": 2012.75,
+                  "v": 3.536
+                },
+                {
+                  "y": 2013.0,
+                  "v": 3.384
+                },
+                {
+                  "y": 2013.25,
+                  "v": 3.133
+                },
+                {
+                  "y": 2013.5,
+                  "v": 2.887
+                },
+                {
+                  "y": 2013.75,
+                  "v": 2.72
+                },
+                {
+                  "y": 2014.0,
+                  "v": 2.758
+                },
+                {
+                  "y": 2014.25,
+                  "v": 2.684
+                },
+                {
+                  "y": 2014.5,
+                  "v": 2.527
+                },
+                {
+                  "y": 2014.75,
+                  "v": 2.402
+                },
+                {
+                  "y": 2015.0,
+                  "v": 2.452
+                },
+                {
+                  "y": 2015.25,
+                  "v": 2.288
+                },
+                {
+                  "y": 2015.5,
+                  "v": 2.185
+                },
+                {
+                  "y": 2015.75,
+                  "v": 2.231
+                },
+                {
+                  "y": 2016.0,
+                  "v": 2.346
+                },
+                {
+                  "y": 2016.25,
+                  "v": 2.338
+                },
+                {
+                  "y": 2016.5,
+                  "v": 2.425
+                },
+                {
+                  "y": 2016.75,
+                  "v": 2.134
+                },
+                {
+                  "y": 2017.0,
+                  "v": 2.23
+                },
+                {
+                  "y": 2017.25,
+                  "v": 2.266
+                },
+                {
+                  "y": 2017.5,
+                  "v": 2.279
+                },
+                {
+                  "y": 2017.75,
+                  "v": 2.234
+                },
+                {
+                  "y": 2018.0,
+                  "v": 2.277
+                },
+                {
+                  "y": 2018.25,
+                  "v": 2.183
+                },
+                {
+                  "y": 2018.5,
+                  "v": 2.049
+                },
+                {
+                  "y": 2018.75,
+                  "v": 2.064
+                },
+                {
+                  "y": 2019.0,
+                  "v": 2.146
+                },
+                {
+                  "y": 2019.25,
+                  "v": 2.209
+                },
+                {
+                  "y": 2019.5,
+                  "v": 2.346
+                },
+                {
+                  "y": 2019.75,
+                  "v": 2.286
+                },
+                {
+                  "y": 2020.0,
+                  "v": 2.46
+                },
+                {
+                  "y": 2020.25,
+                  "v": 2.795
+                },
+                {
+                  "y": 2020.5,
+                  "v": 2.905
+                },
+                {
+                  "y": 2020.75,
+                  "v": 2.796
+                },
+                {
+                  "y": 2021.0,
+                  "v": 2.668
+                },
+                {
+                  "y": 2021.25,
+                  "v": 2.599
+                },
+                {
+                  "y": 2021.5,
+                  "v": 2.955
+                },
+                {
+                  "y": 2021.75,
+                  "v": 2.882
+                },
+                {
+                  "y": 2022.0,
+                  "v": 2.872
+                },
+                {
+                  "y": 2022.25,
+                  "v": 2.737
+                },
+                {
+                  "y": 2022.5,
+                  "v": 2.503
+                },
+                {
+                  "y": 2022.75,
+                  "v": 2.542
+                },
+                {
+                  "y": 2023.0,
+                  "v": 2.706
+                },
+                {
+                  "y": 2023.25,
+                  "v": 2.733
+                },
+                {
+                  "y": 2023.5,
+                  "v": 2.617
+                },
+                {
+                  "y": 2023.75,
+                  "v": 2.695
+                },
+                {
+                  "y": 2024.0,
+                  "v": 2.654
+                },
+                {
+                  "y": 2024.25,
+                  "v": 2.885
+                },
+                {
+                  "y": 2024.5,
+                  "v": 3.088
+                },
+                {
+                  "y": 2024.75,
+                  "v": 3.098
+                },
+                {
+                  "y": 2025.0,
+                  "v": 3.38
+                },
+                {
+                  "y": 2025.25,
+                  "v": 3.678
+                },
+                {
+                  "y": 2025.5,
+                  "v": 4.149
+                },
+                {
+                  "y": 2025.75,
+                  "v": 4.103
+                },
+                {
+                  "y": 2026.0,
+                  "v": 4.051
+                }
+              ],
+              "note": "⚠ manual gold price input: $4,000/oz as of 2026-07-20 — the live price source is dead, but the ounce count is still live (2026-06)"
             },
             {
               "label": "FX reserves excl. gold",
@@ -7720,7 +8178,7 @@
         "grossDebtServiceBasis": "GROSS interest (incl. intragovernmental Government Account Series) / TOTAL receipts, net of refunds — the explicit second debt-service row, same denominator as the net headline (see revenueDefinition).",
         "debtToRevenueBasis": "Debt held by the public ($, FYGFGDQ188S x GDP) / TOTAL receipts, net of refunds (TTM, $) — same denominator as both debt-service rows. Dalio's Ch.17 table reports only debt/GDP; his Ch.3 debt-to-revenue figure (~580%, ~700% in ten years) is a real anchor but not exactly reproduced by any tested denominator — see STATUS.md §12/§13. debt_to_gdp remains the headline.",
         "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz, live) x gold price, valued at MARKET not the $42.2222/oz statutory book rate. Price is live (DBnomics: IMF PCPS, indicator PGOLD) when fresh; that source has been frozen at 2025-06 since at least 2026-07, so the price currently falls back to a hand-entered manual value (data/manual.json: goldPriceManualFallback) applied to the still-live ounce count — see STATUS.md §18 for why this replaced the prior all-manual-output fallback (which matched Dalio's Ch.17 figure by construction, not by independent computation).",
-        "reservesInclGoldTag": "manual"
+        "reservesInclGoldTag": "manual_price"
       }
     }
   }
