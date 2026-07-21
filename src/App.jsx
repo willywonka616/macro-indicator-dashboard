@@ -5,6 +5,7 @@ import HeadlineGauge from "./components/HeadlineGauge.jsx";
 import Panel from "./components/Panel.jsx";
 import GaugeRow from "./components/GaugeRow.jsx";
 import Tag from "./components/Tag.jsx";
+import EquationButton from "./components/EquationButton.jsx";
 
 /* Countries planned but not yet wired up. */
 const PLANNED = ["Euro area · ECB", "Japan", "China"];
@@ -101,8 +102,11 @@ export default function App() {
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
           {d.vitals.map((v, i) => (
             <div key={v.key || i} className="rounded-lg p-3.5 flex flex-col" style={{ background: c.panel, border: `1px solid ${c.line}` }}>
-              <div className="flex items-start justify-between gap-2">
-                <span style={{ fontSize: 11.5, color: c.muted, lineHeight: 1.3 }}>{v.label}</span>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <span className="flex flex-wrap items-center gap-1.5" style={{ minWidth: 0 }}>
+                  <span style={{ fontSize: 11.5, color: c.muted, lineHeight: 1.3 }}>{v.label}</span>
+                  <EquationButton row={v} />
+                </span>
                 <span style={{ fontSize: 9, color: dotColor(v.tag) }}>{v.tag === "live" ? "●" : "○"}</span>
               </div>
               <div className="mt-1.5 mb-1 flex items-baseline gap-1">

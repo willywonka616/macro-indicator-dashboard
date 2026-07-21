@@ -6,18 +6,16 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-21b-verification.md` (run output) and
-> `docs/review/2026-07-21b-values.md` (headline values), base commit
-> `3335451` — the manual-value-freshness-guard + provenance-assertion
-> pass: `data/manual.json`'s own dated values (gold price, the COFER
-> snapshot, `lastChecked`) now have thresholds of their own and are
-> checked both when used as a fallback and unconditionally during
-> `--verify`; 11 of 14 manual values were found to have no date at all
-> (audited, not fixed — see §19.2); every fallback-capable row now
-> asserts its actual tag against the expected `"live"` tag and records
-> any mismatch in `provenance.fallbacksFired`, warned loudly (console
-> banner + GitHub Actions annotation) rather than left as an easy-to-miss
-> `print()` line (see §19).
+> `docs/review/2026-07-21c-verification.md` (run output), base commit
+> `0873732` — the equation-button pass: a "ƒx" disclosure on every metric
+> reveals the formula behind it in Dalio's own Ch. 3 notation, with the
+> mapping table's src/asOf/tag read from `data.json` at render time
+> (never hardcoded in `src/content/equations.js`) and a real 390px
+> horizontal-overflow bug found and fixed via live Playwright browser
+> testing before shipping (see §20). Headline values are unchanged from
+> round b — `docs/review/2026-07-21b-values.md` remains current for those;
+> this round only added `key`/`terms` fields to `data.json`'s shape, no
+> new `-values.md`.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -27,8 +25,9 @@ prior sessions and no access to this repo's chat history.
 > Prior rounds: `docs/review/2026-07-19c-*.md`, `docs/review/2026-07-19d-*.md`,
 > `docs/review/2026-07-20a-*.md`, `docs/review/2026-07-20b-*.md`,
 > `docs/review/2026-07-20c-*.md`, `docs/review/2026-07-20d-*.md`,
-> `docs/review/2026-07-21a-*.md` (superseded, left in place). When you
-> add a new round, update this line to point at it.
+> `docs/review/2026-07-21a-*.md`, `docs/review/2026-07-21b-*.md`
+> (superseded, left in place). When you add a new round, update this line
+> to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -215,6 +214,33 @@ live production run (`3335451`): both known fallbacks (gold, COFER)
 correctly produced loud warnings and `fallbacksFired` entries; headline
 values unchanged from §18. See §19 for the full writeup and
 `docs/review/2026-07-21b-*.md` for the run output and headline values.
+
+**Later the same day, an eleventh pass (§20): the equation button —
+`TASK-equation-button.md`.** A small "ƒx" disclosure on every metric row
+now reveals the formula behind it in Ray Dalio's own variable names
+(*How Countries Go Broke* Ch. 3), keeping current-value definitions
+visibly separate from his forward-looking projection formulas so the
+maths view can never be read as though a projection formula produced the
+number on screen. `scripts/fetch.py` now attaches a stable `key` to every
+panel row and a `terms` array (each with its own src/asOf/tag) to the
+five rows whose Dalio equation names multiple distinct inputs the
+pipeline currently exposes as one combined row. `src/content/equations.js`
+holds only the hand-written formulas/prose — per the task's addendum, the
+mapping table's src/asOf/tag are read from `data.json` at render time,
+never hardcoded, so the tag vocabulary changing (as it just did with
+`manual_price`) needs no content update. Browser-tested live with
+Playwright (`chromium-cli` unavailable in this environment; used the
+`playwright` package already in `node_modules`) — found and fixed a real
+390px horizontal-overflow bug before shipping (a flex row couldn't wrap
+a long src string; fixed by stacking label/src instead of fitting them
+side by side), confirmed zero overflow across all 24 buttons on the page
+afterward, confirmed correct `aria-expanded`/keyboard behaviour
+programmatically, and confirmed the feature against real production data
+including a genuine mixed-tag case (three live terms, one `manual_price`
+term, in the same reserves-incl-gold mapping table). Bundle impact:
++3.39kB gzip, no new runtime dependency. See §20 for the full writeup and
+`docs/review/2026-07-21c-verification.md` for the run output (headline
+values unchanged from round b, so no new `-values.md` this round).
 
 ---
 
@@ -2580,6 +2606,146 @@ the new `fallbacksFired` field.
 | 11 of 14 manual.json values have no date of their own | **VERIFIED** — `audit_manual_values()` output above, cross-checked by hand against `data/manual.json`'s actual keys |
 | The new manual-value freshness checks and provenance assertion don't false-positive on a healthy run | **VERIFIED** — local mock test, fully-live scenario asserts `fallbacksFired == []` and no staleness warnings fire (all three manual dates are within their thresholds as of 2026-07-21) |
 | The provenance assertion correctly fires for both fallback tiers (`manual_price`, `manual`) | **VERIFIED** — local mock test, both scenarios explicitly assert the recorded entry's `actualTag` |
+
+---
+
+## 20. Equation button: the maths behind every metric, in Dalio's notation (2026-07-21, eleventh pass)
+
+**What this round covers:** `TASK-equation-button.md` — a small disclosure
+control on every derived metric revealing the formula behind it in Ray
+Dalio's own variable names (transcribed from *How Countries Go Broke*
+Ch. 3, "The Mechanics in Numbers and Equations," pp. 69-73), with source
+identifiers demoted to a mapping table below the maths rather than being
+the headline.
+
+### 20.1 Two separate concerns, kept separate
+
+Every metric's panel can show up to two blocks: a **Definition** (the
+identity actually computed this run — always present) and, only where
+Dalio gives one, his **projection formula** (forward-looking, explicitly
+labelled as such — never presented as though it produced the number on
+screen). This matters because every one of Dalio's Ch. 3 equations has
+"Future X" on the left-hand side; the dashboard shows current observed
+levels, not his projections. Conflating the two would make the feature
+actively misleading, per the task's own framing.
+
+### 20.2 Backend: `key` and `terms` added to every row
+
+`scripts/fetch.py` now attaches a stable `key` to every panel row (vitals
+already had one), and a `terms` array to the five rows whose Dalio
+equation names multiple distinct inputs the pipeline currently only
+exposes as one combined row: net interest ÷ revenue, gross interest ÷
+revenue, debt ÷ revenue, real 10-year rate, and reserves incl. gold. Each
+term carries its own `{label, src, asOf, tag}` — computed fresh from this
+run's actual fetch results (`_series_asof()` formats a raw series' latest
+date the same way the rest of the pipeline does; `_term()` is a plain
+constructor). For the reserves row specifically, `reserves_incl_gold_terms`
+is built only inside the try block that succeeds (live or manual_price
+tier) — the full-manual fallback has nothing to break down, so it's left
+`None` and the frontend falls back to a single row built from the parent
+row's own `src`/`asOf`/`tag`, same as every other (non-compound) row.
+
+**Per the task addendum, nothing about provenance is hardcoded in
+`src/content/`.** `src/content/equations.js` holds only the formulas,
+Dalio quotes, and caveats — static, hand-written, doesn't change month
+to month. The mapping table's src/asOf/tag always comes from `row.terms`
+(or the single-row fallback) at render time, so a new tag added to the
+pipeline (like `manual_price` was) needs no change to this file — it just
+renders, exactly the way `Tag.jsx` already falls through safely for an
+unrecognized `kind`.
+
+### 20.3 Frontend: `Frac`, `EquationLine`, `EquationButton`
+
+No LaTeX dependency — `Frac.jsx` is a ~15-line numerator/rule/denominator
+stack in plain styled HTML; `EquationLine.jsx` lays a mix of plain-text
+parts and `Frac`s out in a wrapping flex row. `EquationButton.jsx` is the
+disclosure itself: a small `ƒx` toggle (`aria-expanded`, `aria-controls`,
+a descriptive `aria-label`), rendering nothing when `src/content/equations.js`
+has no entry for the row's `key` (the "row without an entry simply shows
+no button" rule). Wired into `MetricRow.jsx` (every panel row) and
+`App.jsx` (the four top vital-sign cards) via the row's own `key`/`terms`.
+Every one of the 19 metric keys in `equations.js` — both `kind: "derived"`
+rows with a real formula and `kind: "observed"` rows (a directly published
+series or a hand-entered fact) — gets a button; observed rows render
+"Directly observed — no derivation" plus their own definition, per the
+task's explicit allowance that this is "a useful answer, not a failure."
+
+### 20.4 A real overflow bug, found and fixed before shipping
+
+First browser pass at 390px width showed `document.documentElement.scrollWidth`
+at 481px against a 390px viewport — genuine horizontal overflow. Root
+cause: the mapping table's term rows tried to fit a label and a long,
+unbroken `src` string (e.g. "Treasury (MTS mts_table_4, total receipts
+net of refunds, TTM)") side by side in a `shrink-0` flex row; flex's
+default `min-width: auto` on a `shrink-0` item refuses to shrink below
+its content's natural width, so the row just grew past the viewport
+instead of wrapping. Fixed by stacking each term (label, then src/asOf/tag
+below it) instead of trying to fit them on one line — a block-level
+stack wraps naturally at any width, with no flex-shrink interaction to
+get wrong. Also added a `max-width` guard to `Frac`'s numerator/denominator
+spans for the same reason (long formula terms have the identical failure
+mode). Re-tested: all 24 equation buttons on the page opened one at a
+time at a 390px viewport, `scrollWidth` checked after each — zero
+overflow across all of them, confirmed via a scripted Playwright pass,
+not just eyeballing one row.
+
+### 20.5 Verified in a real browser
+
+Per this project's own UI-testing convention: started the Vite dev
+server, drove it with Playwright (`chromium-cli` wasn't available in
+this environment; used the `playwright` package already in
+`node_modules` directly instead), against a full-featured local
+`data.json` generated from the scratchpad mock test (production
+`data.json` was temporarily swapped in, then restored byte-for-byte
+before committing — confirmed via `git status` showing no diff).
+Checked:
+- **Golden path**: click a `ƒx` button → panel opens, shows Definition,
+  Dalio's formula (fraction layout rendering correctly), the mapping
+  table with real src/asOf/tag values and a live `Tag` pill, and caveats.
+- **Keyboard + ARIA**: `aria-expanded` toggles `false`→`true`→`false`
+  correctly across click and `Enter`-key activation (confirmed
+  programmatically, not just visually).
+- **Observed-only row**: "Share in hard (foreign) FX" renders "Directly
+  observed — no derivation" with its own definition and a single-row
+  mapping table pulled from the row's own `src`/`tag`.
+- **390px width**: zero horizontal overflow across all 24 buttons on the
+  page, both before (found the bug) and after (confirmed fixed) §20.4's
+  fix.
+- **Console**: zero console/page errors throughout.
+
+**Claim status: VERIFIED** — live Playwright browser session against the
+actual dev server and built components, screenshots inspected directly,
+not assumed from code review.
+
+### 20.6 Bundle size impact
+
+Measured via `npm run build`, isolating the frontend diff (`git stash`
+of just the `src/`/`index.css` changes, rebuild, compare):
+
+| | Before | After | Δ |
+|---|---|---|---|
+| JS (raw) | 163.47 kB | 174.47 kB | +11.00 kB |
+| JS (gzip) | 52.84 kB | 56.08 kB | **+3.24 kB** |
+| CSS (raw) | 9.47 kB | 9.97 kB | +0.50 kB |
+| CSS (gzip) | 2.71 kB | 2.86 kB | +0.15 kB |
+
+**+3.39 kB gzip total** (~6% growth on the JS bundle) for four new
+components, one new content file (19 metric entries' worth of hand-written
+formulas/prose), and the equation-button feature end to end. No new
+runtime dependency was added — the "no LaTeX" call in §1 of the task file
+held up in practice, not just in principle.
+
+### 20.7 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| Every Ch. 3 formula/quote in `equations.js` traces to `TASK-equation-button.md` §2, nothing invented | **VERIFIED** — direct transcription, checked against the task file line by line while writing content |
+| The mapping table reads src/asOf/tag from data.json at render time, never hardcoded in content | **VERIFIED** — `equations.js` contains no src/asOf/tag literals; confirmed by grep and by design (EquationButton.jsx builds `terms` from `row.terms`/`row.src`/`row.asOf`/`row.tag` only) |
+| The first mobile layout had a real horizontal-overflow bug | **VERIFIED** — measured `document.documentElement.scrollWidth` = 481px against a 390px viewport, live in a Playwright browser, not inferred |
+| The fix resolves it across every button on the page, not just the one row that surfaced it | **VERIFIED** — scripted pass opened all 24 buttons individually at 390px, checked `scrollWidth` after each, zero overflow |
+| Keyboard operability and ARIA state are correct | **VERIFIED** — `aria-expanded` read programmatically before/after both a click and an `Enter` keypress |
+| No new runtime dependency (no LaTeX library) was pulled in | **VERIFIED** — `package.json` unchanged this round; fraction rendering is ~15 lines of styled HTML (`Frac.jsx`) |
+| Bundle size impact is +3.39 kB gzip | **VERIFIED** — `npm run build` output compared before/after via `git stash` isolation of the frontend-only diff |
 
 ---
 

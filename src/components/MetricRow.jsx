@@ -1,14 +1,17 @@
 import React from "react";
 import { c, toneColor } from "../theme.js";
 import Chart from "./Chart.jsx";
+import EquationButton from "./EquationButton.jsx";
 
 /* One metric line inside a Panel.
- * `r` = { label, value, display?, unit, tone, src, asOf?, history?, note? }.
- * Renders `display` (pre-formatted string) when present, else `value`.
- * `note`, if present, is a short framing caption shown under label/src —
- * for a row that means little without context (e.g. "net" vs "gross"
- * interest), not a full explanation (that's Panel.jsx's longNote).
- * When there's history, a full-width chart is drawn below the row. */
+ * `r` = { label, value, display?, unit, tone, src, asOf?, history?, note?,
+ * key?, terms? }. Renders `display` (pre-formatted string) when present,
+ * else `value`. `note`, if present, is a short framing caption shown
+ * under label/src — for a row that means little without context (e.g.
+ * "net" vs "gross" interest), not a full explanation (that's Panel.jsx's
+ * longNote). When there's history, a full-width chart is drawn below the
+ * row. `key`/`terms` (if present) drive the "ƒx" equation-maths button —
+ * see EquationButton.jsx. */
 export default function MetricRow({ r }) {
   const shown = r.display ?? r.value;
   const hasChart = r.history && r.history.length > 1;
@@ -16,7 +19,10 @@ export default function MetricRow({ r }) {
     <div className="py-3" style={{ borderBottom: `1px solid ${c.lineSoft}` }}>
       <div className="flex items-center justify-between">
         <div className="min-w-0">
-          <div style={{ fontSize: 13, color: c.text }}>{r.label}</div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span style={{ fontSize: 13, color: c.text }}>{r.label}</span>
+            <EquationButton row={r} />
+          </div>
           {r.note && (
             <div style={{ fontSize: 11, color: c.muted, marginTop: 1 }}>{r.note}</div>
           )}

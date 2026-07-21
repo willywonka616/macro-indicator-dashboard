@@ -376,6 +376,24 @@ def build_us(manual: dict, force: bool) -> dict:
     # the data itself, not only in a CI log someone has to go read.
     fallbacks_fired: list = []
 
+    def _series_asof(sid, obs):
+        """Format a raw FRED series' latest observation date to match how
+        this row's own frequency is normally displayed elsewhere (quarter
+        label, YYYY-MM, or a plain ISO date for daily DGS10) — used by the
+        equation-button mapping table (TASK-equation-button.md §3) to give
+        each Dalio-notation term its own asOf, not just the parent row's
+        single combined one."""
+        d = obs[-1][0]
+        freq = S.FRED_SERIES[sid]["freq"]
+        if freq == "Quarterly":
+            return S.q_label(S.quarter_key(d))
+        if freq == "Monthly":
+            return f"{d.year}-{d.month:02d}"
+        return d.isoformat()
+
+    def _term(label, src, asOf, tag="live"):
+        return {"label": label, "src": src, "asOf": asOf, "tag": tag}
+
     # --- fetch every FRED series we need ---
     need = ["FYGFGDQ188S", "GDP", "TCMDO", "IEABC", "TRESEGUSM052N", "DGS10", "CPIAUCSL"]
     raw = {}
@@ -446,6 +464,12 @@ def build_us(manual: dict, force: bool) -> dict:
     reserves_incl_gold_tag = "live"
     gold_src_detail = "Treasury (gold) + DBnomics (price)"
     gold_stale_note = None
+    # Per-term provenance for the equation-button mapping table (see
+    # revenue_term etc. below in the main function body) — stays None if
+    # even the live ounce count fails, so the full-manual fallback row has
+    # no compound terms at all (nothing to break down; it's one flat
+    # book figure, not four separate live inputs).
+    reserves_incl_gold_terms = None
     try:
         gold_oz_monthly = G.gold_holdings_troy_oz()
         oz_asof = max(gold_oz_monthly)
@@ -540,6 +564,18 @@ def build_us(manual: dict, force: bool) -> dict:
                 "outside the sane 0.5-15% band — likely a wrong field mapping. "
                 "Check the gold schema dumped by --verify before trusting it."
             )
+        reserves_incl_gold_terms = [
+            _term("Gold holdings (troy oz)", "Treasury (fiscal_service, gold_reserve)",
+                  f"{oz_asof[0]}-{oz_asof[1]:02d}"),
+            _term("Gold price ($/oz)",
+                  ("DBnomics (IMF PCPS, indicator PGOLD)" if price_is_live
+                   else f"manual (data/manual.json goldPriceManualFallback, ${gpf['pricePerOz']:,.0f}/oz)"),
+                  f"{price_asof[0]}-{price_asof[1]:02d}",
+                  tag=("live" if price_is_live else "manual_price")),
+            _term("FX reserves excl. gold", "FRED: TRESEGUSM052N",
+                  _series_asof("TRESEGUSM052N", raw["TRESEGUSM052N"][1])),
+            _term("GDP", "FRED: GDP", _series_asof("GDP", raw["GDP"][1])),
+        ]
     except Exception as e:  # noqa: BLE001
         print(f"Gold-inclusive reserves unavailable even with a manual price input "
               f"(live ounce count itself failed), using the full manual fallback: {e}")
@@ -595,7 +631,7 @@ def build_us(manual: dict, force: bool) -> dict:
     _check_move("debt_service_to_revenue", service["latest"], prev, force)
     _check_move("reserves_to_gdp", reserves_incl_gold["latest"], prev, force)
 
-    def live_row(label, metric, tone, src, unit, decimals=None, note=None):
+    def live_row(label, metric, tone, src, unit, decimals=None, note=None, key=None, terms=None):
         row = {
             "label": label, "value": num(metric["latest"]),
             "display": pct_display(metric["latest"], decimals), "unit": unit,
@@ -604,9 +640,13 @@ def build_us(manual: dict, force: bool) -> dict:
         }
         if note:
             row["note"] = note
+        if key:
+            row["key"] = key
+        if terms:
+            row["terms"] = terms
         return row
 
-    def manual_row(label, spec, tag="manual"):
+    def manual_row(label, spec, tag="manual", key=None):
         row = {"label": label, "display": spec["display"], "unit": spec.get("unit", ""),
                "tone": spec.get("tone", "neutral"), "tag": tag, "src": spec.get("src", "—")}
         if "value" in spec:
@@ -615,7 +655,36 @@ def build_us(manual: dict, force: bool) -> dict:
             row["asOf"] = spec["asOf"]
         if "history" in spec:
             row["history"] = spec["history"]
+        if key:
+            row["key"] = key
         return row
+
+    # Per-term provenance for the equation-button mapping table
+    # (TASK-equation-button.md §3): each Dalio-notation term in a compound
+    # row gets its OWN src/asOf/tag here, read straight from this run's
+    # actual fetch results — src/content/ only holds the hand-written
+    # Dalio-term label and which of these to show, never the src/asOf/tag
+    # values themselves.
+    revenue_term = _term("Total receipts, net of refunds (TTM)",
+                         "Treasury (MTS mts_table_4, total receipts net of refunds, TTM)",
+                         service["asOf"])
+    net_interest_terms = [
+        _term("Net interest to the public", "Treasury (MTS, interest on debt held by the public)", service["asOf"]),
+        revenue_term,
+    ]
+    gross_interest_terms = [
+        _term("Gross interest (incl. intragovernmental GAS)",
+              "Treasury (MTS, gross interest incl. Government Account Series)", gross_service["asOf"]),
+        revenue_term,
+    ]
+    debt_to_revenue_terms = [
+        _term("Debt held by the public", "derived · FRED FYGFGDQ188S × GDP", debt_to_revenue["asOf"]),
+        revenue_term,
+    ]
+    real_rate_terms = [
+        _term("10-year Treasury yield", "FRED: DGS10", _series_asof("DGS10", raw["DGS10"][1])),
+        _term("CPI, trailing 12-month inflation", "FRED: CPIAUCSL", _series_asof("CPIAUCSL", raw["CPIAUCSL"][1])),
+    ]
 
     rc = mu["reserveCurrency"]
 
@@ -627,45 +696,49 @@ def build_us(manual: dict, force: bool) -> dict:
             "Net interest to the public — cash actually leaving the government today — costs "
             "about a fifth of total revenue. Gross interest, including bonds credited to "
             "trust funds, runs higher still (see the panel below).",
-            "derived · Treasury (net interest, total receipts net of refunds)", "of revenue")},
+            "derived · Treasury (net interest, total receipts net of refunds)", "of revenue",
+            terms=net_interest_terms)},
         {"key": "real_rates", "label": "Rates vs inflation & growth", **_vital(real_rate, "neutral",
             "10-year Treasury yield minus trailing-12-month CPI inflation — the real cost of borrowing Dalio watches.",
-            "derived · FRED (10y − CPI)", "real 10y")},
+            "derived · FRED (10y − CPI)", "real 10y", terms=real_rate_terms)},
         {"key": "reserves_to_gdp", "label": "Debt & service vs savings",
             **_vital(reserves_incl_gold, "risk",
                 "Reserves including gold at market value are still thin relative to the debt — "
                 "and most of the buffer is illiquid gold, not spendable FX.",
                 (f"derived · {gold_src_detail} + FRED" if reserves_incl_gold_tag != "manual"
                  else mu["reservesInclGoldFallback"]["src"]),
-                "reserves / GDP", tag=reserves_incl_gold_tag)},
+                "reserves / GDP", tag=reserves_incl_gold_tag, terms=reserves_incl_gold_terms)},
     ]
 
     gov_panel = {
         "eyebrow": "Government debt", "tag": "live",
         "note": "Very large debt with little liquid backing. Who holds it matters: foreign holders can leave faster than domestic ones. Two debt-service rows below: net is what's actually leaving the government in cash today; gross adds interest credited to trust funds as bonds — a real claim, but not yet a cash outflow.",
         "rows": [
-            manual_row("Gov assets − gov debt", mu["govAssetsMinusDebt"]),
-            live_row("Government debt (held by public)", debt, "risk", "FRED: FYGFGDQ188S", "of GDP"),
+            manual_row("Gov assets − gov debt", mu["govAssetsMinusDebt"], key="gov_assets_minus_debt"),
+            live_row("Government debt (held by public)", debt, "risk", "FRED: FYGFGDQ188S", "of GDP",
+                     key="debt_to_gdp"),
             live_row("Debt vs revenue", debt_to_revenue, "risk",
                      "derived · FYGFGDQ188S x GDP / Treasury (total receipts, net of refunds, TTM)",
-                     "of revenue", decimals=0),
-            manual_row("Debt, 10-yr projection", mu["cboProjection"]),
-            manual_row("— held by central bank", mu["holders"]["centralBank"]),
-            manual_row("— held by domestic players", mu["holders"]["domestic"]),
-            manual_row("— held abroad", mu["holders"]["abroad"]),
-            manual_row("Share in hard (foreign) FX", mu["shareHardFX"]),
+                     "of revenue", decimals=0, key="debt_to_revenue", terms=debt_to_revenue_terms),
+            manual_row("Debt, 10-yr projection", mu["cboProjection"], key="debt_10yr_projection"),
+            manual_row("— held by central bank", mu["holders"]["centralBank"], key="held_by_central_bank"),
+            manual_row("— held by domestic players", mu["holders"]["domestic"], key="held_by_domestic"),
+            manual_row("— held abroad", mu["holders"]["abroad"], key="held_abroad"),
+            manual_row("Share in hard (foreign) FX", mu["shareHardFX"], key="share_hard_fx"),
             live_row("Net interest (to the public)", service, "risk",
                      "derived · Treasury (net interest, total receipts net of refunds)", "of revenue",
-                     note="The current situation — cash leaving the government today"),
+                     note="The current situation — cash leaving the government today",
+                     key="debt_service_to_revenue", terms=net_interest_terms),
             live_row("Gross interest (incl. intragovernmental)", gross_service, "caution",
                      "derived · Treasury (gross incl. GAS, total receipts net of refunds)", "of revenue",
-                     note="The leading indicator — the gap is obligation accruing before it's an outflow"),
+                     note="The leading indicator — the gap is obligation accruing before it's an outflow",
+                     key="gross_interest_to_revenue", terms=gross_interest_terms),
         ],
     }
     reserves_incl_gold_row = {
         "label": "Reserves incl. gold (market)", "value": num(reserves_incl_gold["latest"]),
         "display": pct_display(reserves_incl_gold["latest"], 1), "unit": "of GDP",
-        "tone": "risk", "tag": reserves_incl_gold_tag,
+        "tone": "risk", "tag": reserves_incl_gold_tag, "key": "reserves_to_gdp",
         "src": (f"derived · {gold_src_detail} + FRED" if reserves_incl_gold_tag != "manual"
                 else mu["reservesInclGoldFallback"]["src"]),
         "asOf": reserves_incl_gold.get("asOf"),
@@ -673,6 +746,8 @@ def build_us(manual: dict, force: bool) -> dict:
     }
     if gold_stale_note:
         reserves_incl_gold_row["note"] = gold_stale_note
+    if reserves_incl_gold_terms:
+        reserves_incl_gold_row["terms"] = reserves_incl_gold_terms
     reserves_panel = {
         "eyebrow": "Liquid reserves", "tag": "live",
         "note": "The cushion a country can draw on before it must default or print. Gold is a "
@@ -680,17 +755,21 @@ def build_us(manual: dict, force: bool) -> dict:
                 "Dalio tracks both, so both are shown here rather than picking one.",
         "rows": [
             reserves_incl_gold_row,
-            live_row("FX reserves excl. gold", reserves, "risk", "FRED: TRESEGUSM052N", "of GDP"),
-            manual_row("Sovereign wealth assets", mu["sovereignWealth"]),
+            live_row("FX reserves excl. gold", reserves, "risk", "FRED: TRESEGUSM052N", "of GDP",
+                     key="fx_reserves_excl_gold"),
+            manual_row("Sovereign wealth assets", mu["sovereignWealth"], key="sovereign_wealth"),
         ],
     }
     broader_panel = {
         "eyebrow": "Broader health", "tag": "live",
         "note": "Economy-wide leverage and the external balance — how dependent the country is on foreign financing.",
         "rows": [
-            live_row("Total debt (all sectors)", total_debt, "caution", "FRED: TCMDO (Z.1)", "of GDP"),
-            live_row("Current account, 3-yr avg", current_acct, "caution", "BEA / FRED", "of GDP"),
-            live_row("Real 10-year rate (10y − CPI)", real_rate, "neutral", "derived · FRED (DGS10 − CPI)", "real, 10y"),
+            live_row("Total debt (all sectors)", total_debt, "caution", "FRED: TCMDO (Z.1)", "of GDP",
+                     key="total_debt_all_sectors"),
+            live_row("Current account, 3-yr avg", current_acct, "caution", "BEA / FRED", "of GDP",
+                     key="current_account_3yr"),
+            live_row("Real 10-year rate (10y − CPI)", real_rate, "neutral", "derived · FRED (DGS10 − CPI)",
+                     "real, 10y", key="real_rates", terms=real_rate_terms),
         ],
     }
     # World CB reserves in USD: live from IMF COFER, else fall back to manual.
@@ -702,6 +781,7 @@ def build_us(manual: dict, force: bool) -> dict:
             "label": "World CB reserves in USD", "value": num(cofer["latest"]),
             "display": pct_display(cofer["latest"], 1), "unit": "", "tone": "mitig",
             "tag": "live", "src": "IMF COFER (DBnomics)", "asOf": cofer["asOf"], "history": cofer["history"],
+            "key": "world_cb_reserves_usd",
         }
     except Exception as e:  # noqa: BLE001
         print(f"IMF COFER unavailable, using manual value: {e}")
@@ -712,7 +792,7 @@ def build_us(manual: dict, force: bool) -> dict:
         cbreserves_freshness = check_manual_freshness(
             "reserveCurrency.cbReserves.asOf (manual COFER fallback)",
             rc["cbReserves"]["asOf"], S.CBRESERVES_MANUAL_FRESH_DAYS)
-        cb_reserves_row = manual_row("World CB reserves in USD", rc["cbReserves"])
+        cb_reserves_row = manual_row("World CB reserves in USD", rc["cbReserves"], key="world_cb_reserves_usd")
         if cbreserves_freshness["stale"]:
             cb_reserves_row["note"] = (
                 f"⚠ this manual COFER figure is {cbreserves_freshness['age_days']}d old itself, "
@@ -727,9 +807,9 @@ def build_us(manual: dict, force: bool) -> dict:
         "eyebrow": "Reserve-currency status", "tag": "manual", "accent": "#5B8DD6",
         "note": rc["note"],
         "rows": [
-            manual_row("World trade in USD", rc["trade"]),
-            manual_row("World debt in USD", rc["debt"]),
-            manual_row("Global equity market cap", rc["equity"]),
+            manual_row("World trade in USD", rc["trade"], key="world_trade_usd"),
+            manual_row("World debt in USD", rc["debt"], key="world_debt_usd"),
+            manual_row("Global equity market cap", rc["equity"], key="global_equity_usd"),
             cb_reserves_row,
         ],
     }
@@ -804,12 +884,15 @@ def build_us(manual: dict, force: bool) -> dict:
     return country
 
 
-def _vital(metric, tone, read, src, unit, tag="live"):
-    return {
+def _vital(metric, tone, read, src, unit, tag="live", terms=None):
+    v = {
         "value": num(metric["latest"]), "display": pct_display(metric["latest"]),
         "unit": unit, "tone": tone, "read": read, "tag": tag,
         "src": src, "asOf": metric.get("asOf"), "history": metric.get("history", []),
     }
+    if terms:
+        v["terms"] = terms
+    return v
 
 
 def _validate(country: dict):

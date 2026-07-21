@@ -7,3 +7,22 @@ body,
   min-height: 100%;
   background: #0e1418;
 }
+
+/* Equation-button disclosure panel (TASK-equation-button.md §3) — a plain
+ * fade/slide-in, skipped entirely under prefers-reduced-motion so the panel
+ * just appears instead of animating. */
+@media (prefers-reduced-motion: no-preference) {
+  .eq-panel {
+    animation: eqFadeIn 140ms ease-out;
+  }
+}
+@keyframes eqFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
