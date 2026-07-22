@@ -6,19 +6,18 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-21d-verification.md` (run output) and
-> `docs/review/2026-07-21d-values.md` (headline values), base commit
-> `2a0a072` — the CBO-projections pass (TASKprojections.md): three live
-> rows in the Government debt panel now come from CBO's own published
-> 10-year baseline (fetched from CBO's official GitHub data mirror,
-> `US-CBO/cbo-data` — a better source than the task's assumed
-> xlsx-scraping approach, verified against three independently-known
-> facts before trusting it). "Debt, 10-yr projection" replaces the
-> hand-carried, undated 122% with a live figure (120%, Feb-2026 vintage);
-> "Debt vs revenue"'s chart gains a projected tail; a new "Interest rate
-> to keep debt flat (Dalio eq. #3)" row computes his equation #3 entirely
-> from CBO's baseline and compares it against the actual average
-> effective rate (Treasury, live) — see §21.
+> `docs/review/2026-07-22c-verification.md` (run output) and
+> `docs/review/2026-07-22c-values.md` (headline values), base commit
+> `46c168a` — a same-day follow-up on §23's bottleneck finding: per the
+> user's explicit direction, added "Gold holdings, at current price" as a
+> new row (key `gold_value_current`) — live gold oz × live gold price
+> only, no GDP or `TRESEGUSM052N` denominator, so it updates every time
+> the gold price does instead of waiting on those series' own release
+> cadence. Confirmed GDP itself (not just `TRESEGUSM052N`) is the actual
+> binding constraint on the existing headline row's 2026-Q1 lag. Confirmed
+> live in production: the new row ships `asOf: "2026-06"` right next to
+> the existing row's `asOf: "2026-Q1"` — the vintage gap is now visible on
+> the page itself. See §24.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -29,8 +28,11 @@ prior sessions and no access to this repo's chat history.
 > `docs/review/2026-07-20a-*.md`, `docs/review/2026-07-20b-*.md`,
 > `docs/review/2026-07-20c-*.md`, `docs/review/2026-07-20d-*.md`,
 > `docs/review/2026-07-21a-*.md`, `docs/review/2026-07-21b-*.md`,
-> `docs/review/2026-07-21c-*.md` (superseded, left in place). When you add
-> a new round, update this line to point at it.
+> `docs/review/2026-07-21c-*.md`, `docs/review/2026-07-21d-*.md`,
+> `docs/review/2026-07-22a-*.md`, `docs/review/2026-07-22b-*.md`
+> (superseded, left in place). When you add
+> a new round, update this line
+> to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -852,7 +854,7 @@ gap had gone unnoticed because it was never added to this table.
 | Debt, 10-yr projection / revenue | ~700% (his stated forward projection) | **679.3%** at his own vintage (June 2024, FY2034: $50,664.2B ÷ $7,458.7B) | **derived**, from CBO's own baseline dollar levels (debt held by public ÷ total revenue) at the June-2024 vintage | **Real check, not exact — see §21.** −21pt off his stated ~700%, the more interesting of the two 10-yr targets since he *derives* this ratio rather than transcribing it (TASKprojections.md §5). Close enough to support June 2024 as his source vintage (same conclusion as the row above), not close enough to claim exact reproduction. Was "not yet checkable" prior to §21 (no CBO integration existed) |
 | Held by CB / domestic / abroad | 13% / 57% / 29% | 13% / 57% / 29% | **manual**, carried from `data/manual.json` (TIC) | Trivial — same figures, not independently derived |
 | Debt service / revenue | 22% (Ch.17 table); **~20% (Ch.3 prose, "the US is also borrowing ~20% of its income each year to cover interest expenses")** | 19.6% (net-to-public / **total** receipts, net of refunds) | live, `scripts/treasury.py` | **Matches the Ch.3 figure** (−0.4pt) — **does not match Ch.17's 22%** (−2.4pt). The book gives two figures for this ratio, ~2pt apart, in the same March-2025 vintage; exact reproduction of both is impossible. This pipeline reproduces the one computed on the standard (net-to-public / total, net-of-refunds) definition — see §14.1 for the recomputed matrix confirming no realised basis reproduces 22% |
-| FX reserves / GDP | 3% | **4.1%** (excl.-gold FX, live + gold at market, live oz × manual price) | **manual_price** as of 2026-07-20 | **Retracted, then re-fixed — see §18.** §17's first fix replaced the stale-but-live 3.7% with a fully-manual 3.0% that happened to equal Dalio's own figure by construction (`data/manual.json` was hand-set to match his book value) — a tautological "match," not corroboration, flagged by the user and corrected. §18 replaces that with a **manual PRICE INPUT** (~$4,000/oz, hand-entered and dated, applied to the still-live ounce count) instead of a manual OUTPUT — the ounce count, FX-excl-gold, and GDP are all still live; only the price is hand-entered. Confirmed live in production at **4.1% of GDP**, further from Dalio's 3% than even the old stale-priced 3.7% was — expected, since gold has risen well past his March-2025 price; the widening is evidence the fix is working, not a new problem |
+| FX reserves / GDP | 3% | **5.1%** (excl.-gold FX, live + gold at market, live oz × live price) | **live** (2026-07-22, §22/§23 — no manual price input) | **Fully automated — see §22 (source) and §23 (a real bottleneck found the same day).** §18's manual PRICE INPUT is retired; the gold price now comes from LBMA's daily fix (primary) or the World Bank Pink Sheet (fallback), both live. **But the headline value is bottlenecked to `TRESEGUSM052N`/GDP's own latest common quarter (2026-Q1, per `asOf`) regardless of which gold-price leg is active** — §23 found the fresher LBMA price does NOT make this row more current; it changed 4.9%→5.1% only because LBMA's and the World Bank's respective *March-2026* values genuinely differ, not because June/July gold pricing entered the calculation. Further from Dalio's 3% than §18's manual-price figure — expected, gold having risen past his March-2025 vintage; the widening tracks real gold-price differences, not a bug |
 | Total debt (Dalio's "other debt") / GDP | 340% | 362.6% (TCMDO, all sectors incl. financial) | live, `FRED: TCMDO` | **Does not match** — +22.6pt gap. Two alternative readings tried and **both eliminated**: nonfinancial-sectors-only (TCMDODNS, 256.7%, −83pt) and non-government debt (TCMDO minus government's own ~99%, 263.9%, −76pt) — both further from 340% than TCMDO itself. See §14.4 |
 | Current account, 3-yr avg / GDP | −4% | −3.7% | live, `IEABC` (FRED) | Matches closely |
 | World trade in USD | 52.6% | 52.6% | **manual**, carried from `data/manual.json` | Trivial — same figure |
@@ -3030,6 +3032,368 @@ pure SVG, reusing the existing polyline/polygon primitives.
 | Chart.jsx's projected-segment rendering doesn't break existing (non-projected) charts | **VERIFIED** — full existing mock-test suite (all prior rounds' assertions) still passes unchanged |
 | No horizontal overflow introduced at 390px width by the three new rows or their equation buttons | **VERIFIED** — scripted Playwright pass, zero overflow across all checked elements |
 | The Treasury maturity-profile endpoint is confirmed and working | **NOT VERIFIED — honest open item.** Best-effort probe added (`maturity_profile_probe()`), tries three candidates; this project's dev sandbox cannot reach `api.fiscaldata.treasury.gov` to test which (if any) resolves. Not used to build any shipped row — see `--verify`'s live output for the actual result |
+
+---
+
+## 22. Gold price, automated for real: World Bank Pink Sheet replaces the manual price input (2026-07-22, thirteenth pass)
+
+**What this round covers:** `TASKgoldautomation.md` — the hand-entered gold
+price (`data/manual.json`'s `goldPriceManualFallback`, §18) was the only
+manual input on a monthly cadence, and the task's framing was blunt: "a
+source that updates itself... it should stop firing." Every candidate in
+the task's own §§1-5 was retried or probed and the exact result recorded
+below, not just asserted from the prior round's prose.
+
+### 22.1 §§1-2 retried: Nasdaq, Stooq still blocked; LBMA's result was a surprise
+
+Retried with a full browser header set (User-Agent, Accept,
+Accept-Language) per the task's hypothesis that the earlier failures were
+default-`requests` fingerprinting, not IP-based. **Confirmed live in CI**
+(`gold.py verify()`'s diagnostic probes, run `29890754964`):
+
+| Source | Result |
+|---|---|
+| Nasdaq Data Link (`LBMA/GOLD.csv`) | HTTP 403, Incapsula bot-challenge HTML — identical to the unheadered attempt. Headers change nothing |
+| Stooq (`xauusd` daily CSV) | HTTP 200 but body is a client-side JS proof-of-work challenge page, not CSV — identical to before |
+| LBMA's own feed (`prices.lbma.org.uk/json/gold_pm.json`) | **This one actually returned data** — HTTP 200, real JSON, history back to 1968 — see §22.2 for why it's still not used |
+
+### 22.2 LBMA's feed resolves after all — but its actual freshness is an open question, not re-verified as "blocked"
+
+The retry above surprised the prior round's docstring, which said LBMA's
+feed had moved fully behind a licensed portal. It hasn't, at least not
+completely — `gold_pm.json` returns HTTP 200 with real JSON, not a
+challenge page. **What this round did NOT establish: whether that feed is
+current.** `verify()`'s diagnostic probe only logs a 200-character body
+preview, and the array is ordered chronologically ascending from 1968 —
+so the preview shows only the earliest records, not the latest, and no
+claim about the feed's actual freshness can honestly be made from it.
+Given a working, confirmed-current source was already in hand (§22.3/
+§22.4), this wasn't chased further this round. **Left as an explicit open
+item, not asserted either way** — a future round wanting to revisit LBMA
+should check the tail of the response, not just that it returns 200.
+
+### 22.3 §3: World Bank Pink Sheet, direct download — the winning primary, with a real bug found and fixed live
+
+Implemented `_worldbank_pink_sheet_gold_monthly()` in `scripts/gold.py`:
+downloads the actual "CMO Historical Data" monthly spreadsheet directly
+from `thedocs.worldbank.org` (not the annual *forecast* table DBnomics
+exposed — see §16) and parses it defensively (searches for a "gold"
+column header and `YYYY`M`MM`-labelled date rows, rather than a hardcoded
+cell range, since the layout couldn't be confirmed from this project's
+dev sandbox — `thedocs.worldbank.org` is proxy-blocked here, same as
+`cbo.gov`).
+
+**A live CI run caught a real design flaw, not just a URL guess:** the
+first `workflow_dispatch` (run `29890496801`) showed the direct download
+parsing *successfully* — 792 months, no exception — but its **latest
+observation was frozen at 2025-12, 233 days old**. The World Bank had
+quietly rotated its live data to a new document hash
+(`.../74e8be41...-0050012026/...`, in place since 2026-02-03, confirmed
+via web research) while the *old* hash
+(`.../18675f1d...-0050012025/...`) kept resolving 200 and parsing cleanly
+forever, just with data that stopped updating. A successful parse was
+**not proof of freshness** for this source — the opposite of every other
+"if it 404s, that's the signal" source this project has integrated so
+far. Because `gold_price_usd_per_oz_labeled()` originally only fell
+through to the mirror on an *exception*, this stale-but-successful direct
+leg was preferred and shipped — caught only because `fetch.py`'s
+independent freshness guard on the *combined* price correctly flagged it
+233 days old and forced the fallback to `manual_price` instead of
+`live`. The system degraded safely, but for the wrong reason (staleness
+caught two layers downstream, not at the source-selection point) and it
+skipped a perfectly good, current source (the mirror, §22.4) that was
+sitting right there.
+
+**Fixed** (`af3a643` → `ce6c4d6`): `gold_price_usd_per_oz_labeled()` now
+checks the direct leg's own latest observation against the Monthly
+freshness threshold *before* preferring it over the mirror — a stale
+"successful" parse is now treated the same as an exception, so a future
+hash rotation degrades automatically instead of silently shipping old
+data or needing another manual URL fix. Also updated the hardcoded URL to
+the currently-live hash. **Re-run in CI confirmed the fix** (run
+`29890754964`): direct download now parses 798 months, latest 2026-06,
+51 days old, "ok" — selected as the active leg, matching the mirror
+exactly.
+
+### 22.4 §4: GitHub mirror (`datasets/gold-prices`) — the confirmed, live-tested fallback
+
+`datasets/gold-prices` mirrors this *same* World Bank Commodity Markets
+data, auto-updated daily via its own GitHub Actions workflow. Confirmed
+live directly from this project's own dev sandbox (unlike almost every
+other external source this project touches) — `raw.githubusercontent.com`
+is reachable even through the restrictive proxy here, the same host
+`cbo.py` already relies on. This is what actually shipped in the *first*
+CI run (before the §22.3 fix), and correctly serves as the fallback leg
+whenever the direct download is missing, broken, or stale.
+
+Other §4 candidates, probed and not used:
+- **SNB data portal** (`data.snb.ch`) publishes Switzerland's own gold
+  bullion *holdings* — the same kind of series Treasury's `gold_reserve`
+  already provides for the US — not a market price benchmark. Scope
+  mismatch, not a blocked source.
+- **UNCTADstat** — its public site 403s to an out-of-sandbox fetch
+  attempt and its documented access pattern is a session-based SDMX
+  portal, not a lightweight bulk endpoint. Not pursued once §3/§4's Pink
+  Sheet path worked.
+- **FX-style "XAU as a currency" APIs** (exchangerate.host, Metals-API,
+  GoldAPI.io, Commodities-API, UniRateAPI) — all require a key in their
+  free tier as of 2026, despite frequently being described as keyless.
+  None actually is.
+
+### 22.5 §5 (keyed source) — not needed
+
+§3/§4 produced a working keyless institutional source (twice over, with a
+live-tested fallback). No new API key requested.
+
+### 22.6 §6/§3 units and sanity check
+
+Confirmed **USD per troy ounce** directly from the World Bank spreadsheet
+schema (column header text, not inferred) and from the GitHub mirror's
+own documented schema (`datapackage.json`: "Gold price in USD per troy
+ounce"). Live value: $4,228/oz (2026-06). `reserves_incl_gold_pct_gdp`'s
+existing 0.5-15% sanity band (unchanged) passed; the actual shipped value
+is 4.9% of GDP, somewhat above the task's own "~$4,000/oz, ~4.1-4.3%"
+rough estimate — directionally consistent with gold pricing above that
+$4,000 baseline, though the excl.-gold reserves and GDP denominators have
+also moved since the task was written, so this is a plausibility check,
+not a reproduction of an exact figure.
+
+### 22.7 §7: UI staleness indicator
+
+`MetricRow.jsx`'s `note` field already rendered in the UI (confirmed by
+reading the component), but in the same muted gray as any ordinary
+explanatory caption — nothing distinguished a "the live source is dead"
+warning from "net vs. gross interest" framing text. Every fallback-
+staleness note this codebase writes (`fetch.py`'s gold/COFER/manual-
+freshness notes) already starts with "⚠" by convention; `MetricRow.jsx`
+now renders a note starting with "⚠" in the theme's warning color
+(`c.caution`, amber) and bold, reusing that existing convention as the
+signal rather than adding a second, parallel "is this stale" field that
+could drift out of sync with it. Verified visually: patched a local
+`data.json` to simulate the `manual_price` fallback, screenshotted via
+Playwright, confirmed the note renders at `rgb(224, 169, 59)` (=
+`#E0A93B` = `c.caution`) with `font-weight: 600`, clearly distinct from
+the muted gray source line beneath it.
+
+### 22.8 Net effect
+
+`gold_price_usd_per_oz()`'s DBnomics/IMF PCPS implementation (permanently
+frozen since 2025-06, §16/§17) is removed outright, not just unused.
+`manual_price` should no longer fire for gold under normal operation —
+confirmed in production (run `29890754964`): the "Reserves incl. gold
+(market)" row shipped `tag: "live"`, `src: "... World Bank (Pink Sheet,
+direct), both 2026-06 ..."`, with no provenance-mismatch warning.
+`goldPriceManualFallback` stays wired in `fetch.py` as the last-resort
+leg if both World Bank paths ever go down together — degrade, don't
+break, same convention as every other fallback chain in this project.
+
+### 22.9 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| Nasdaq/Stooq are blocked regardless of request headers | **VERIFIED** — retried with full browser headers in live CI, identical failure mode to the unheadered attempt |
+| LBMA's public JSON feed still resolves (not fully behind the licensed portal) | **VERIFIED** — live CI probe returned real historical JSON, HTTP 200, not a challenge page |
+| That feed's actual freshness (current vs. stale) | **NOT VERIFIED — honest open item.** The probe's 200-char preview shows only the chronologically-earliest records (array starts at 1968); no claim about its latest observation can honestly be made from this round's evidence |
+| The World Bank direct-download URL's hash rotates and the old hash keeps resolving with frozen data | **VERIFIED** — caught live: first CI run parsed 792 months successfully but latest was frozen at 2025-12; confirmed via web research that the World Bank had moved to a new hash in Feb 2026; second CI run with the fix + new URL confirmed current (2026-06) |
+| `datasets/gold-prices` (GitHub mirror) is live, current, and reachable even from this project's own dev sandbox | **VERIFIED** — direct fetch from this sandbox during development, and again in both CI runs |
+| The freshness-aware direct-vs-mirror selector correctly prefers a stale "successful" direct parse's alternative | **VERIFIED** — unit-level test with a stubbed stale direct response asserts the mirror is chosen instead; a stubbed *fresh* direct response asserts direct is still preferred |
+| Gold price units are USD/troy oz, not per-gram or per-kilo | **VERIFIED** — read directly from both sources' own schema/column text, not inferred from magnitude |
+| `manual_price` no longer fires for gold under normal operation | **VERIFIED** — live production run, `reserves_to_gdp` shipped `tag: "live"`, no provenance mismatch |
+| The UI staleness note is visually distinct, not just present | **VERIFIED** — Playwright screenshot + computed-style check (`rgb(224, 169, 59)`, `font-weight: 600`) against a simulated fallback |
+
+---
+
+## 23. Gold price, round two: a monthly average isn't spot — and a bottleneck neither source fixes (2026-07-22, same day, fourteenth pass)
+
+**What prompted this round:** a manual check on §22's shipped figure (4.9%
+of GDP, off a $4,228/oz "June 2026" Pink Sheet price) found actual spot
+gold running $4,070-4,083/oz in the days the check was made — a real
+~3.5% gap. Two questions, both answered by evidence rather than assumed.
+
+### 23.1 What price and date did §22 actually ship?
+
+Confirmed by reading `public/data.json` at commit `8a92e75` directly:
+**$4,228.00/oz, dated 2026-06**, `src: "... World Bank (Pink Sheet,
+direct), both 2026-06 ..."`.
+
+**The "~2-month-stale, corresponds to May" framing doesn't hold up exactly
+as stated — but the underlying complaint is real.** Cross-referencing
+actual daily gold prices for 2026 (web research, not assumed): June opened
+near $4,460 (June 1), fell to $4,152 by June 10, and was down to $4,005-
+4,015 by June 25-30. A **$4,228 whole-month average is consistent with
+that real trajectory** — it's a genuine June average, not a mislabeled May
+figure. What IS true, and is the actual problem: an average over a
+declining month represents gold's price as of roughly the *middle* of
+that window, not "today" — and by the time this was checked (July 21,
+spot ~$4,070-4,083, itself a partial rebound off June's ~$4,005 low),
+the effective gap between the shipped average and current spot really was
+material (~3.5-4%), just not for the "2 months" reason originally guessed.
+
+### 23.2 Is a lagged monthly average the right source for this row? No — switched to LBMA
+
+Added `_lbma_gold_monthly_and_latest()` (`scripts/gold.py`) as the new
+primary leg, ahead of the World Bank Pink Sheet: LBMA's own daily PM-fix
+feed, the actual published gold benchmark, not a redistributor. Re-probed
+per the user's request rather than trusting §22's "still blocked" note:
+
+```
+[lbma] https://prices.lbma.org.uk/json/gold_pm.json
+  parsed 700 months; latest observation: 2026-07-21 = 4052.3 USD/oz
+  freshness: 1d old, 20d threshold, ok
+  active leg this run: LBMA (PM fix, direct)
+```
+
+§22's "still fully behind a licensed portal" claim was wrong — the public
+feed resolves fine; the earlier diagnostic probe just never looked past
+its own 200-character preview (which only showed the chronologically-
+*earliest* 1968 records), so its actual freshness was genuinely unknown,
+not confirmed-stale, at the time. This round fixed the probe function too
+(`_probe()` now takes an optional `find` substring checked against the
+*full* body, not just the preview — used below for the FX-API check).
+
+**Also re-probed the XAU-as-currency FX APIs**, specifically the
+supposedly-keyless tier of exchangerate-api.com
+(`open.er-api.com/v6/latest/USD`, the "open access, no key required"
+endpoint their own docs distinguish from the paid "Free" tier):
+```
+[open.er-api.com] -> HTTP 200, real JSON
+[open.er-api.com] '"XAU"' present anywhere in full body: False
+```
+Confirms §22's finding rather than reversing it: XAU is NOT in the
+keyless tier, despite third-party summaries claiming otherwise. Ruled out
+with evidence, not assumption.
+
+### 23.3 The reserves number moved to 5.1%, not toward 4.1-4.3% — because of a bottleneck the gold price was never going to fix
+
+This is the important finding of this round, and it means the fix above,
+while correct and worth keeping, did not accomplish what it looked like it
+would. Reading the shipped `history[]` array directly:
+
+| | `asOf` | Q1-2026 (`y: 2026.0`) history point |
+|---|---|---|
+| Before (WB Pink Sheet, commit `8a92e75`) | `2026-Q1` | `4.888` |
+| After (LBMA, commit `89bffc1`) | `2026-Q1` | `5.054` (→ displayed `5.1%`) |
+
+**`asOf` is `2026-Q1` in *both* runs.** `reserves_incl_gold_pct_gdp()`
+(`series.py`) takes the most recent quarter where reserves-excl-gold
+(`TRESEGUSM052N`), the combined gold value, and GDP *all* have data —
+and `TRESEGUSM052N` (IMF/BOP-sourced, its own longer lag documented since
+§17) currently tops out at 2026-03. **Whichever gold-price leg is active,
+the headline ratio only ever uses that leg's price for the LAST month of
+whatever quarter TRESEGUSM052N and GDP can both reach — March 2026, right
+now — never June or July**, regardless of how fresh the fetched price
+itself is. The `src` string's "price 2026-07" is the leg's own latest
+*fetched* observation, shown for transparency about the source, but it is
+not necessarily the observation actually used in the headline `value`.
+
+The 4.888 → 5.054 shift is therefore explained by a **real, legitimate
+difference between the World Bank's March-2026 monthly average and
+LBMA's March-2026 last-trading-day price** — both genuine data points,
+just measuring March differently (whole-month average vs. one day) — not
+by either source becoming more "spot-like" in the headline number. LBMA
+is still the better choice going forward (correct daily cadence, the
+actual benchmark, no averaging-window ambiguity), but **its benefit won't
+show up in this row's headline until `TRESEGUSM052N`/GDP themselves
+advance to a quarter where June or July gold pricing is the relevant
+month** — which could be months away, tracking those series' own release
+cadence, not gold's.
+
+**Not fixed this round, flagged for the user rather than decided
+unilaterally:** whether this row's design should change — e.g., a second,
+explicitly-labelled "gold value at current price" figure alongside the
+officially-lagged reserves-excl-gold ratio, decoupling gold's freshness
+from `TRESEGUSM052N`'s — is a real product decision (it changes what the
+headline number *means*, not just which source feeds it) and wasn't made
+here.
+
+### 23.4 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| §22's shipped $4,228/oz "June 2026" figure was a mislabeled ~May value | **NOT CONFIRMED — the more precise finding replaces it.** Cross-referenced daily 2026 gold prices; $4,228 is consistent with a genuine June whole-month average given June's real decline from ~$4,460 to ~$4,005-4,015 |
+| LBMA's public feed is reachable AND fresh | **VERIFIED** — live CI: latest observation 2026-07-21, 1 day old, well under the 20d threshold now applied to it |
+| XAU is absent from exchangerate-api.com's truly-keyless tier | **VERIFIED** — live CI probe of the full response body, not a truncated preview |
+| Switching to LBMA moves the headline reserves-incl-gold value toward today's spot | **DISCONFIRMED.** The headline is bottlenecked to `TRESEGUSM052N`/GDP's own latest common quarter (2026-Q1) regardless of gold price source; the observed 4.9%→5.1% shift reflects two sources' differing March-2026 values, not a spot-price effect |
+
+---
+
+## 24. A decoupled "gold at current price" row, so §23's fix actually shows up somewhere (2026-07-22, same day, fifteenth pass)
+
+**What this round covers:** §23 found LBMA's fresher gold price doesn't
+reach the "Reserves incl. gold (market)" headline at all — that row is
+bottlenecked to `TRESEGUSM052N`/GDP's own latest common quarter
+(2026-Q1) regardless of price source, and checking directly confirmed
+GDP itself is the binding constraint (FRED's `GDP` series is dated
+`2026-01-01`, 202 days old — Q2 2026 GDP hasn't been published yet, not
+specific to `TRESEGUSM052N`). Given the user's explicit direction — "have
+the figure with the existing and live gold price as a separate number" —
+this round adds that second figure rather than changing the existing
+row's (correct, if slow) definition.
+
+### 24.1 Design: a dollar figure, not another ratio
+
+New row, "Gold holdings, at current price" (`scripts/fetch.py`, key
+`gold_value_current`): live gold troy-oz holdings (Treasury) × the live
+gold price (LBMA, or the World Bank Pink Sheet fallback tier — same
+`gold_value_monthly` computation the headline row already builds),
+taking its own latest overlapping month rather than being intersected
+with `TRESEGUSM052N`/GDP at all. **Deliberately a plain dollar figure
+($B), not a %-of-GDP ratio** — since GDP itself is the Q1-2026
+bottleneck (confirmed above, not assumed), dividing this row's fresh
+numerator by GDP would recreate the exact mixed-vintage problem §23
+diagnosed, just with an even bigger vintage gap on the denominator side.
+Tag mirrors `reserves_incl_gold_tag` (`live` / `manual_price`) since both
+rows are built from the identical gold-value computation; the row is
+omitted entirely (not given a manual-dollar fallback) if the live ounce
+count itself is unavailable, the same precedent
+`interest_rate_to_keep_debt_flat` (TASKprojections.md) set for its own
+live-only equation-#3 row.
+
+### 24.2 Verified in production
+
+Live `workflow_dispatch` run
+(`https://github.com/willywonka616/macro-indicator-dashboard/actions/runs/29894871465`,
+job `88842789540`, committed as `46c168a`) — read directly from the
+resulting `public/data.json`:
+```json
+{
+  "label": "Gold holdings, at current price",
+  "value": 1052.8, "display": "$1,052.8B",
+  "tag": "live", "key": "gold_value_current",
+  "src": "derived · Treasury (gold oz 2026-06) + LBMA (PM fix, direct) (price 2026-07)",
+  "asOf": "2026-06"
+}
+```
+Note `asOf: "2026-06"` here vs. `"2026-Q1"` on "Reserves incl. gold
+(market)" directly above it in the same panel — the two rows' vintages
+are now visibly different on the page itself, not just in STATUS.md
+prose. `provenance.fallbacksFired` contains only the pre-existing,
+unrelated COFER entry — no gold-related fallback fired.
+
+### 24.3 Local + browser verification
+
+Extended the scratchpad mock-test suite: golden-path run asserts the new
+row's tag/display/exact value (`round(oz × price / 1e9, 1)`); the
+manual-price-input scenario (§18's fallback path) asserts the row
+survives tagged `manual_price`; the full-manual-fallback scenario (live
+ounce count itself unavailable) asserts the row is **absent** from the
+panel entirely. All three pass.
+
+Browser (Playwright): patched a local `data.json` with the row, confirmed
+it renders directly below "Reserves incl. gold (market)" with its `$` 
+display, `ƒx` equation button (new `equations.js` entry — definition,
+"what fills each term" with a LIVE DATA tag, and a caveat explaining why
+it's a dollar figure and not a ratio), zero console errors. Patched file
+discarded before committing.
+
+### 24.4 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| GDP itself (not just `TRESEGUSM052N`) is the binding constraint on the 2026-Q1 bottleneck | **VERIFIED** — FRED's `GDP` series confirmed dated `2026-01-01` (202d old) in the CI verify log, independent of `TRESEGUSM052N` |
+| The new row is genuinely decoupled and shows a materially fresher `asOf` than the headline row | **VERIFIED** — live production `public/data.json`: `2026-06` vs. `2026-Q1` on the same panel |
+| The new row correctly omits itself (not a stale manual fallback) when the live ounce count fails | **VERIFIED** — local mock-test scenario 3 asserts absence |
+| No regression to the existing "Reserves incl. gold (market)" row or its equation button | **VERIFIED** — full mock-test suite (every prior round's assertions) still passes; live production value/tag for that row unchanged by this addition |
 
 ---
 
