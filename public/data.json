@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-22T04:15:43Z",
+  "generatedAt": "2026-07-22T04:21:42Z",
   "meta": {
     "seed": false,
     "schema": 1
@@ -2201,18 +2201,18 @@
         {
           "key": "reserves_to_gdp",
           "label": "Debt & service vs savings",
-          "value": 4.1,
-          "display": "4.1%",
+          "value": 4.9,
+          "display": "4.9%",
           "unit": "reserves / GDP",
           "tone": "risk",
           "read": "Reserves including gold at market value are still thin relative to the debt — and most of the buffer is illiquid gold, not spendable FX.",
-          "tag": "manual_price",
-          "src": "derived · Treasury (gold oz, live, 2026-06) + manual price ($4,000/oz as of 2026-07-20) + FRED",
+          "tag": "live",
+          "src": "derived · Treasury (gold) + World Bank (Pink Sheet, direct), both 2026-06 + FRED",
           "asOf": "2026-Q1",
           "history": [
             {
               "y": 2012.0,
-              "v": 3.586
+              "v": 3.587
             },
             {
               "y": 2012.25,
@@ -2224,27 +2224,27 @@
             },
             {
               "y": 2012.75,
-              "v": 3.53
+              "v": 3.531
             },
             {
               "y": 2013.0,
-              "v": 3.384
+              "v": 3.385
             },
             {
               "y": 2013.25,
-              "v": 3.137
+              "v": 3.138
             },
             {
               "y": 2013.5,
-              "v": 2.886
+              "v": 2.887
             },
             {
               "y": 2013.75,
-              "v": 2.72
+              "v": 2.721
             },
             {
               "y": 2014.0,
-              "v": 2.756
+              "v": 2.757
             },
             {
               "y": 2014.25,
@@ -2252,7 +2252,7 @@
             },
             {
               "y": 2014.5,
-              "v": 2.524
+              "v": 2.525
             },
             {
               "y": 2014.75,
@@ -2260,11 +2260,11 @@
             },
             {
               "y": 2015.0,
-              "v": 2.45
+              "v": 2.451
             },
             {
               "y": 2015.25,
-              "v": 2.288
+              "v": 2.289
             },
             {
               "y": 2015.5,
@@ -2316,7 +2316,7 @@
             },
             {
               "y": 2018.5,
-              "v": 2.049
+              "v": 2.048
             },
             {
               "y": 2018.75,
@@ -2324,7 +2324,7 @@
             },
             {
               "y": 2019.0,
-              "v": 2.146
+              "v": 2.147
             },
             {
               "y": 2019.25,
@@ -2332,7 +2332,7 @@
             },
             {
               "y": 2019.5,
-              "v": 2.348
+              "v": 2.347
             },
             {
               "y": 2019.75,
@@ -2352,7 +2352,7 @@
             },
             {
               "y": 2020.75,
-              "v": 2.799
+              "v": 2.798
             },
             {
               "y": 2021.0,
@@ -2360,7 +2360,7 @@
             },
             {
               "y": 2021.25,
-              "v": 2.599
+              "v": 2.6
             },
             {
               "y": 2021.5,
@@ -2400,7 +2400,7 @@
             },
             {
               "y": 2023.75,
-              "v": 2.688
+              "v": 2.687
             },
             {
               "y": 2024.0,
@@ -2408,7 +2408,7 @@
             },
             {
               "y": 2024.25,
-              "v": 2.883
+              "v": 2.882
             },
             {
               "y": 2024.5,
@@ -2420,11 +2420,11 @@
             },
             {
               "y": 2025.0,
-              "v": 3.378
+              "v": 3.377
             },
             {
               "y": 2025.25,
-              "v": 3.678
+              "v": 3.679
             },
             {
               "y": 2025.5,
@@ -2436,7 +2436,7 @@
             },
             {
               "y": 2026.0,
-              "v": 4.051
+              "v": 4.888
             }
           ],
           "terms": [
@@ -2448,9 +2448,9 @@
             },
             {
               "label": "Gold price ($/oz)",
-              "src": "manual (data/manual.json goldPriceManualFallback, $4,000/oz)",
+              "src": "World Bank (Pink Sheet, direct)",
               "asOf": "2026-06",
-              "tag": "manual_price"
+              "tag": "live"
             },
             {
               "label": "FX reserves excl. gold",
@@ -5116,18 +5116,18 @@
           "rows": [
             {
               "label": "Reserves incl. gold (market)",
-              "value": 4.1,
-              "display": "4.1%",
+              "value": 4.9,
+              "display": "4.9%",
               "unit": "of GDP",
               "tone": "risk",
-              "tag": "manual_price",
+              "tag": "live",
               "key": "reserves_to_gdp",
-              "src": "derived · Treasury (gold oz, live, 2026-06) + manual price ($4,000/oz as of 2026-07-20) + FRED",
+              "src": "derived · Treasury (gold) + World Bank (Pink Sheet, direct), both 2026-06 + FRED",
               "asOf": "2026-Q1",
               "history": [
                 {
                   "y": 2012.0,
-                  "v": 3.586
+                  "v": 3.587
                 },
                 {
                   "y": 2012.25,
@@ -5139,27 +5139,27 @@
                 },
                 {
                   "y": 2012.75,
-                  "v": 3.53
+                  "v": 3.531
                 },
                 {
                   "y": 2013.0,
-                  "v": 3.384
+                  "v": 3.385
                 },
                 {
                   "y": 2013.25,
-                  "v": 3.137
+                  "v": 3.138
                 },
                 {
                   "y": 2013.5,
-                  "v": 2.886
+                  "v": 2.887
                 },
                 {
                   "y": 2013.75,
-                  "v": 2.72
+                  "v": 2.721
                 },
                 {
                   "y": 2014.0,
-                  "v": 2.756
+                  "v": 2.757
                 },
                 {
                   "y": 2014.25,
@@ -5167,7 +5167,7 @@
                 },
                 {
                   "y": 2014.5,
-                  "v": 2.524
+                  "v": 2.525
                 },
                 {
                   "y": 2014.75,
@@ -5175,11 +5175,11 @@
                 },
                 {
                   "y": 2015.0,
-                  "v": 2.45
+                  "v": 2.451
                 },
                 {
                   "y": 2015.25,
-                  "v": 2.288
+                  "v": 2.289
                 },
                 {
                   "y": 2015.5,
@@ -5231,7 +5231,7 @@
                 },
                 {
                   "y": 2018.5,
-                  "v": 2.049
+                  "v": 2.048
                 },
                 {
                   "y": 2018.75,
@@ -5239,7 +5239,7 @@
                 },
                 {
                   "y": 2019.0,
-                  "v": 2.146
+                  "v": 2.147
                 },
                 {
                   "y": 2019.25,
@@ -5247,7 +5247,7 @@
                 },
                 {
                   "y": 2019.5,
-                  "v": 2.348
+                  "v": 2.347
                 },
                 {
                   "y": 2019.75,
@@ -5267,7 +5267,7 @@
                 },
                 {
                   "y": 2020.75,
-                  "v": 2.799
+                  "v": 2.798
                 },
                 {
                   "y": 2021.0,
@@ -5275,7 +5275,7 @@
                 },
                 {
                   "y": 2021.25,
-                  "v": 2.599
+                  "v": 2.6
                 },
                 {
                   "y": 2021.5,
@@ -5315,7 +5315,7 @@
                 },
                 {
                   "y": 2023.75,
-                  "v": 2.688
+                  "v": 2.687
                 },
                 {
                   "y": 2024.0,
@@ -5323,7 +5323,7 @@
                 },
                 {
                   "y": 2024.25,
-                  "v": 2.883
+                  "v": 2.882
                 },
                 {
                   "y": 2024.5,
@@ -5335,11 +5335,11 @@
                 },
                 {
                   "y": 2025.0,
-                  "v": 3.378
+                  "v": 3.377
                 },
                 {
                   "y": 2025.25,
-                  "v": 3.678
+                  "v": 3.679
                 },
                 {
                   "y": 2025.5,
@@ -5351,10 +5351,9 @@
                 },
                 {
                   "y": 2026.0,
-                  "v": 4.051
+                  "v": 4.888
                 }
               ],
-              "note": "⚠ manual gold price input: $4,000/oz as of 2026-07-20 — the live price source is dead, but the ounce count is still live (2026-06)",
               "terms": [
                 {
                   "label": "Gold holdings (troy oz)",
@@ -5364,9 +5363,9 @@
                 },
                 {
                   "label": "Gold price ($/oz)",
-                  "src": "manual (data/manual.json goldPriceManualFallback, $4,000/oz)",
+                  "src": "World Bank (Pink Sheet, direct)",
                   "asOf": "2026-06",
-                  "tag": "manual_price"
+                  "tag": "live"
                 },
                 {
                   "label": "FX reserves excl. gold",
@@ -9418,14 +9417,8 @@
         "grossDebtServiceBasis": "GROSS interest (incl. intragovernmental Government Account Series) / TOTAL receipts, net of refunds — the explicit second debt-service row, same denominator as the net headline (see revenueDefinition).",
         "debtToRevenueBasis": "Debt held by the public ($, FYGFGDQ188S x GDP) / TOTAL receipts, net of refunds (TTM, $) — same denominator as both debt-service rows. Dalio's Ch.17 table reports only debt/GDP; his Ch.3 debt-to-revenue figure (~580%, ~700% in ten years) is a real anchor but not exactly reproduced by any tested denominator — see STATUS.md §12/§13. debt_to_gdp remains the headline.",
         "reservesBasis": "FRED reserves excl. gold + US gold holdings (Treasury, troy oz, live) x gold price, valued at MARKET not the $42.2222/oz statutory book rate. Price is live from the World Bank Commodity Markets (\"Pink Sheet\") — direct download, falling to a GitHub mirror of the same data if that's unreachable (TASKgoldautomation.md; replaced the previously frozen DBnomics/IMF PCPS feed, see STATUS.md §16/§21). If both World Bank legs are down, the price falls back to a hand-entered manual value (data/manual.json: goldPriceManualFallback) applied to the still-live ounce count — see STATUS.md §18 for why this replaced the prior all-manual-output fallback (which matched Dalio's Ch.17 figure by construction, not by independent computation).",
-        "reservesInclGoldTag": "manual_price",
+        "reservesInclGoldTag": "live",
         "fallbacksFired": [
-          {
-            "row": "Reserves incl. gold (market)",
-            "expectedTag": "live",
-            "actualTag": "manual_price",
-            "reason": "live gold price and/or holdings fetch failed or exceeded its freshness threshold"
-          },
           {
             "row": "World CB reserves in USD",
             "expectedTag": "live",
