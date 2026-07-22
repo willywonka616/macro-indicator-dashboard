@@ -485,22 +485,33 @@ def build_us(manual: dict, force: bool) -> dict:
         # to the outer except and use the full manual fallback.
         S.require_fresh("gold holdings (Treasury oz)", oz_asof, S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
 
-        # Gold price: try live first (World Bank Pink Sheet, direct download
-        # then GitHub-mirror fallback — see gold.py), freshness gated. The
-        # previous source (DBnomics-mirrored IMF PCPS) was permanently
+        # Gold price: try live first (LBMA's daily fix, then the World Bank
+        # Pink Sheet direct download, then its GitHub mirror — see gold.py's
+        # gold_price_usd_per_oz_labeled(), which freshness-gates each leg
+        # with a threshold matched to ITS OWN cadence before preferring it).
+        # The previous source (DBnomics-mirrored IMF PCPS) was permanently
         # frozen from 2025-06 (STATUS.md §14.3/§16); TASKgoldautomation.md
-        # replaced it. If the new source is ever dead too, fall back to a
-        # hand-entered manual PRICE applied to the still-live ounce count,
-        # rather than an all-manual OUTPUT. The ounce count has no reason to
-        # be stale just because the price source died elsewhere, and a
-        # manual price + live ounce count is a materially better estimate
-        # than a fully manual fallback — see STATUS.md §18.
+        # replaced it, then a follow-up round found even the World Bank leg
+        # (a monthly average) sits weeks behind spot for a metal this
+        # volatile, and added LBMA's daily fix ahead of it (STATUS.md §23).
+        # This outer check is a generic backstop, not the primary freshness
+        # enforcement (that now happens per-leg inside gold.py) — its
+        # generous 60d Monthly threshold is intentionally loose here; a
+        # LBMA-served price bucketed to (year, month) loses its exact day,
+        # so this check alone could be off by up to ~30 days and must not
+        # be tightened to LBMA's own cadence. If the new source is ever
+        # dead too, fall back to a hand-entered manual PRICE applied to the
+        # still-live ounce count, rather than an all-manual OUTPUT. The
+        # ounce count has no reason to be stale just because the price
+        # source died elsewhere, and a manual price + live ounce count is a
+        # materially better estimate than a fully manual fallback — see
+        # STATUS.md §18.
         gold_price_monthly = {}
         gold_price_src_label = None
         try:
             gold_price_monthly, gold_price_src_label = G.gold_price_usd_per_oz_labeled()
             price_asof = max(gold_price_monthly)
-            S.require_fresh("gold price (World Bank Pink Sheet)", price_asof, S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
+            S.require_fresh("gold price (live, see src for which leg)", price_asof, S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
             price_is_live = True
         except Exception as price_e:  # noqa: BLE001
             print(f"Gold price unavailable/stale, patching a manual price input across the gap: {price_e}")

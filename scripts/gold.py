@@ -146,6 +146,29 @@ removed, replaced with the World Bank's own "Pink Sheet" data, live:**
   `manual_price` should no longer fire for gold under normal operation;
   `goldPriceManualFallback` in data/manual.json stays wired in fetch.py as
   the last-resort leg if both World Bank paths ever go down together.
+
+**Follow-up (2026-07-22, same day): a monthly average is not spot, even
+when its date label passes a freshness check.** The round above shipped
+correctly, but a manual price check on the shipped figure found it
+implausible: reserves landed at 4.9% of GDP off a $4,228/oz "June 2026"
+Pink Sheet average, while actual spot in the days around when this was
+checked was running $4,070-4,083/oz (~3.5% lower) — a real, material gap,
+not a rounding artifact. Root cause is structural, not a bug in the
+freshness guard: the Pink Sheet's monthly figure is an AVERAGE across the
+whole month (confirmed by cross-referencing daily spot prices for June
+2026 — the month opened near $4,460, fell through the month to ~$4,005 by
+June 30, and a $4,228 whole-month average is consistent with that
+trajectory), so even a "fresh" (recently-dated) observation represents
+gold's price as of roughly the middle of the averaging window, not today —
+and gold moves enough in a few weeks for that gap to matter, unlike the
+other monthly/quarterly series in this pipeline. Added LBMA's own daily
+PM-fix feed (`_lbma_gold_monthly_and_latest()`) as the new primary leg,
+ahead of the World Bank Pink Sheet: it's the actual published gold
+benchmark (not a redistributor), updates on every London business day,
+and this module now keeps the LATEST DAY seen in each month (not an
+average) specifically so the current month's bucket is as close to spot
+as the feed allows. The World Bank Pink Sheet (direct, then GitHub
+mirror) is now the fallback tier, unchanged otherwise. See STATUS.md §23.
 """
 
 from __future__ import annotations
@@ -210,6 +233,24 @@ GOLD_MIRROR_RAW_URL = f"https://raw.githubusercontent.com/{GOLD_MIRROR_REPO}/mai
 
 # Row labels in the Pink Sheet's date column look like "1960M01".
 _YM_CELL_RE = re.compile(r"^\s*(\d{4})M(\d{2})\s*$")
+
+# LBMA's own public price feed — the actual published gold benchmark (not
+# a redistributor), daily, so its most recent entry is normally only a
+# business day or two old. Preferred over the World Bank Pink Sheet
+# (§22.3/§22.4) for THIS row specifically: a follow-up round
+# (2026-07-22b) found that a monthly AVERAGE — even one that passes a
+# freshness check on its date label — can sit weeks behind actual spot for
+# a metal this volatile (confirmed live: the shipped June 2026 Pink Sheet
+# average, $4,228/oz, was ~3.5% above the ~$4,070-4,083/oz spot range
+# observed in late July 2026, moving in the direction of gold's earlier
+# 2026 highs, not a small rounding gap). LBMA's daily fix doesn't have
+# that structural lag. See module docstring's earlier round for why this
+# feed was initially assumed still fully behind a licensed portal — a
+# retry with browser headers found the public JSON endpoint still
+# resolves; this round implements it for real rather than leaving it a
+# diagnostic-only probe.
+LBMA_GOLD_PM_URL = "https://prices.lbma.org.uk/json/gold_pm.json"
+LBMA_FRESH_DAYS = S.FRESHNESS_DAYS_BY_FREQ["Daily"]
 
 
 # --- http ------------------------------------------------------------------
@@ -306,6 +347,48 @@ def gold_holdings_troy_oz() -> dict:
         if oz is not None:
             monthly[_ym(row["record_date"])] += oz
     return {k: v for k, v in monthly.items() if v}
+
+
+# --- LBMA: the actual gold benchmark, daily, closest to spot ---------------
+
+def _lbma_gold_monthly_and_latest():
+    """({(year, month): USD/oz}, latest observation date) from LBMA's own
+    public PM-fix feed. Buckets by month (to match the rest of this
+    module's {(y, m): price} interface) using the LATEST day observed in
+    each month — not a monthly average — so the current month's bucket is
+    as close to spot as the feed allows. Returns the actual latest `date`
+    too (not just its month) because a same-day observation still counts
+    as "this month" days after it happened; using month-start to gauge
+    freshness would either overstate staleness for a genuinely fresh feed
+    or (if using month-end) understate it for a genuinely dead one — the
+    caller needs the real day.
+    """
+    r = requests.get(LBMA_GOLD_PM_URL, headers=_BROWSER_HEADERS, timeout=45)
+    r.raise_for_status()
+    rows = r.json()
+    if not isinstance(rows, list) or not rows:
+        raise RuntimeError(f"{LBMA_GOLD_PM_URL}: unexpected/empty response shape")
+
+    monthly: dict = {}  # (y, m) -> (day, usd) — keep the LATEST day per month
+    latest_date = None
+    for row in rows:
+        d, v = row.get("d"), row.get("v")
+        if not d or not isinstance(v, list) or not v or v[0] is None:
+            continue
+        try:
+            y, m, day = (int(x) for x in d.split("-"))
+            usd = float(v[0])  # confirmed live (2026-07): v[0] is USD/oz —
+        except (TypeError, ValueError):              # e.g. 37.7 for 1968-04-01,
+            continue                                  # matching the known historical fixing
+        key = (y, m)
+        if key not in monthly or day > monthly[key][0]:
+            monthly[key] = (day, usd)
+        d_obj = dt.date(y, m, day)
+        if latest_date is None or d_obj > latest_date:
+            latest_date = d_obj
+    if not monthly or latest_date is None:
+        raise RuntimeError(f"{LBMA_GOLD_PM_URL}: no usable USD observations")
+    return {k: val[1] for k, val in monthly.items()}, latest_date
 
 
 # --- World Bank Pink Sheet: direct download ---------------------------------
@@ -413,18 +496,35 @@ def _github_mirror_gold_monthly() -> dict:
 def gold_price_usd_per_oz_labeled() -> tuple[dict, str]:
     """Same as gold_price_usd_per_oz(), but also returns which leg actually
     served the data — fetch.py uses the label so a row's `src` names the
-    real leg (direct vs. GitHub mirror) rather than a generic "World Bank"
-    that would hide which one is live this run.
+    real leg rather than a generic name that would hide which one is live
+    this run.
 
-    Prefers the direct download, but only if its OWN latest observation is
-    itself fresh — a successful parse is not proof of freshness for this
-    source (see WORLDBANK_PINK_SHEET_URL's comment: the direct download can
-    keep resolving 200 and parsing cleanly for months after the World Bank
-    has quietly rotated its live data to a new URL hash, confirmed live
-    2026-07). Falls to the GitHub mirror whenever the direct leg is missing,
-    broken, OR stale, so a future hash rotation degrades automatically
-    rather than shipping silently-old data or needing another manual fix.
+    Three legs, in order:
+      1. LBMA's own daily PM fix — closest to spot (see LBMA_GOLD_PM_URL's
+         comment: a monthly average, even a "fresh" one by date label, can
+         sit weeks behind actual spot for a metal this volatile).
+      2. World Bank Pink Sheet, direct download — only if its OWN latest
+         observation is itself fresh, since a successful parse is not
+         proof of freshness for this source either (the direct download
+         can keep resolving 200 for months after the World Bank quietly
+         rotates its live data to a new URL hash, confirmed live 2026-07).
+      3. The GitHub mirror of the same World Bank data.
+    Each leg is skipped (not just on exception, but also when it parses
+    fine but is itself stale) so a future outage or silent staleness on
+    any leg degrades automatically to the next, rather than shipping old
+    data or needing a manual fix.
     """
+    try:
+        lbma, lbma_latest = _lbma_gold_monthly_and_latest()
+        age_days = (dt.date.today() - lbma_latest).days
+        if age_days <= LBMA_FRESH_DAYS:
+            return lbma, "LBMA (PM fix, direct)"
+        print(f"LBMA gold_pm.json parsed fine but its latest observation "
+              f"({lbma_latest.isoformat()}) is {age_days}d old — trying "
+              f"the World Bank Pink Sheet instead")
+    except Exception as e:  # noqa: BLE001
+        print(f"LBMA direct feed failed, trying the World Bank Pink Sheet: {e}")
+
     direct, direct_err = None, None
     try:
         direct = _worldbank_pink_sheet_gold_monthly()
@@ -448,12 +548,11 @@ def gold_price_usd_per_oz_labeled() -> tuple[dict, str]:
 
 
 def gold_price_usd_per_oz() -> dict:
-    """{(year, month): USD per troy oz}. Tries the World Bank's own direct
-    Pink Sheet download first; on any failure, falls to the GitHub mirror of
-    the same underlying data (see module docstring for why both are trusted
-    and why direct is tried first). If both fail, raises — the caller
-    (fetch.py) then falls further to the manual price input. See
-    gold_price_usd_per_oz_labeled() for the source-labelled version."""
+    """{(year, month): USD per troy oz}. Tries LBMA's daily feed first, then
+    the World Bank Pink Sheet direct download, then its GitHub mirror — see
+    gold_price_usd_per_oz_labeled() for the full three-leg order and the
+    source-labelled version. If all three fail, raises — the caller
+    (fetch.py) then falls further to the manual price input."""
     data, _label = gold_price_usd_per_oz_labeled()
     return data
 
@@ -465,12 +564,19 @@ def gold_price_usd_per_oz() -> dict:
 # task's "report exactly what you find" instruction, instead of relying on
 # a stale prose claim that could silently go out of date.
 
-def _probe(label: str, url: str, headers: dict | None = None):
+def _probe(label: str, url: str, headers: dict | None = None, find: str | None = None):
+    """`find`, if given, is searched for anywhere in the full body (not
+    just the 200-char preview) and reported explicitly — a preview alone
+    can miss a key buried in a large JSON object (e.g. "is XAU present in
+    this currency list" can't be answered by the first 200 characters)."""
     try:
         r = requests.get(url, headers=headers or {}, timeout=20)
         preview = r.text[:200].replace("\n", " ")
         print(f"  [{label}] {url} -> HTTP {r.status_code}, "
               f"content-type={r.headers.get('content-type')}, body preview: {preview!r}")
+        if find is not None:
+            present = find in r.text
+            print(f"  [{label}] {find!r} present anywhere in full body: {present}")
     except requests.exceptions.RequestException as e:
         print(f"  [{label}] {url} -> FAILED: {e}")
 
@@ -493,9 +599,9 @@ def verify() -> bool:
     """Dump every endpoint's schema + latest values, and try the computation.
     Non-fatal: always returns True (a source hiccup must not red the run —
     the build degrades through the fallback chain instead)."""
-    print("\nVerifying gold sources (Treasury holdings + World Bank Pink "
-          "Sheet price, direct then GitHub-mirror fallback; non-fatal — "
-          "manual fallback on failure)\n")
+    print("\nVerifying gold sources (Treasury holdings + gold price: LBMA "
+          "daily fix, then World Bank Pink Sheet direct, then its GitHub "
+          "mirror; non-fatal — manual fallback on failure)\n")
     try:
         rows = _treasury_gold_rows()
         s = rows[0]
@@ -520,8 +626,20 @@ def verify() -> bool:
     except Exception as e:  # noqa: BLE001
         print(f"[gold-holdings] FAILED: {e}")
 
+    print("\n[gold-price] LBMA daily PM fix, direct — primary leg (closest to spot)")
+    print(f"  {LBMA_GOLD_PM_URL}")
+    try:
+        lbma, lbma_latest = _lbma_gold_monthly_and_latest()
+        print(f"  parsed {len(lbma)} months; latest observation: {lbma_latest.isoformat()} "
+              f"= {lbma[max(lbma)]} USD/oz")
+        age_days = (dt.date.today() - lbma_latest).days
+        print(f"  freshness: {age_days}d old, {LBMA_FRESH_DAYS}d threshold, "
+              f"{'STALE' if age_days > LBMA_FRESH_DAYS else 'ok'}")
+    except Exception as e:  # noqa: BLE001
+        print(f"  FAILED: {e}")
+
     print("\n[gold-price] World Bank Pink Sheet, direct download "
-          "(TASKgoldautomation.md §3)")
+          "(TASKgoldautomation.md §3) — fallback leg")
     print(f"  {WORLDBANK_PINK_SHEET_URL}")
     try:
         direct = _worldbank_pink_sheet_gold_monthly()
@@ -556,7 +674,7 @@ def verify() -> bool:
         _, active_label = gold_price_usd_per_oz_labeled()
         print(f"\n  active leg this run: {active_label}")
     except Exception as e:  # noqa: BLE001
-        print(f"\n  active leg this run: NONE — both legs failed: {e}")
+        print(f"\n  active leg this run: NONE — all three legs failed: {e}")
 
     print("\n[retry, TASKgoldautomation.md §1] Nasdaq Data Link LBMA/GOLD, "
           "browser headers — diagnostic only, never used as a live source "
@@ -566,8 +684,11 @@ def verify() -> bool:
     print("\n[retry, §1] Stooq XAUUSD daily CSV, browser headers — diagnostic only")
     _probe("stooq", "https://stooq.com/q/d/l/?s=xauusd&i=d", _BROWSER_HEADERS)
 
-    print("\n[probe, §2] LBMA's own price feed — diagnostic only")
-    _probe("lbma", "https://prices.lbma.org.uk/json/gold_pm.json", _BROWSER_HEADERS)
+    print("\n[probe, follow-up round] exchangerate-api.com open-access (keyless) "
+          "tier — does XAU actually appear without a key? Marketing pages "
+          "conflate the keyed 'Free' tier with the truly-open one; diagnostic "
+          "only, never used as a live source unless this confirms XAU present")
+    _probe("open.er-api.com", "https://open.er-api.com/v6/latest/USD", _BROWSER_HEADERS, find='"XAU"')
 
     try:
         mv = gold_market_value_usd()
