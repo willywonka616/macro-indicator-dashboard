@@ -261,17 +261,23 @@ def verify() -> int:
                 print(f"  {sid}: FAILED: {e}")
 
         # Vintage check (TASKtotaldebtreconcile.md iteration 2): Dalio's
-        # snapshot is March 2025 (~2025-Q1). Read TCMDO's own 2025-Q1
-        # value directly (not the current quarter) to see whether timing
-        # alone could explain the gap.
+        # snapshot is March 2025 (~2025-Q1). Both TCMDO and GDP must be
+        # read at THAT SAME quarter -- pairing 2025-Q1 debt with the
+        # CURRENT GDP observation (an earlier draft of this diagnostic did
+        # exactly that) understates the true 2025-Q1 ratio, since GDP has
+        # grown since then; it would print a misleadingly close-looking
+        # number for the wrong reason (a shrinking denominator mismatch,
+        # not an actual vintage reconciliation). Pair same-quarter values.
         try:
             tcmdo_units, tcmdo_obs = series_obs("TCMDO")
-            q1_2025 = [(d, v) for d, v in tcmdo_obs if d.year == 2025 and d.month == 1]
-            if q1_2025:
-                d, v = q1_2025[0]
-                pct = S.to_dollars(v, tcmdo_units) / gdp_usd * 100.0
-                print(f"  TCMDO at 2025-Q1 (Dalio's snapshot vintage), current GDP: {pct:.1f}% "
-                      f"of GDP as of {d} — vintage-only comparison")
+            q1_2025_tcmdo = [(d, v) for d, v in tcmdo_obs if d.year == 2025 and d.month == 1]
+            q1_2025_gdp = [(d, v) for d, v in gdp_obs if d.year == 2025 and d.month == 1]
+            if q1_2025_tcmdo and q1_2025_gdp:
+                d, v = q1_2025_tcmdo[0]
+                gdp_2025q1_usd = S.to_dollars(q1_2025_gdp[0][1], gdp_units)
+                pct = S.to_dollars(v, tcmdo_units) / gdp_2025q1_usd * 100.0
+                print(f"  TCMDO at 2025-Q1 (Dalio's snapshot vintage), GDP ALSO at 2025-Q1 "
+                      f"(same-quarter pairing): {pct:.1f}% of GDP as of {d}")
         except Exception as e:  # noqa: BLE001
             print(f"  vintage check FAILED: {e}")
     except Exception as e:  # noqa: BLE001
