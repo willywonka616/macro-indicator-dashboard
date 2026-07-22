@@ -341,6 +341,49 @@ def total_debt_pct_gdp(tcmdo_obs, tcmdo_units, gdp_obs, gdp_units):
     return {"latest": round(latest, 1), "asOf": asof, "history": quarterly_history(ratio)}
 
 
+def tic_holder_shares(total_obs, total_units, fed_obs, fed_units, foreign_obs, foreign_units):
+    """TASKmanualvalues.md — replaces the undated `holders.*` manual shares
+    (13% / 57% / 29%) with a live three-way split of Federal Debt Held by
+    the Public: central bank (Fed/SOMA), foreign, and domestic (the
+    residual). All three inputs are FRED aliases of the SAME underlying
+    Treasury Fiscal Service table (OFS-1, "Distribution of Federal
+    Securities by Class of Investors") — not a TIC scrape, a cleaner
+    same-source path found by checking rather than assuming the task's
+    brief (which pointed at ticdata.treasury.gov directly):
+      - `FYGFDPUN` — Federal Debt Held by the Public (the denominator)
+      - `FDHBFRBN` — Federal Debt Held by Federal Reserve Banks (central bank)
+      - `FDHBFIN`  — Federal Debt Held by Foreign and International Investors
+    `domestic` is computed as the residual (100 - central - foreign), per
+    the task's own instruction, not fetched as its own series (there
+    isn't one — "domestic, non-Fed" is definitionally a residual, not a
+    directly published figure).
+    """
+    total = as_quarterly(total_obs)
+    fed = as_quarterly(fed_obs)
+    foreign = as_quarterly(foreign_obs)
+    central_h, domestic_h, foreign_h = {}, {}, {}
+    for k in total.keys() & fed.keys() & foreign.keys():
+        denom = to_dollars(total[k], total_units)
+        if not denom:
+            continue
+        central_pct = to_dollars(fed[k], fed_units) / denom * 100.0
+        foreign_pct = to_dollars(foreign[k], foreign_units) / denom * 100.0
+        central_h[k] = central_pct
+        foreign_h[k] = foreign_pct
+        domestic_h[k] = 100.0 - central_pct - foreign_pct
+    if not central_h:
+        raise RuntimeError("tic_holder_shares: no overlapping quarters across all three series")
+    c_latest, asof = _latest(central_h)
+    f_latest, _ = _latest(foreign_h)
+    d_latest, _ = _latest(domestic_h)
+    return {
+        "asOf": asof,
+        "centralBank": {"latest": round(c_latest, 1), "history": quarterly_history(central_h)},
+        "domestic": {"latest": round(d_latest, 1), "history": quarterly_history(domestic_h)},
+        "abroad": {"latest": round(f_latest, 1), "history": quarterly_history(foreign_h)},
+    }
+
+
 def debt_to_revenue_pct(debt_pct_obs, gdp_obs, gdp_units, revenue_ttm_dollars):
     """Debt held by the public, as a percentage of trailing-12-month
     on-budget receipts — Dalio's Ch.3 preferred framing (debt against what

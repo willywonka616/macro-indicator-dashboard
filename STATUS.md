@@ -849,21 +849,36 @@ sanity bands and local mock tests, because the wrong numbers all looked
 first pass, per an external review that pointed out a 23-point total-debt
 gap had gone unnoticed because it was never added to this table.
 
-| Metric | Dalio Ch.17 (US, Mar 2025) | This pipeline (2026-07-19) | Basis | Match? |
-|---|---|---|---|---|
-| Debt held by public / GDP | ~100% (99%) | 99% | live, `FYGFGDQ188S` | Matches closely |
-| Debt, 10-yr projection / GDP | 122% | **120%** (2026-07-21, current CBO vintage: Feb 2026, FY2036) | **projection**, live from CBO's own GitHub data mirror (§21) | **No longer trivial — see §21.** Was `manual`, hand-carried from `data/manual.json`, and happened to equal his figure exactly because it was transcribed from his own book with no date at all (one of the 11 undated manual values §19.2 found). §21 replaces it with a live fetch of CBO's *current* vintage — expected to differ from his book value, since CBO republishes ~twice a year and his book cites a specific (June 2024) vintage. **Recomputed at his own vintage instead (June 2024, FY2034): 122.4%** — reproduces his stated 122% almost exactly, confirming June 2024 as his source, per TASKprojections.md §5's calibration target |
-| Debt, 10-yr projection / revenue | ~700% (his stated forward projection) | **679.3%** at his own vintage (June 2024, FY2034: $50,664.2B ÷ $7,458.7B) | **derived**, from CBO's own baseline dollar levels (debt held by public ÷ total revenue) at the June-2024 vintage | **Real check, not exact — see §21.** −21pt off his stated ~700%, the more interesting of the two 10-yr targets since he *derives* this ratio rather than transcribing it (TASKprojections.md §5). Close enough to support June 2024 as his source vintage (same conclusion as the row above), not close enough to claim exact reproduction. Was "not yet checkable" prior to §21 (no CBO integration existed) |
-| Held by CB / domestic / abroad | 13% / 57% / 29% | 13% / 57% / 29% | **manual**, carried from `data/manual.json` (TIC) | Trivial — same figures, not independently derived |
-| Debt service / revenue | 22% (Ch.17 table); **~20% (Ch.3 prose, "the US is also borrowing ~20% of its income each year to cover interest expenses")** | 19.6% (net-to-public / **total** receipts, net of refunds) | live, `scripts/treasury.py` | **Matches the Ch.3 figure** (−0.4pt) — **does not match Ch.17's 22%** (−2.4pt). The book gives two figures for this ratio, ~2pt apart, in the same March-2025 vintage; exact reproduction of both is impossible. This pipeline reproduces the one computed on the standard (net-to-public / total, net-of-refunds) definition — see §14.1 for the recomputed matrix confirming no realised basis reproduces 22% |
-| FX reserves / GDP | 3% | **4.5%** (excl.-gold FX, live + gold at market, live oz × live price, correctly March-2026) | **live** (2026-07-22, §22/§23/§25 — no manual price input) | **Fully automated (§22), with two real bugs found and fixed the same day (§23, §25).** §18's manual PRICE INPUT is retired; the gold price now comes from LBMA's daily fix (primary) or the World Bank Pink Sheet (fallback). The headline is bottlenecked to `TRESEGUSM052N`/GDP's own latest common quarter (2026-Q1, per `asOf`) regardless of gold-price leg — §23's finding stands. **§23's own explanation for the 4.9%→5.1% swing was itself wrong, corrected in §25**: it was NOT two sources' differing March-2026 values — it was a quarter-bucketing bug silently pricing gold off *January* instead of March, before either §22 or §23 landed. Fixed in §25; the row now correctly prices off March 2026 ($4,608/oz) and reads 4.5%, still further from Dalio's 3% than §18's manual-price figure — expected, gold having risen past his March-2025 vintage |
-| Total debt (Dalio's "other debt") / GDP | 340% | 362.6% (TCMDO, all sectors incl. financial) | live, `FRED: TCMDO` | **Known difference, ~23pts, unreconciled after bounded investigation — see §26.** Four hypotheses tried and eliminated: non-government debt (TCMDO minus government's own ~99%, 263.9%, −76pt), nonfinancial-sectors-only (TCMDODNS, excludes financial AND foreign, 256.7%, −83pt), isolated-financial-sector-only (TCMDO − `DODFS`, keeps foreign in, 280.7%, −59pt — worse than TCMDO alone, not better), and vintage (TCMDO at Dalio's own March-2025 snapshot: 362.5%, essentially flat vs. today — timing is not the cause). Most probable residual: Bridgewater's own internal debt aggregate, on a basis public FRED/Z.1 series likely don't reproduce by construction. Row keeps shipping TCMDO unchanged — this is a labelling correction, not a source change |
-| Current account, 3-yr avg / GDP | −4% | −3.7% | live, `IEABC` (FRED) | Matches closely |
-| World trade in USD | 52.6% | 52.6% | **manual**, carried from `data/manual.json` | Trivial — same figure |
-| World debt in USD | 80.7% | 80.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
-| Global equity market cap in USD | 65.7% | 65.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
-| World CB reserves in USD | 57.0% | 57.1% (2026-Q1, latest actually-published IMF figure) | **manual** as of 2026-07-20 | **Also retracted-then-fixed, §18.** §17's fix fell back to the manual figure already sitting in `data/manual.json` — which had been transcribed from this same book (57.0%, ~2024) — so it "matched" Dalio's own number by construction, not independent corroboration, same flaw as the reserves row above. §18 replaces it with the **latest actually-published IMF COFER figure** (57.13%, 2026-Q1, researched via web search against IMF's own data brief and cross-checked against two independent secondary sources), deliberately NOT the book's number. It happens to land close to his 57.0% anyway — a **genuine, non-circular near-match**, unlike the row above |
-| Debt / revenue | ~580% (Mar 2025, stated) | 576% (2026-Q1, shipped); **580% at 2025-Q1 (Mar-2025, his own vintage)** | live, derived (§3, §12, §13) | **Matches almost exactly at his vintage** — see §13: switching to TOTAL receipts, net of refunds (the corrected, shipped basis) puts debt/revenue at $28.93T / $4.99T TTM = 580% for 2025-Q1, essentially identical to his stated figure. Strongest confirmation yet that TOTAL, net-of-refunds receipts is his denominator |
+| Metric | Dalio Ch.17 (US, Mar 2025) | This pipeline (2026-07-19) | Basis | Test type | Match? |
+|---|---|---|---|---|---|
+| Debt held by public / GDP | ~100% (99%) | 99% | live, `FYGFGDQ188S` | **genuine test** | Matches closely |
+| Debt, 10-yr projection / GDP | 122% | **120%** (2026-07-21, current CBO vintage: Feb 2026, FY2036) | **projection**, live from CBO's own GitHub data mirror (§21) | **genuine test** (was tautology before §21) | **No longer trivial — see §21.** Was `manual`, hand-carried from `data/manual.json`, and happened to equal his figure exactly because it was transcribed from his own book with no date at all (one of the 11 undated manual values §19.2 found). §21 replaces it with a live fetch of CBO's *current* vintage — expected to differ from his book value, since CBO republishes ~twice a year and his book cites a specific (June 2024) vintage. **Recomputed at his own vintage instead (June 2024, FY2034): 122.4%** — reproduces his stated 122% almost exactly, confirming June 2024 as his source, per TASKprojections.md §5's calibration target |
+| Debt, 10-yr projection / revenue | ~700% (his stated forward projection) | **679.3%** at his own vintage (June 2024, FY2034: $50,664.2B ÷ $7,458.7B) | **derived**, from CBO's own baseline dollar levels (debt held by public ÷ total revenue) at the June-2024 vintage | **genuine test** | **Real check, not exact — see §21.** −21pt off his stated ~700%, the more interesting of the two 10-yr targets since he *derives* this ratio rather than transcribing it (TASKprojections.md §5). Close enough to support June 2024 as his source vintage (same conclusion as the row above), not close enough to claim exact reproduction. Was "not yet checkable" prior to §21 (no CBO integration existed) |
+| Held by CB / domestic / abroad | 13% / 57% / 29% | 13% / 57% / 29% | **live** as of §28, TIC/SOMA via FRED (`FYGFDPUN`/`FDHBFRBN`/`FDHBFIN`) when fresh, else the same dated manual split | **genuine test** (was tautology before §28) | §28 replaces the hand-carried split with a live fetch computed from Treasury Fiscal Service data independent of Dalio's book — a real match now, not a match by construction. First live CI run pending; see §28 for why the sum-to-100% design makes this self-checking |
+| Debt service / revenue | 22% (Ch.17 table); **~20% (Ch.3 prose, "the US is also borrowing ~20% of its income each year to cover interest expenses")** | 19.6% (net-to-public / **total** receipts, net of refunds) | live, `scripts/treasury.py` | **genuine test** | **Matches the Ch.3 figure** (−0.4pt) — **does not match Ch.17's 22%** (−2.4pt). The book gives two figures for this ratio, ~2pt apart, in the same March-2025 vintage; exact reproduction of both is impossible. This pipeline reproduces the one computed on the standard (net-to-public / total, net-of-refunds) definition — see §14.1 for the recomputed matrix confirming no realised basis reproduces 22% |
+| FX reserves / GDP | 3% | **4.5%** (excl.-gold FX, live + gold at market, live oz × live price, correctly March-2026) | **live** (2026-07-22, §22/§23/§25 — no manual price input) | **genuine test** | **Fully automated (§22), with two real bugs found and fixed the same day (§23, §25).** §18's manual PRICE INPUT is retired; the gold price now comes from LBMA's daily fix (primary) or the World Bank Pink Sheet (fallback). The headline is bottlenecked to `TRESEGUSM052N`/GDP's own latest common quarter (2026-Q1, per `asOf`) regardless of gold-price leg — §23's finding stands. **§23's own explanation for the 4.9%→5.1% swing was itself wrong, corrected in §25**: it was NOT two sources' differing March-2026 values — it was a quarter-bucketing bug silently pricing gold off *January* instead of March, before either §22 or §23 landed. Fixed in §25; the row now correctly prices off March 2026 ($4,608/oz) and reads 4.5%, still further from Dalio's 3% than §18's manual-price figure — expected, gold having risen past his March-2025 vintage |
+| Total debt (Dalio's "other debt") / GDP | 340% | 362.6% (TCMDO, all sectors incl. financial) | live, `FRED: TCMDO` | **genuine test** | **Known difference, ~23pts, unreconciled after bounded investigation — see §26.** Four hypotheses tried and eliminated: non-government debt (TCMDO minus government's own ~99%, 263.9%, −76pt), nonfinancial-sectors-only (TCMDODNS, excludes financial AND foreign, 256.7%, −83pt), isolated-financial-sector-only (TCMDO − `DODFS`, keeps foreign in, 280.7%, −59pt — worse than TCMDO alone, not better), and vintage (TCMDO at Dalio's own March-2025 snapshot: 362.5%, essentially flat vs. today — timing is not the cause). Most probable residual: Bridgewater's own internal debt aggregate, on a basis public FRED/Z.1 series likely don't reproduce by construction. Row keeps shipping TCMDO unchanged — this is a labelling correction, not a source change |
+| Current account, 3-yr avg / GDP | −4% | −3.7% | live, `IEABC` (FRED) | **genuine test** | Matches closely |
+| World trade in USD | 52.6% | 52.6% | **manual**, carried from `data/manual.json`, now dated (asOf 2025-03, §28) | **tautology** | Trivial — same figure. §28 assessed a live path (SWIFT's Global Currency/RMB Tracker) and found no clean structured feed — PDF reports only, and "trade invoiced in USD" is itself definition-sensitive across BIS/IMF/SWIFT. Stays manual, but honestly dated now instead of undated |
+| World debt in USD | 80.7% | 80.7% | **manual**, carried from `data/manual.json`, now dated (asOf 2025-03, §28) | **tautology, live attempted and not yet resolved** | Trivial — same figure. §28 built a DBnomics client (`scripts/bis.py`) for BIS's `WS_NA_SEC_DSS` dataset — the exact SDMX dimension codes for "world total" and "USD vs all-currencies" could not be confirmed (both `data.bis.org` and `db.nomics.world` are blocked from this project's dev sandbox). Deliberately does not guess; raises cleanly and falls back to this dated manual value. Wired to switch live automatically once a future session confirms the schema |
+| Global equity market cap in USD | 65.7% | 65.7% | **manual**, carried from `data/manual.json`, now dated (asOf 2025-03, §28) | **tautology** | Trivial — same figure. §28 assessed a live path and found none: "share of global equity market cap denominated in USD" isn't a standard published series — computing it would mean aggregating exchange-level caps across every country and currency-converting, messier than the other rows here. Stays manual, but honestly dated now |
+| World CB reserves in USD | 57.0% | 57.1% (2026-Q1, latest actually-published IMF figure) | **manual** as of 2026-07-20 | **genuine test** | **Also retracted-then-fixed, §18.** §17's fix fell back to the manual figure already sitting in `data/manual.json` — which had been transcribed from this same book (57.0%, ~2024) — so it "matched" Dalio's own number by construction, not independent corroboration, same flaw as the reserves row above. §18 replaces it with the **latest actually-published IMF COFER figure** (57.13%, 2026-Q1, researched via web search against IMF's own data brief and cross-checked against two independent secondary sources), deliberately NOT the book's number. It happens to land close to his 57.0% anyway — a **genuine, non-circular near-match**, unlike the row above |
+| Debt / revenue | ~580% (Mar 2025, stated) | 576% (2026-Q1, shipped); **580% at 2025-Q1 (Mar-2025, his own vintage)** | live, derived (§3, §12, §13) | **genuine test** | **Matches almost exactly at his vintage** — see §13: switching to TOTAL receipts, net of refunds (the corrected, shipped basis) puts debt/revenue at $28.93T / $4.99T TTM = 580% for 2025-Q1, essentially identical to his stated figure. Strongest confirmation yet that TOTAL, net-of-refunds receipts is his denominator |
+
+**Genuine-test vs. tautology count, before/after TASKmanualvalues.md
+(§28):** of these 13 rows, **before** this task 4 were tautologies (held
+CB/domestic/abroad, world trade, world debt in USD, global equity market
+cap — all hand-carried figures matching Dalio's own book by construction)
+and 9 were genuine tests. **After**: the holder-shares row is now a
+genuine test (live TIC/SOMA via FRED, independent of his book) — **3
+tautologies remain** (world trade, world debt in USD, global equity
+market cap) **and 10 of 13 rows are genuine tests.** World debt in USD
+(BIS) was attempted but not resolved — see §28; it is the one row still
+explicitly flagged as "live attempted, not yet working," not silently
+left as a plain match. The other two remaining tautologies were assessed
+for a live path and found to have none (§28) — they are honestly dated
+manual values now, not undated ones, but they are still matches by
+construction, not tests.
 
 **Read the "Basis" column before trusting a "match."** As of this pass
 (§17, 2026-07-20), **eight** of the twelve rows are `manual` — hand-carried
@@ -3741,6 +3756,179 @@ value is unchanged (as it should be, since only documentation changed).
 | CBO's dataset has no GDP-level field to have been mistakenly used | **VERIFIED** — read directly from `cbo.py`'s `FIELDS` mapping and the live vintage's own keys; only `*_gdp_share` ratios exist |
 | Primary-deficit and starting-debt terms match Dalio's basis | **VERIFIED** — recomputed live this round, not re-cited from a prior round's claim |
 | The new commentary shipped correctly and the value is unchanged | **VERIFIED** — live production `public/data.json`, `display: "4.2%"` unchanged, new note text present verbatim |
+
+---
+
+## 28. Retiring the undated manual values, and de-tautologising §9 (2026-07-22, nineteenth pass)
+
+**TASKmanualvalues.md**: the §19.2 freshness audit found 10 of `manual.json`'s
+14 values (11 originally — one, the CBO 10-yr projection, was already made
+live by §21) had no date at all, and several were transcribed straight from
+Dalio's Ch.17 table — meaning §9 calibrated those rows against the very
+numbers they were seeded from. Two goals: make the fetchable ones live
+(a fake match becomes a real one), and honestly date whatever must stay
+manual — explicitly **not** fabricating a date for anything that has none.
+
+### 28.1 Inventory of the 10 undated values (before this task)
+
+| Value | What it is | Current value | Dalio's book or elsewhere? | Live source plausible? |
+|---|---|---|---|---|
+| `holders.centralBank` | Fed/SOMA share of debt held by the public | 13% | Dalio Ch.17 (TIC-labelled) | **Yes** — FRED (`FDHBFRBN`) |
+| `holders.domestic` | Domestic (non-Fed) share | 57% | Dalio Ch.17 | **Yes** — residual of the other two |
+| `holders.abroad` | Foreign share | 29% | Dalio Ch.17 | **Yes** — FRED (`FDHBFIN`) |
+| `govAssetsMinusDebt` | Gov't financial assets − gov't debt, % of GDP | −96% | Dalio Ch.17 | No — no published series for "total gov't financial assets" at his scope |
+| `shareHardFX` | Whether debt is issued in foreign/hard currency | "No" | Dalio Ch.17 | No — qualitative structural fact, not a series |
+| `sovereignWealth` | Sovereign wealth fund assets | "None" | Dalio Ch.17 | No — structural fact (the US has none) |
+| `reserveCurrency.trade` | World trade invoiced in USD | 52.6% | Dalio Ch.17 (SWIFT/BIS) | Assessed, no clean feed (§28.3) |
+| `reserveCurrency.equity` | Global equity market cap in USD | 65.7% | Dalio Ch.17 | Assessed, no clean feed (§28.3) |
+| `reserveCurrency.debt` | World debt securities in USD | 80.7% | Dalio Ch.17 (BIS) | Attempted, not resolved (§28.2) |
+| `reservesInclGoldFallback` | Reserves incl. gold at market, last-resort fallback | 3.0% | Dalio Ch.17 | No — last-resort snapshot of a value that already has a live path (gold, §22-§25); this is only the double-failure case |
+
+(An 11th value, the CBO 10-yr projection, was already resolved by §21 —
+its manual copy, `cboProjectionFallback`, also lacked a structured `asOf`
+despite its note documenting a 2026-07-21 capture date; this task adds
+that missing field too.)
+
+### 28.2 TIC holder shares: made live
+
+**Source decision**: the task assumed scraping `ticdata.treasury.gov`.
+Instead, found three FRED series that are all aliases of the *same*
+underlying Treasury Fiscal Service table ("OFS-1: Distribution of Federal
+Securities by Class of Investors") — a cleaner, already-integrated path,
+consistent with this project's repeated "prefer a clean official
+aggregator over scraping" pattern (the CBO GitHub-mirror and gold
+LBMA/World Bank discoveries followed the same logic):
+
+- `FYGFDPUN` — Federal debt held by the public, $M, quarterly (denominator)
+- `FDHBFRBN` — held by Federal Reserve Banks, $B, quarterly (central bank)
+- `FDHBFIN` — held by foreign/international investors, $B, quarterly (foreign)
+- Domestic = 100% − central bank% − foreign% (the residual, exactly as the
+  task itself specifies — no directly-published domestic-only series exists)
+
+`scripts/series.py`'s new `tic_holder_shares()` computes all three shares
+from a common overlapping quarter and asserts nothing about the sum itself
+(that check lives in `fetch.py`, which raises if the three don't sum to
+99–101%, catching a wrong field mapping rather than silently shipping a
+bad number). **Correction to the task's own assumption**: it guessed a
+"monthly cadence, ~75-day freshness threshold." The actual cadence is
+**quarterly** (per FRED's own `frequency_short` metadata) — this pipeline
+uses the existing `FRESHNESS_DAYS_BY_FREQ["Quarterly"]` (220d) threshold
+instead of inventing a new one, per the "confirm rather than assume"
+discipline established across every prior round.
+
+`scripts/fetch.py`'s `build_us()` fetches all three series, checks
+freshness, computes the shares, validates the sum, and ships live rows
+with history — falling back to the (now dated, `asOf: 2025-03`) manual
+split on any failure, same "degrade rather than break" pattern as
+gold/COFER. Tracked through `assert_provenance()` since a live-fetch
+failure here IS meaningful (TIC/SOMA-via-FRED is expected to normally
+succeed).
+
+**Claim status: ASSUMED pending a live CI run.** Verified only via a mock
+test (synthetic FRED series stubbed into the three IDs, proportioned
+~13%/29%/58%) — `db.nomics.world`/FRED are the usual "not reachable from
+this dev sandbox" hosts (same asymmetry documented for every other source
+in this project), so the real FRED response shape for `FYGFDPUN` /
+`FDHBFRBN` / `FDHBFIN` has not yet been confirmed live. A `--verify` dump
+was added specifically so the first live CI run is the real check. See
+the round's `docs/review/` files for the live-run outcome once triggered.
+
+### 28.3 BIS debt-currency share: attempted, not resolved
+
+Built `scripts/bis.py`, a DBnomics client for BIS's `WS_NA_SEC_DSS`
+("debt securities statistics") dataset — the same free aggregator already
+used for IMF COFER. Genuine limitation, documented up front rather than
+glossed over: BIS uses a **positional, dot-separated SDMX key**
+(confirmed from BIS's own published example keys), not COFER's named
+dimensions, and the exact dimension values for "world total" issuer
+residence and a clean "USD vs. all-currencies" comparator could not be
+confirmed — both `data.bis.org` and `db.nomics.world` are blocked from
+this project's dev sandbox (the same "not reachable from dev, but CI has
+full internet" asymmetry documented repeatedly in this file), so this
+couldn't be verified live from here the way COFER's dimension names were
+in an earlier round.
+
+Rather than guess and risk silently shipping a wrong-basis number,
+`bis.py`'s `debt_currency_share_usd()` is deliberately written to always
+raise for now — it tries three plausible dimension-filter guesses,
+dumps whatever they actually return via `verify()`, and cleanly falls
+back to the dated manual value (80.7%, `asOf: 2025-03`) rather than
+guess. This is wired the same shape as every other live-with-fallback
+source, so the moment a future session (or this round's own live CI
+`--verify` output) confirms the real schema, the row starts shipping
+live with no `fetch.py` change needed. It is **deliberately not** routed
+through `assert_provenance()` — that mechanism flags an unexpected
+divergence from a source that *normally* succeeds; BIS has never yet
+succeeded, so "manual" is the correct baseline here, not a fallback
+firing, and treating it as one would produce a permanent, misleading
+warning on every single run.
+
+**World trade in USD (52.6%) and global equity market cap (65.7%)**:
+assessed per the task's §3 and found no clean free source for either.
+SWIFT's Global Currency (RMB) Tracker — the closest public source for
+trade-in-USD — ships as a monthly PDF report, not a structured feed, and
+"trade invoiced in USD" is itself defined slightly differently across
+BIS/IMF/SWIFT. "Share of global equity market cap in USD" isn't a
+standard published series at all — it would require aggregating
+exchange-level market caps across every country and currency-converting,
+a messier, more definition-sensitive exercise than anything else in this
+pipeline. Both stay manual, but are now dated (`asOf: 2025-03`, the
+book's own baseline) with a note on their low-volatility justifying an
+infrequent snapshot — a dated manual value is honest; an undated one
+isn't.
+
+### 28.4 Every manual value now has an explicit `asOf` — no fabrication
+
+All 10 originally-undated values (plus `cboProjectionFallback`, which had
+a date in its note but not in a structured field) now carry an `asOf`:
+**March 2025** (`2025-03`) for every figure genuinely transcribed from
+Dalio's book at that vintage — not invented, but the actual date those
+figures are known to have been true, which is exactly what a "last known
+true" date should be. `cboProjectionFallback` gets its already-documented
+`2026-07-21` capture date instead, since that's a real, different date it
+already had in prose. Zero manual values remain undated —
+`audit_manual_values()` (in `fetch.py`) now checks every one of them by
+name, printing an explicit "0 manual values remain undated" line instead
+of a dateless-value list.
+
+`manual_row()` (`fetch.py`) gained an optional `freshness_days` parameter:
+when a spec carries its own `asOf`, it now runs the value through the
+same `check_manual_freshness()` → `⚠`-prefixed-note mechanism the
+gold/COFER manual fallbacks already used, reusing `MANUAL_FRESH_DAYS`
+(180d) — the existing "review cadence, not a data cadence" threshold
+`series.py`'s own comment already anticipated for exactly these kinds of
+values. **Confirmed the frontend needs no change**: `MetricRow.jsx`
+already renders any `note` starting with "⚠" in the warning color — a
+Playwright screenshot against a synthetic build (all 2025-03-dated values,
+today being 2026-07-22 → 508 days old, past the 180d threshold) confirms
+every one of these rows now shows the amber staleness warning.
+
+### 28.5 De-tautologising §9
+
+§9's table above now has a "Test type" column marking every row genuine
+test vs. tautology. **Before this task**: 4 of 13 rows were tautologies
+(held CB/domestic/abroad, world trade, world debt in USD, global equity
+market cap) and 9 were genuine tests. **After**: the holder-shares row
+becomes a genuine test (live TIC/SOMA via FRED) — **3 tautologies remain**
+(world trade, world debt in USD, global equity market cap), and **10 of
+13 rows are genuine tests**. The BIS row is the one tautology explicitly
+flagged as "live attempted, not yet working" rather than left as a silent
+match; the other two were assessed and found to have no viable live path,
+so they stay tautologies — honestly, on the record, not by omission.
+
+### 28.6 Verified vs. assumed
+
+| Claim | Status |
+|---|---|
+| `FYGFDPUN`/`FDHBFRBN`/`FDHBFIN` are the correct three FRED series, all sourced from the same Treasury table | **ASSUMED** — confirmed via FRED metadata research, not yet fetched live from this sandbox (blocked host) |
+| TIC holder shares sum to ~100% and ship live | **ASSUMED pending live CI** — verified via mock test with synthetic data only |
+| BIS `WS_NA_SEC_DSS`'s exact schema | **Not resolved** — explicitly left open, not guessed |
+| No manual value in `data/manual.json` remains undated | **VERIFIED** — read directly from the committed file |
+| The UI staleness indicator fires for newly-dated manual rows | **VERIFIED** — Playwright screenshot against a synthetic stale build |
+| §9's before/after tautology counts (4→3 of 13) | **VERIFIED** — counted directly from the table above |
+
+See the round's `docs/review/` files for the live CI run this task's TIC
+and BIS work still needs, and for the base commit this task builds on.
 
 ---
 

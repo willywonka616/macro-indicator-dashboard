@@ -35,6 +35,7 @@ import treasury as T
 import imf as I
 import gold as G
 import cbo as C
+import bis as B
 
 FRED = "https://api.stlouisfed.org/fred"
 ROOT = Path(__file__).resolve().parent.parent
@@ -283,6 +284,43 @@ def verify() -> int:
     except Exception as e:  # noqa: BLE001
         print(f"  comparison FAILED: {e}")
 
+    # TIC holder shares (TASKmanualvalues.md): dumps schema + computed
+    # shares for the three FRED series that replace the undated manual
+    # 13%/57%/29% split. Non-fatal — these have a manual fallback, same
+    # as gold/COFER, so a failure here must not redden --verify.
+    print("\nTIC holder shares (central bank / domestic / foreign), TASKmanualvalues.md:")
+    try:
+        for sid in ("FYGFDPUN", "FDHBFRBN", "FDHBFIN"):
+            try:
+                meta = series_meta(sid)
+                units, obs = series_obs(sid)
+                d, v = obs[-1]
+                print(f"  {sid}: {meta.get('title')!r}, units={units!r}, freq={meta.get('frequency_short')}, "
+                      f"latest {d} = {v}")
+            except Exception as e:  # noqa: BLE001
+                print(f"  {sid}: FAILED: {e}")
+        fygfdpun_units, fygfdpun_obs = series_obs("FYGFDPUN")
+        fdhbfrbn_units, fdhbfrbn_obs = series_obs("FDHBFRBN")
+        fdhbfin_units, fdhbfin_obs = series_obs("FDHBFIN")
+        holders = S.tic_holder_shares(fygfdpun_obs, fygfdpun_units, fdhbfrbn_obs, fdhbfrbn_units,
+                                       fdhbfin_obs, fdhbfin_units)
+        total_pct = holders["centralBank"]["latest"] + holders["domestic"]["latest"] + holders["abroad"]["latest"]
+        print(f"  computed shares as of {holders['asOf']}: central bank {holders['centralBank']['latest']}%, "
+              f"domestic {holders['domestic']['latest']}%, abroad {holders['abroad']['latest']}% "
+              f"(sum {total_pct:.1f}%)")
+    except Exception as e:  # noqa: BLE001
+        print(f"  TIC holder shares computation FAILED: {e}")
+
+    # BIS debt-currency share (TASKmanualvalues.md): dumps whatever the
+    # DBnomics BIS dataset actually returns. Non-fatal by design — the
+    # exact dimension codes for WS_NA_SEC_DSS were not confirmed before
+    # writing this (db.nomics.world is blocked from this project's dev
+    # sandbox, same as every other "not reachable from dev" source), so
+    # this run's own output is the first real look at whether the guessed
+    # filter resolves at all.
+    print("\nBIS debt-currency share (world debt in USD), TASKmanualvalues.md:")
+    B.verify()
+
     # GDP + TRESEGUSM052N raw $ values, units, and vintage, plus a full
     # reserves-incl-gold breakdown — a user-facing question (2026-07-22:
     # "reserves rose on a falling gold price — is GDP's basis/units the
@@ -354,37 +392,45 @@ def verify() -> int:
 
 
 def audit_manual_values(mu: dict) -> None:
-    """STATUS.md §19: (a) staleness-check every manual.json value that
-    carries its own date, unconditionally — not only when a fallback
-    actually fires in a real build, so drift is visible even while the
-    live sources it would replace are still healthy; (b) list every
-    manual value that has NO date of its own at all, relying solely on
-    the top-level `lastChecked` — the audit the task asked for."""
+    """STATUS.md §19, extended by TASKmanualvalues.md §4: staleness-check
+    every manual.json value that carries its own date, unconditionally —
+    not only when a fallback actually fires in a real build, so drift is
+    visible even while the live sources it would replace are still
+    healthy. Before TASKmanualvalues.md, 10 of these 14 values had NO date
+    at all (STATUS.md §19.2's original audit); every one of them now has an
+    explicit `asOf` (dated honestly — March 2025, the book baseline, for
+    figures transcribed from Dalio's Ch.17 table; a real fetch date for the
+    ones with their own capture — see manual.json's own comments on each).
+    No fabricated dates: anything without a genuine "last known true" date
+    would not be listed here at all."""
     print("\nManual-value freshness audit (data/manual.json):")
     dated = [
         ("goldPriceManualFallback.asOf", mu["goldPriceManualFallback"]["asOf"],
          S.GOLD_MANUAL_PRICE_FRESH_DAYS),
         ("reserveCurrency.cbReserves.asOf", mu["reserveCurrency"]["cbReserves"]["asOf"],
          S.CBRESERVES_MANUAL_FRESH_DAYS),
-        ("lastChecked (governs every dateless value below)", mu.get("lastChecked"),
+        ("govAssetsMinusDebt.asOf", mu["govAssetsMinusDebt"]["asOf"], S.MANUAL_FRESH_DAYS),
+        ("holders.centralBank.asOf", mu["holders"]["centralBank"]["asOf"], S.MANUAL_FRESH_DAYS),
+        ("holders.domestic.asOf", mu["holders"]["domestic"]["asOf"], S.MANUAL_FRESH_DAYS),
+        ("holders.abroad.asOf", mu["holders"]["abroad"]["asOf"], S.MANUAL_FRESH_DAYS),
+        ("shareHardFX.asOf", mu["shareHardFX"]["asOf"], S.MANUAL_FRESH_DAYS),
+        ("sovereignWealth.asOf", mu["sovereignWealth"]["asOf"], S.MANUAL_FRESH_DAYS),
+        ("reserveCurrency.trade.asOf", mu["reserveCurrency"]["trade"]["asOf"], S.MANUAL_FRESH_DAYS),
+        ("reserveCurrency.equity.asOf", mu["reserveCurrency"]["equity"]["asOf"], S.MANUAL_FRESH_DAYS),
+        ("reserveCurrency.debt.asOf", mu["reserveCurrency"]["debt"]["asOf"], S.MANUAL_FRESH_DAYS),
+        ("reservesInclGoldFallback.asOf", mu["reservesInclGoldFallback"]["asOf"], S.MANUAL_FRESH_DAYS),
+        ("lastChecked (governs anything with no asOf of its own)", mu.get("lastChecked"),
          S.MANUAL_FRESH_DAYS),
     ]
+    if "asOf" in mu.get("cboProjectionFallback", {}):
+        dated.append(("cboProjectionFallback.asOf", mu["cboProjectionFallback"]["asOf"], S.MANUAL_FRESH_DAYS))
     for label, date_str, max_days in dated:
         f = S.freshness(label, date_str, max_days)
         status = "STALE" if f["stale"] else "ok"
         print(f"  {label:<55} {date_str:<12} {f['age_days']:>4}d old  {max_days:>3}d threshold  {status}")
 
-    # Every other manual value shipped via manual_row() in build_us, checked
-    # by hand against data/manual.json's actual keys — none of these carry
-    # their own `asOf`/date field, only the global lastChecked above.
-    dateless = [
-        "govAssetsMinusDebt", "holders.centralBank",
-        "holders.domestic", "holders.abroad", "shareHardFX", "sovereignWealth",
-        "reserveCurrency.trade", "reserveCurrency.equity", "reserveCurrency.debt",
-        "reservesInclGoldFallback (no own asOf; last-resort only — see its own note)",
-    ]
-    print(f"  {len(dateless)} manual values have NO individual date, relying solely on "
-          f"lastChecked above:\n    " + "\n    ".join(dateless))
+    print("  0 manual values remain undated — every figure in data/manual.json now "
+          "carries its own asOf (TASKmanualvalues.md; see STATUS.md for the before/after count).")
 
 
 def _quarterly_saar_to_monthly(obs, units: str) -> dict:
@@ -715,19 +761,18 @@ def build_us(manual: dict, force: bool) -> dict:
               f"(live ounce count itself failed), using the full manual fallback: {e}")
         reserves_incl_gold_tag = "manual"
         gf = mu["reservesInclGoldFallback"]
-        reserves_incl_gold = {"latest": gf["value"], "asOf": mu.get("lastChecked"), "history": []}
+        reserves_incl_gold = {"latest": gf["value"], "asOf": gf.get("asOf", mu.get("lastChecked")), "history": []}
         gold_stale_note = gf.get("note")
-        # This last-resort fallback has no `asOf` of its own — it relies on
-        # manual.json's top-level lastChecked (STATUS.md §19's dateless-field
-        # audit). Check that for staleness too, same non-fatal treatment.
-        last_checked_freshness = check_manual_freshness(
-            "manual.json lastChecked (governs reservesInclGoldFallback, which "
-            "has no asOf of its own)", mu.get("lastChecked"), S.MANUAL_FRESH_DAYS)
-        if last_checked_freshness["stale"]:
+        # TASKmanualvalues.md §4: this last-resort fallback is now dated
+        # (asOf, March 2025 book baseline) instead of relying solely on the
+        # top-level lastChecked catch-all — check its own date for staleness.
+        gf_freshness = check_manual_freshness(
+            "reservesInclGoldFallback.asOf", gf["asOf"], S.MANUAL_FRESH_DAYS)
+        if gf_freshness["stale"]:
             gold_stale_note = (gold_stale_note or "") + (
-                f" — ⚠⚠ manual.json has not been reviewed in "
-                f"{last_checked_freshness['age_days']}d, past its "
-                f"{S.MANUAL_FRESH_DAYS}d threshold"
+                f" — ⚠ this manual figure is {gf_freshness['age_days']}d old (dated {gf['asOf']}), "
+                f"past its {S.MANUAL_FRESH_DAYS}d review threshold; data/manual.json needs "
+                f"a human to check for a newer figure"
             )
 
     assert_provenance(
@@ -822,6 +867,15 @@ def build_us(manual: dict, force: bool) -> dict:
             "unit": "of GDP", "tone": "risk", "tag": "manual", "key": "debt_10yr_projection",
             "src": gf["src"],
         }
+        if "asOf" in gf:
+            debt_projection_row["asOf"] = gf["asOf"]
+            f = check_manual_freshness("cboProjectionFallback.asOf", gf["asOf"], S.MANUAL_FRESH_DAYS)
+            if f["stale"]:
+                debt_projection_row["note"] = (
+                    f"⚠ this last-resort snapshot is {f['age_days']}d old (dated {gf['asOf']}), "
+                    f"past its {S.MANUAL_FRESH_DAYS}d review threshold; data/manual.json needs "
+                    f"a human to check for a newer CBO vintage"
+                )
 
     # Dalio's equation #3 (Ch.3): the interest rate that would keep debt
     # flat, computed across CBO's baseline, shown alongside the ACTUAL
@@ -874,6 +928,54 @@ def build_us(manual: dict, force: bool) -> dict:
         except Exception as e:  # noqa: BLE001
             print(f"Equation #3 (interest rate to keep debt flat) unavailable: {e}")
 
+    # TIC holder shares (TASKmanualvalues.md): central bank / domestic /
+    # foreign, live from FRED (FYGFDPUN, FDHBFRBN, FDHBFIN — all three
+    # aliases of the same Treasury Fiscal Service "class of investors"
+    # table, not a TIC scrape; see series.py's tic_holder_shares()).
+    # Replaces the undated 13%/57%/29% manual figures. Degrade to the
+    # existing manual values on any failure, same pattern as gold/COFER.
+    holders_tag = "live"
+    holders = None
+    try:
+        fygfdpun_units, fygfdpun_obs = series_obs("FYGFDPUN")
+        fdhbfrbn_units, fdhbfrbn_obs = series_obs("FDHBFRBN")
+        fdhbfin_units, fdhbfin_obs = series_obs("FDHBFIN")
+        for sid, obs in (("FYGFDPUN", fygfdpun_obs), ("FDHBFRBN", fdhbfrbn_obs), ("FDHBFIN", fdhbfin_obs)):
+            S.require_fresh(sid, obs[-1][0], S.FRESHNESS_DAYS_BY_FREQ["Quarterly"])
+        holders = S.tic_holder_shares(fygfdpun_obs, fygfdpun_units, fdhbfrbn_obs, fdhbfrbn_units,
+                                       fdhbfin_obs, fdhbfin_units)
+        total_pct = holders["centralBank"]["latest"] + holders["domestic"]["latest"] + holders["abroad"]["latest"]
+        if not (99.0 <= total_pct <= 101.0):
+            raise RuntimeError(
+                f"validation: TIC holder shares sum to {total_pct}%, not ~100% — "
+                "likely a wrong field mapping. Check the FRED schema dumped by --verify."
+            )
+    except Exception as e:  # noqa: BLE001
+        print(f"TIC holder shares unavailable/stale, falling back to manual: {e}")
+        holders_tag = "manual"
+    assert_provenance(fallbacks_fired, "Debt holders (central bank/domestic/abroad)", "live", holders_tag,
+                       reason="live TIC/SOMA (FRED) fetch failed or exceeded its freshness threshold")
+
+    # BIS debt-currency share (TASKmanualvalues.md): attempted live via
+    # DBnomics, but bis.py's debt_currency_share_usd() currently always
+    # raises — the exact BIS SDMX schema wasn't confirmed from this dev
+    # sandbox (see bis.py's module docstring). This is the CURRENT,
+    # EXPECTED state, not a regression — deliberately NOT run through
+    # assert_provenance()/fallbacksFired (that mechanism is for a source
+    # that normally succeeds, to flag when it unexpectedly doesn't; BIS
+    # has never yet succeeded, so "manual" is the correct baseline here,
+    # not a fallback firing). Wired the same shape every other
+    # live-with-fallback source uses, so the moment a future session
+    # confirms the schema and removes that final raise, this starts
+    # shipping live with no further change needed here.
+    bis_debt_tag = "manual"
+    try:
+        bis_debt = B.debt_currency_share_usd()
+        bis_debt_tag = "live"
+    except Exception as e:  # noqa: BLE001
+        print(f"BIS debt-currency share unavailable (expected — schema not yet confirmed, "
+              f"see bis.py): {e}")
+
     # --- move guards on the positive-level ratios ---
     _check_move("debt_to_gdp", debt["latest"], prev, force)
     _check_move("debt_service_to_revenue", service["latest"], prev, force)
@@ -894,7 +996,7 @@ def build_us(manual: dict, force: bool) -> dict:
             row["terms"] = terms
         return row
 
-    def manual_row(label, spec, tag="manual", key=None):
+    def manual_row(label, spec, tag="manual", key=None, freshness_days=None):
         row = {"label": label, "display": spec["display"], "unit": spec.get("unit", ""),
                "tone": spec.get("tone", "neutral"), "tag": tag, "src": spec.get("src", "—")}
         if "value" in spec:
@@ -905,6 +1007,20 @@ def build_us(manual: dict, force: bool) -> dict:
             row["history"] = spec["history"]
         if key:
             row["key"] = key
+        # TASKmanualvalues.md §4: a dated manual value can go stale exactly
+        # like the gold/COFER manual fallbacks already do — reuse the same
+        # check_manual_freshness()-then-⚠-note mechanism (MetricRow.jsx
+        # already renders any note starting with "⚠" in the warning color;
+        # no frontend change needed) rather than only the coarse top-level
+        # lastChecked catch-all every dateless value relied on before.
+        if "asOf" in spec and freshness_days is not None:
+            f = check_manual_freshness(f"{key or label} (manual .asOf)", spec["asOf"], freshness_days)
+            if f["stale"]:
+                row["note"] = (
+                    f"⚠ this manual figure is {f['age_days']}d old (dated {spec['asOf']}), "
+                    f"past its {freshness_days}d review threshold; data/manual.json needs "
+                    f"a human to check for a newer figure"
+                )
         return row
 
     # Per-term provenance for the equation-button mapping table
@@ -936,6 +1052,36 @@ def build_us(manual: dict, force: bool) -> dict:
 
     rc = mu["reserveCurrency"]
 
+    # TIC holder shares (TASKmanualvalues.md): live from `holders` (computed
+    # earlier in this function via FRED FYGFDPUN/FDHBFRBN/FDHBFIN) when that
+    # fetch succeeded, else the book-transcribed manual split — now dated
+    # and marked as a last-resort fallback, same treatment as gold/COFER.
+    def holder_row(label, holder_key, key):
+        if holders_tag == "live":
+            h = holders[holder_key]
+            return {
+                "label": label, "value": num(h["latest"]), "display": pct_display(h["latest"], 1),
+                "unit": "", "tone": mu["holders"][holder_key]["tone"], "tag": "live",
+                "src": "derived · FRED (FYGFDPUN, FDHBFRBN, FDHBFIN — Treasury Fiscal Service "
+                       "\"distribution of federal securities by class of investors\")",
+                "asOf": holders["asOf"], "history": h["history"], "key": key,
+            }
+        return manual_row(label, mu["holders"][holder_key], key=key, freshness_days=S.MANUAL_FRESH_DAYS)
+
+    # BIS debt-currency share (TASKmanualvalues.md): live via DBnomics when
+    # bis.py resolves (currently never — see bis.py's module docstring),
+    # else the book-transcribed manual figure, now dated.
+    if bis_debt_tag == "live":
+        world_debt_usd_row = {
+            "label": "World debt in USD", "value": num(bis_debt["latest"]),
+            "display": pct_display(bis_debt["latest"], 1), "unit": "", "tone": rc["debt"]["tone"],
+            "tag": "live", "src": "BIS WS_NA_SEC_DSS (DBnomics)", "asOf": bis_debt["asOf"],
+            "history": bis_debt["history"], "key": "world_debt_usd",
+        }
+    else:
+        world_debt_usd_row = manual_row("World debt in USD", rc["debt"], key="world_debt_usd",
+                                         freshness_days=S.MANUAL_FRESH_DAYS)
+
     vitals = [
         {"key": "debt_to_gdp", "label": "Debt vs income", **_vital(debt, "risk",
             "Debt held by the public near one year of national income; projected to keep climbing.",
@@ -962,17 +1108,19 @@ def build_us(manual: dict, force: bool) -> dict:
         "eyebrow": "Government debt", "tag": "live",
         "note": "Very large debt with little liquid backing. Who holds it matters: foreign holders can leave faster than domestic ones. Two debt-service rows below: net is what's actually leaving the government in cash today; gross adds interest credited to trust funds as bonds — a real claim, but not yet a cash outflow.",
         "rows": [
-            manual_row("Gov assets − gov debt", mu["govAssetsMinusDebt"], key="gov_assets_minus_debt"),
+            manual_row("Gov assets − gov debt", mu["govAssetsMinusDebt"], key="gov_assets_minus_debt",
+                       freshness_days=S.MANUAL_FRESH_DAYS),
             live_row("Government debt (held by public)", debt, "risk", "FRED: FYGFGDQ188S", "of GDP",
                      key="debt_to_gdp"),
             live_row("Debt vs revenue", debt_to_revenue, "risk",
                      "derived · FYGFGDQ188S x GDP / Treasury (total receipts, net of refunds, TTM)",
                      "of revenue", decimals=0, key="debt_to_revenue", terms=debt_to_revenue_terms),
             debt_projection_row,
-            manual_row("— held by central bank", mu["holders"]["centralBank"], key="held_by_central_bank"),
-            manual_row("— held by domestic players", mu["holders"]["domestic"], key="held_by_domestic"),
-            manual_row("— held abroad", mu["holders"]["abroad"], key="held_abroad"),
-            manual_row("Share in hard (foreign) FX", mu["shareHardFX"], key="share_hard_fx"),
+            holder_row("— held by central bank", "centralBank", "held_by_central_bank"),
+            holder_row("— held by domestic players", "domestic", "held_by_domestic"),
+            holder_row("— held abroad", "abroad", "held_abroad"),
+            manual_row("Share in hard (foreign) FX", mu["shareHardFX"], key="share_hard_fx",
+                       freshness_days=S.MANUAL_FRESH_DAYS),
             live_row("Net interest (to the public)", service, "risk",
                      "derived · Treasury (net interest, total receipts net of refunds)", "of revenue",
                      note="The current situation — cash leaving the government today",
@@ -1007,7 +1155,8 @@ def build_us(manual: dict, force: bool) -> dict:
             *([gold_value_row] if gold_value_row else []),
             live_row("FX reserves excl. gold", reserves, "risk", "FRED: TRESEGUSM052N", "of GDP",
                      key="fx_reserves_excl_gold"),
-            manual_row("Sovereign wealth assets", mu["sovereignWealth"], key="sovereign_wealth"),
+            manual_row("Sovereign wealth assets", mu["sovereignWealth"], key="sovereign_wealth",
+                       freshness_days=S.MANUAL_FRESH_DAYS),
         ],
     }
     broader_panel = {
@@ -1057,9 +1206,11 @@ def build_us(manual: dict, force: bool) -> dict:
         "eyebrow": "Reserve-currency status", "tag": "manual", "accent": "#5B8DD6",
         "note": rc["note"],
         "rows": [
-            manual_row("World trade in USD", rc["trade"], key="world_trade_usd"),
-            manual_row("World debt in USD", rc["debt"], key="world_debt_usd"),
-            manual_row("Global equity market cap", rc["equity"], key="global_equity_usd"),
+            manual_row("World trade in USD", rc["trade"], key="world_trade_usd",
+                       freshness_days=S.MANUAL_FRESH_DAYS),
+            world_debt_usd_row,
+            manual_row("Global equity market cap", rc["equity"], key="global_equity_usd",
+                       freshness_days=S.MANUAL_FRESH_DAYS),
             cb_reserves_row,
         ],
     }

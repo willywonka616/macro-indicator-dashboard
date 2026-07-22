@@ -11,18 +11,30 @@
       "shortTerm": { "level": "Low", "note": "Can change overnight if debt demand weakens or net-selling starts" }
     },
     "holders": {
-      "centralBank": { "display": "13%", "tone": "neutral", "src": "TIC / FRED" },
-      "domestic": { "display": "57%", "tone": "neutral", "src": "TIC" },
-      "abroad": { "display": "29%", "tone": "caution", "src": "TIC" }
+      "centralBank": { "display": "13%", "tone": "neutral", "src": "TIC / FRED", "asOf": "2025-03",
+        "note": "Last-resort fallback ONLY — TASKmanualvalues.md replaced this book-transcribed split with a live three-way fetch (FRED FYGFDPUN/FDHBFRBN/FDHBFIN, Treasury Fiscal Service 'distribution of federal securities by class of investors' table; see scripts/series.py's tic_holder_shares()). This is Dalio's Ch.17 figure, kept only for the case where the live fetch fails or goes stale — dated to when the book was current, not fabricated." },
+      "domestic": { "display": "57%", "tone": "neutral", "src": "TIC", "asOf": "2025-03",
+        "note": "Last-resort fallback ONLY — see holders.centralBank's note; this is the residual share (100% − central bank − abroad)." },
+      "abroad": { "display": "29%", "tone": "caution", "src": "TIC", "asOf": "2025-03",
+        "note": "Last-resort fallback ONLY — see holders.centralBank's note." }
     },
-    "govAssetsMinusDebt": { "display": "−96%", "unit": "of GDP", "tone": "risk", "src": "derived" },
+    "govAssetsMinusDebt": {
+      "display": "−96%", "unit": "of GDP", "tone": "risk", "src": "derived", "asOf": "2025-03",
+      "note": "Dalio's Ch.17 figure (government financial assets minus government debt, as a share of GDP). No live source identified: there is no single published series for 'total government financial assets' comparable in scope to what his book nets against debt — TASKmanualvalues.md §4 (no viable free source; stays manual, dated to the book's own baseline)."
+    },
     "cboProjectionFallback": {
-      "display": "120%", "value": 120.2, "unit": "of GDP", "tone": "risk",
+      "display": "120%", "value": 120.2, "unit": "of GDP", "tone": "risk", "asOf": "2026-07-21",
       "src": "CBO 10-Year Budget Projections, February 2026 baseline (FY2036), last-resort snapshot",
       "note": "Last-resort fallback ONLY — used if the live CBO GitHub data mirror (US-CBO/cbo-data) is unreachable or its latest vintage is stale past the ~400d threshold. TASKprojections.md replaced the old hand-carried 122% (June 2024 CBO vintage, no date, one of the 11 undated manual values STATUS.md §19.2 found) with a live fetch of CBO's current vintage; this snapshot is that vintage's own FY2036 value, captured 2026-07-21 as the emergency fallback, not an independent figure."
     },
-    "sovereignWealth": { "display": "None", "tone": "risk", "src": "—" },
-    "shareHardFX": { "display": "No", "tone": "mitig", "src": "—" },
+    "sovereignWealth": {
+      "display": "None", "tone": "risk", "src": "—", "asOf": "2025-03",
+      "note": "The US has no sovereign wealth fund — a structural fact from Dalio's Ch.17, not a series that moves; no live source applies (TASKmanualvalues.md §4). Dated to the book's own baseline for consistency with every other manual figure, not because this is expected to change on any schedule."
+    },
+    "shareHardFX": {
+      "display": "No", "tone": "mitig", "src": "—", "asOf": "2025-03",
+      "note": "Whether US debt is issued in a currency foreign creditors could force ('hard FX') — a qualitative structural fact (Dalio Ch.17: the US borrows in its own currency), not a fetchable series. TASKmanualvalues.md §4: no viable free source; stays manual, dated to the book's own baseline."
+    },
     "goldPriceManualFallback": {
       "pricePerOz": 4000, "asOf": "2026-07-20",
       "src": "market data (spot, hand-entered) — last-resort snapshot from when the gold price had no working live source (STATUS.md §16/§17)",
@@ -34,15 +46,24 @@
       ]
     },
     "reservesInclGoldFallback": {
-      "display": "3.0%", "value": 3.0, "unit": "of GDP", "tone": "risk",
+      "display": "3.0%", "value": 3.0, "unit": "of GDP", "tone": "risk", "asOf": "2025-03",
       "src": "manual · Dalio Ch.17 (gold at market)",
-      "note": "Last-resort fallback ONLY — used if the live Treasury gold-holdings fetch itself fails (not just the price). If holdings are live but the price source is dead, goldPriceManualFallback (above) is used instead, keeping the ounce count live. This value is Dalio's own book figure, hand-carried for the double-failure case; it is NOT an independent check and reads as a match against his figure by construction — see STATUS.md §9/§18."
+      "note": "Last-resort fallback ONLY — used if the live Treasury gold-holdings fetch itself fails (not just the price). If holdings are live but the price source is dead, goldPriceManualFallback (above) is used instead, keeping the ounce count live. This value is Dalio's own book figure, hand-carried for the double-failure case; it is NOT an independent check and reads as a match against his figure by construction — see STATUS.md §9/§18. Dated to the book's own baseline (TASKmanualvalues.md) rather than left undated."
     },
     "reserveCurrency": {
       "note": "Dalio's single biggest risk mitigator. Dollar dominance across trade, debt, equities and reserves is what holds overall risk down — and what the US is undermining. Only the reserve series has long public history (IMF COFER, from 1999).",
-      "trade": { "value": 52.6, "display": "52.6%", "tone": "mitig", "src": "SWIFT / BIS · from ~2012" },
-      "debt": { "value": 80.7, "display": "80.7%", "tone": "mitig", "src": "BIS · from ~1990s" },
-      "equity": { "value": 65.7, "display": "65.7%", "tone": "mitig", "src": "market data" },
+      "trade": {
+        "value": 52.6, "display": "52.6%", "tone": "mitig", "src": "SWIFT / BIS · from ~2012", "asOf": "2025-03",
+        "note": "TASKmanualvalues.md §3: assessed for a clean free source and found none — SWIFT's Global Currency (RMB) Tracker is the closest public source, but it ships as a monthly PDF report, not a structured feed, and 'world trade invoiced in USD' is itself a definition-sensitive aggregate (BIS/IMF each define it slightly differently). Stays manual, dated to when the book figure was current; this share moves slowly (low-volatility), so a several-month-old snapshot is a reasonable low-risk trade-off."
+      },
+      "debt": {
+        "value": 80.7, "display": "80.7%", "tone": "mitig", "src": "BIS · from ~1990s", "asOf": "2025-03",
+        "note": "TASKmanualvalues.md §2: attempted live via DBnomics (BIS WS_NA_SEC_DSS, scripts/bis.py) — the exact SDMX dimension codes for 'world total' and 'USD vs all-currencies' could not be confirmed (both data.bis.org and db.nomics.world are blocked from this project's dev sandbox; see bis.py's module docstring). Stays manual for now, dated to the book's own baseline rather than left undated. bis.py is wired to switch this row live automatically the moment a future session confirms the schema — no fetch.py change needed then."
+      },
+      "equity": {
+        "value": 65.7, "display": "65.7%", "tone": "mitig", "src": "market data", "asOf": "2025-03",
+        "note": "TASKmanualvalues.md §3: assessed for a clean free source and found none — 'share of global equity market cap denominated/listed in USD' isn't a standard published series; computing it would mean aggregating exchange-level market caps across every country and currency-converting, a messier and definition-sensitive exercise than the other rows here. Stays manual, dated to when the book figure was current; low-volatility, so a several-month-old snapshot is a reasonable trade-off."
+      },
       "cbReserves": {
         "value": 57.13,
         "display": "57.1%",
