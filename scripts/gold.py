@@ -167,12 +167,22 @@ GOLD_ENDPOINT = "/v2/accounting/od/gold_reserve"
 # World Bank Commodity Markets ("Pink Sheet"), direct download — the actual
 # monthly historical spreadsheet, not the annual forecast table DBnomics
 # exposed (see module docstring). URL carries a per-publication hash
-# component, same pattern as CBO's recurring-data URLs — if the World Bank
-# reposts under a new hash, verify()'s dump will show the download itself
-# failing (404/403) and that's the signal to re-derive it, not silent drift.
+# component, same pattern as CBO's recurring-data URLs.
+#
+# Confirmed live (2026-07) that this rotates WITHOUT the old URL ever
+# breaking: a first hash (".../18675f1d...-0050012025/...") kept resolving
+# 200 and parsing cleanly, but its underlying data had frozen at 2025-12 —
+# seven months stale — while the World Bank had already moved on to a new
+# hash (".../74e8be41...-0050012026/...", in place since 2026-02-03,
+# confirmed current). A successful parse is therefore NOT proof of
+# freshness here, unlike a 404 would be — see gold_price_usd_per_oz_labeled(),
+# which checks the direct leg's own latest date and prefers the GitHub
+# mirror whenever it's stale, so a future hash rotation degrades
+# automatically instead of silently shipping old data or requiring another
+# manual URL fix.
 WORLDBANK_PINK_SHEET_URL = (
-    "https://thedocs.worldbank.org/en/doc/18675f1d1639c7a34d463f59263ba0a2-"
-    "0050012025/related/CMO-Historical-Data-Monthly.xlsx"
+    "https://thedocs.worldbank.org/en/doc/74e8be41ceb20fa0da750cda2f6b9e4e-"
+    "0050012026/related/CMO-Historical-Data-Monthly.xlsx"
 )
 
 # Nasdaq/Stooq/LBMA all reject a bare python-requests User-Agent outright
@@ -404,13 +414,37 @@ def gold_price_usd_per_oz_labeled() -> tuple[dict, str]:
     """Same as gold_price_usd_per_oz(), but also returns which leg actually
     served the data — fetch.py uses the label so a row's `src` names the
     real leg (direct vs. GitHub mirror) rather than a generic "World Bank"
-    that would hide which one is live this run."""
+    that would hide which one is live this run.
+
+    Prefers the direct download, but only if its OWN latest observation is
+    itself fresh — a successful parse is not proof of freshness for this
+    source (see WORLDBANK_PINK_SHEET_URL's comment: the direct download can
+    keep resolving 200 and parsing cleanly for months after the World Bank
+    has quietly rotated its live data to a new URL hash, confirmed live
+    2026-07). Falls to the GitHub mirror whenever the direct leg is missing,
+    broken, OR stale, so a future hash rotation degrades automatically
+    rather than shipping silently-old data or needing another manual fix.
+    """
+    direct, direct_err = None, None
     try:
-        return _worldbank_pink_sheet_gold_monthly(), "World Bank (Pink Sheet, direct)"
+        direct = _worldbank_pink_sheet_gold_monthly()
     except Exception as e:  # noqa: BLE001
-        print(f"World Bank Pink Sheet direct download failed, trying GitHub mirror: {e}")
-        return (_github_mirror_gold_monthly(),
-                f"World Bank (Pink Sheet, GitHub mirror: {GOLD_MIRROR_REPO})")
+        direct_err = e
+
+    if direct:
+        latest = max(direct)
+        age_days = (dt.date.today() - dt.date(latest[0], latest[1], 1)).days
+        if age_days <= S.FRESHNESS_DAYS_BY_FREQ["Monthly"]:
+            return direct, "World Bank (Pink Sheet, direct)"
+        print(f"World Bank Pink Sheet direct download parsed fine but its latest "
+              f"observation ({latest[0]}-{latest[1]:02d}) is {age_days}d old — likely "
+              f"a stale per-publication URL hash (see module docstring); trying "
+              f"the GitHub mirror instead")
+    else:
+        print(f"World Bank Pink Sheet direct download failed, trying GitHub mirror: {direct_err}")
+
+    return (_github_mirror_gold_monthly(),
+            f"World Bank (Pink Sheet, GitHub mirror: {GOLD_MIRROR_REPO})")
 
 
 def gold_price_usd_per_oz() -> dict:
@@ -489,7 +523,6 @@ def verify() -> bool:
     print("\n[gold-price] World Bank Pink Sheet, direct download "
           "(TASKgoldautomation.md §3)")
     print(f"  {WORLDBANK_PINK_SHEET_URL}")
-    direct_ok = False
     try:
         direct = _worldbank_pink_sheet_gold_monthly()
         latest = max(direct)
@@ -499,7 +532,6 @@ def verify() -> bool:
         f = S.freshness("gold price (World Bank direct)", f"{latest[0]}-{latest[1]:02d}-01", max_days)
         print(f"  freshness: {f['age_days']}d old, {max_days}d threshold, "
               f"{'STALE' if f['stale'] else 'ok'}")
-        direct_ok = True
     except Exception as e:  # noqa: BLE001
         print(f"  FAILED: {e}")
 
@@ -516,7 +548,15 @@ def verify() -> bool:
               f"{'STALE' if f['stale'] else 'ok'}")
     except Exception as e:  # noqa: BLE001
         print(f"  FAILED: {e}")
-    print(f"\n  active leg this run: {'direct download' if direct_ok else 'GitHub mirror (direct download failed)'}")
+    # Ask the real selector, not just "did the direct parse succeed" —
+    # gold_price_usd_per_oz_labeled() also rejects a direct leg that parsed
+    # fine but is itself stale (see its docstring), so this line reports
+    # what actually ships, not just what didn't throw.
+    try:
+        _, active_label = gold_price_usd_per_oz_labeled()
+        print(f"\n  active leg this run: {active_label}")
+    except Exception as e:  # noqa: BLE001
+        print(f"\n  active leg this run: NONE — both legs failed: {e}")
 
     print("\n[retry, TASKgoldautomation.md §1] Nasdaq Data Link LBMA/GOLD, "
           "browser headers — diagnostic only, never used as a live source "
