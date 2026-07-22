@@ -240,15 +240,40 @@ def verify() -> int:
         gdp_units, gdp_obs = series_obs("GDP")
         gdp_latest_d, gdp_latest_v = gdp_obs[-1]
         gdp_usd = S.to_dollars(gdp_latest_v, gdp_units)
-        for sid in ("TCMDO", "TCMDODNS"):
+        tcmdo_latest_usd = None
+        for sid in ("TCMDO", "TCMDODNS", "DODFS"):
             try:
                 units, obs = series_obs(sid)
                 d, v = obs[-1]
-                pct = S.to_dollars(v, units) / gdp_usd * 100.0
-                note = " <- used for 'Total debt' row" if sid == "TCMDO" else " (diagnostic only, not used — see series.py)"
+                usd = S.to_dollars(v, units)
+                pct = usd / gdp_usd * 100.0
+                note = {"TCMDO": " <- used for 'Total debt' row",
+                        "TCMDODNS": " (diagnostic only, not used — excludes BOTH financial sector AND rest-of-world; see series.py)",
+                        "DODFS": " (diagnostic only, TASKtotaldebtreconcile.md — Domestic Financial Sectors ONLY, keeps foreign in)"}[sid]
                 print(f"  {sid}: {pct:.1f}% of GDP as of {d} (GDP as of {gdp_latest_d}){note}")
+                if sid == "TCMDO":
+                    tcmdo_latest_usd = usd
+                if sid == "DODFS" and tcmdo_latest_usd:
+                    ex_fin_pct = (tcmdo_latest_usd - usd) / gdp_usd * 100.0
+                    print(f"  TCMDO minus DODFS (all sectors excl. ONLY the domestic financial "
+                          f"sector, foreign debt still included): {ex_fin_pct:.1f}% of GDP")
             except Exception as e:  # noqa: BLE001
                 print(f"  {sid}: FAILED: {e}")
+
+        # Vintage check (TASKtotaldebtreconcile.md iteration 2): Dalio's
+        # snapshot is March 2025 (~2025-Q1). Read TCMDO's own 2025-Q1
+        # value directly (not the current quarter) to see whether timing
+        # alone could explain the gap.
+        try:
+            tcmdo_units, tcmdo_obs = series_obs("TCMDO")
+            q1_2025 = [(d, v) for d, v in tcmdo_obs if d.year == 2025 and d.month == 1]
+            if q1_2025:
+                d, v = q1_2025[0]
+                pct = S.to_dollars(v, tcmdo_units) / gdp_usd * 100.0
+                print(f"  TCMDO at 2025-Q1 (Dalio's snapshot vintage), current GDP: {pct:.1f}% "
+                      f"of GDP as of {d} — vintage-only comparison")
+        except Exception as e:  # noqa: BLE001
+            print(f"  vintage check FAILED: {e}")
     except Exception as e:  # noqa: BLE001
         print(f"  comparison FAILED: {e}")
 
