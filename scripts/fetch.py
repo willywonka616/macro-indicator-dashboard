@@ -826,6 +826,12 @@ def build_us(manual: dict, force: bool) -> dict:
     # Dalio's equation #3 (Ch.3): the interest rate that would keep debt
     # flat, computed across CBO's baseline, shown alongside the ACTUAL
     # average effective rate (Treasury, live) so the gap is legible.
+    # Growth term is REVENUE growth (CBO's own `proj_rev_total`, verified
+    # live: FY2026's revenue $5,595.9B / FY2025's $5,234.6B - 1 = 6.90%,
+    # matching Dalio's Ch.3 definition exactly — not GDP growth, which
+    # this pipeline doesn't even have a raw level for (CBO's dataset only
+    # publishes GDP as a *_gdp_share ratio, never a level). See
+    # series.py's interest_rate_to_keep_debt_flat() and STATUS.md §27.
     equation3_row = None
     if cbo_data:
         try:
@@ -833,6 +839,26 @@ def build_us(manual: dict, force: bool) -> dict:
             actual_rate = T.avg_interest_rate_marketable()
             latest_required = required["history"][0]["v"]
             gap = round(actual_rate["latest"] - latest_required, 2)
+            # TASKequation3growth.md §"Interpreting the result": a
+            # required > actual gap is easy to misread as reassuring. It
+            # isn't a settled state — the ACTUAL rate is an average across
+            # the whole outstanding stock, including old low-coupon debt;
+            # new issuance costs more, so the average drifts toward (and
+            # can cross) the required rate as the stock rolls over. This
+            # is a closing gap, not a standing buffer.
+            if gap < 0:
+                interp = ("the actual rate sits BELOW the stabilising threshold today — read "
+                          "carefully: not a settled cushion. The actual figure is an AVERAGE "
+                          "across all outstanding debt, including old low-coupon issues; new "
+                          "issuance costs more, so the average rate drifts up as the stock "
+                          "rolls over, closing this gap (or crossing it) over time even with "
+                          "no change in the required rate itself")
+            elif gap > 0:
+                interp = ("the actual rate already sits ABOVE the stabilising threshold — the "
+                          "interest burden is rising on its own, before any primary deficit is "
+                          "even counted")
+            else:
+                interp = "the actual rate sits almost exactly at the stabilising threshold"
             equation3_row = {
                 "label": "Interest rate to keep debt flat (Dalio eq. #3)",
                 "value": num(latest_required), "display": pct_display(latest_required, 1),
@@ -843,9 +869,7 @@ def build_us(manual: dict, force: bool) -> dict:
                 "note": (f"{cbo_vintage_label}. Actual average effective rate on marketable debt "
                          f"held by the public (Treasury, live, {actual_rate['asOf']}): "
                          f"{actual_rate['latest']}% — gap vs. the rate required to keep debt flat: "
-                         f"{'+' if gap >= 0 else ''}{gap}pt "
-                         f"({'debt burden trending up' if gap > 0 else 'debt burden trending down'} "
-                         f"at the actual rate, all else equal)."),
+                         f"{'+' if gap >= 0 else ''}{gap}pt: {interp}."),
             }
         except Exception as e:  # noqa: BLE001
             print(f"Equation #3 (interest rate to keep debt flat) unavailable: {e}")

@@ -99,6 +99,8 @@ export const equations = {
     caveats: [
       "Diagnostic by design: compare the plotted required rate against the row's own note, which states the ACTUAL average effective rate on marketable debt (Treasury, live) — the gap between them is how far from stabilising the debt currently is, not a number to read on its own.",
       "Every term is CBO's own published baseline (Revenue Growth, the primary deficit, and the starting debt level) — nothing here is extrapolated, fitted, or a scenario output.",
+      "\"Revenue Growth\" is REVENUE growth, not GDP growth — matching Dalio's own definition and the same basis the debt/revenue row uses, not GDP (this matters under CBO's current-law baseline, where expiring tax provisions are assumed to lapse and revenue is projected to grow faster than GDP for a stretch of years).",
+      "A required-rate ABOVE the actual rate is easy to misread as reassuring. It isn't a settled state: the actual figure is an average effective rate across the WHOLE outstanding debt stock, including old low-coupon issues — new issuance costs more, so that average drifts up as the stock rolls over, closing (or crossing) this gap over time even with no change in the required rate itself.",
     ],
   },
 

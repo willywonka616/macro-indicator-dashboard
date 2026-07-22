@@ -500,6 +500,20 @@ def interest_rate_to_keep_debt_flat(cbo_data: dict) -> dict:
     (treasury.avg_interest_rate_marketable(), live) — the gap between them
     is "how far from stabilising the debt currently is," Dalio's own
     framing (i = g keeps debt flat with no primary deficit).
+
+    "Revenue Growth" (TASKequation3growth.md) is genuinely REVENUE growth
+    — `growth` below is computed from `cbo_data["rev_total"]`
+    (CBO's own `proj_rev_total`), NOT nominal GDP growth. Confirmed live
+    (2026-07, 2026-02 vintage): FY2026 revenue $5,595.9B / FY2025's
+    $5,234.6B − 1 = 6.90%, matching Dalio's Ch.3 definition (debt measured
+    against income/revenue, the same basis the debt/revenue row uses) —
+    not GDP, which this pipeline doesn't even carry a raw dollar level
+    for (CBO's own dataset publishes GDP only as a `*_gdp_share` ratio of
+    other fields, never as its own level). This distinction matters under
+    CBO's current-law baseline specifically: expiring tax provisions are
+    assumed to lapse, which raises projected revenue faster than
+    projected GDP for a stretch of years, so the two growth rates
+    genuinely diverge here, not just in principle.
     """
     fy_min, fy_max = cbo_data["fyMin"], cbo_data["fyMax"]
     rev = cbo_data["rev_total"]
