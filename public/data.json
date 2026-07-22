@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-22T11:40:42Z",
+  "generatedAt": "2026-07-22T16:06:36Z",
   "meta": {
     "seed": false,
     "schema": 1
@@ -5105,7 +5105,7 @@
                   "projected": true
                 }
               ],
-              "note": "CBO 10-Year Budget Projections, February 2026 baseline (FY2025–FY2036, current law). Actual average effective rate on marketable debt held by the public (Treasury, live, 2026-06): 3.41% — gap vs. the rate required to keep debt flat: -0.8pt (debt burden trending down at the actual rate, all else equal)."
+              "note": "CBO 10-Year Budget Projections, February 2026 baseline (FY2025–FY2036, current law). Actual average effective rate on marketable debt held by the public (Treasury, live, 2026-06): 3.41% — gap vs. the rate required to keep debt flat: -0.8pt: the actual rate sits BELOW the stabilising threshold today — read carefully: not a settled cushion. The actual figure is an AVERAGE across all outstanding debt, including old low-coupon issues; new issuance costs more, so the average rate drifts up as the stock rolls over, closing this gap (or crossing it) over time even with no change in the required rate itself."
             }
           ]
         },
