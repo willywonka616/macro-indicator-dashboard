@@ -235,6 +235,38 @@ def as_monthly(obs):
     return out
 
 
+def quarterly_last(monthly: dict) -> dict:
+    """{(y,m): value} -> {(y,q): value}, keeping the value from the LATEST
+    month actually present in each quarter — chosen explicitly by
+    comparing month numbers, not by dict iteration order.
+
+    2026-07-22 bug fix: `reserves_incl_gold_pct_gdp` and `real_10y_rate`
+    used to bucket a monthly dict into quarters by iterating `.items()`
+    and unconditionally overwriting `out[(y,q)] = v` for every month
+    seen — correct ONLY if that iteration order happens to be
+    chronological. It reliably was for a dict built directly from an
+    ascending `[(date, value)]` list (insertion order = calendar order),
+    but NOT for a dict built from a SET INTERSECTION of two other dicts'
+    keys (`a.keys() & b.keys()`) — Python does not guarantee that
+    iterates in any particular order, let alone calendar order. Confirmed
+    live and reproduced locally: for a real 2026-Q1 key set, this
+    silently picked January over the intended March in every case
+    tested, regardless of which underlying source dict was used — a
+    real correctness bug, not a source-freshness or GDP-vintage issue
+    (see STATUS.md §25). Every quarter-bucketing call site now goes
+    through this one deterministic function instead of re-implementing
+    the same fold inline, so this class of bug can't recur silently.
+    """
+    best_month = {}
+    out = {}
+    for (y, m), v in monthly.items():
+        q = (y, (m - 1) // 3 + 1)
+        if q not in best_month or m > best_month[q]:
+            best_month[q] = m
+            out[q] = v
+    return out
+
+
 # --- history shaping -----------------------------------------------------
 
 def quarterly_history(qseries: dict):
@@ -258,10 +290,7 @@ def _latest(qseries: dict):
 def reserves_pct_gdp(reserves_obs, reserves_units, gdp_obs, gdp_units):
     """Total reserves EXCLUDING gold as a percentage of nominal GDP."""
     res_m = as_monthly(reserves_obs)
-    # collapse monthly reserves to quarterly (last month of quarter present)
-    res_q = {}
-    for (y, m), v in res_m.items():
-        res_q[(y, (m - 1) // 3 + 1)] = v
+    res_q = quarterly_last(res_m)  # collapse monthly reserves to quarterly (last month of quarter present)
     gdp = as_quarterly(gdp_obs)
     ratio = {}
     for k in res_q.keys() & gdp.keys():
@@ -286,9 +315,7 @@ def reserves_incl_gold_pct_gdp(reserves_obs, reserves_units, gold_value_usd_mont
     combined_m = {}
     for k in res_m.keys() & gold_value_usd_monthly.keys():
         combined_m[k] = to_dollars(res_m[k], reserves_units) + gold_value_usd_monthly[k]
-    res_q = {}
-    for (y, m), v in combined_m.items():
-        res_q[(y, (m - 1) // 3 + 1)] = v
+    res_q = quarterly_last(combined_m)
     gdp = as_quarterly(gdp_obs)
     ratio = {}
     for k in res_q.keys() & gdp.keys():
@@ -328,9 +355,12 @@ def debt_to_revenue_pct(debt_pct_obs, gdp_obs, gdp_units, revenue_ttm_dollars):
     """
     debt_pct_q = as_quarterly(debt_pct_obs)
     gdp_q = as_quarterly(gdp_obs)
-    rev_q = {}
-    for (y, m), v in revenue_ttm_dollars.items():
-        rev_q[(y, (m - 1) // 3 + 1)] = v
+    # revenue_ttm_dollars is already chronologically ordered (built via
+    # sorted() in treasury.py's _ttm_sum), so this was never actually
+    # exposed to the quarterly_last() bug — routed through it anyway for
+    # defense-in-depth, so correctness here doesn't depend on that
+    # invariant holding forever in treasury.py.
+    rev_q = quarterly_last(revenue_ttm_dollars)
     ratio = {}
     for k in debt_pct_q.keys() & gdp_q.keys() & rev_q.keys():
         gdp_usd = to_dollars(gdp_q[k], gdp_units)
@@ -394,10 +424,7 @@ def real_10y_rate(dgs10_obs, cpi_obs):
     real = {}
     for k in y10.keys() & infl.keys():
         real[k] = y10[k] - infl[k]
-    # collapse to quarterly for display / latest
-    real_q = {}
-    for (yr, m), v in real.items():
-        real_q[(yr, (m - 1) // 3 + 1)] = v
+    real_q = quarterly_last(real)  # collapse to quarterly for display / latest
     latest, asof = _latest(real_q)
     return {"latest": round(latest, 2), "asOf": asof, "history": quarterly_history(real_q)}
 
