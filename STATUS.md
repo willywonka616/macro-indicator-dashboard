@@ -6,20 +6,18 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-22b-verification.md` (run output) and
-> `docs/review/2026-07-22b-values.md` (headline values), base commit
-> `89bffc1` — a same-day follow-up on the gold-automation pass (§22): a
-> manual check found the shipped $4,228/oz "June 2026" price ran ~3.5%
-> above actual spot by the time it was checked, because the World Bank
-> Pink Sheet is a monthly AVERAGE — a real structural lag for a metal this
-> volatile, even when its date label passes a freshness check. Switched to
-> LBMA's own daily fix as the primary leg (confirmed live: 1 day old),
-> Pink Sheet demoted to fallback. **But a bigger finding: the headline
-> reserves-incl-gold value is bottlenecked to `TRESEGUSM052N`/GDP's own
-> latest common quarter (2026-Q1) regardless of which gold-price leg is
-> active** — the fresher price doesn't reach the headline number at all
-> right now, only a differently-computed March-2026 value does. Flagged
-> for the user, not decided unilaterally — see §23.
+> `docs/review/2026-07-22c-verification.md` (run output) and
+> `docs/review/2026-07-22c-values.md` (headline values), base commit
+> `46c168a` — a same-day follow-up on §23's bottleneck finding: per the
+> user's explicit direction, added "Gold holdings, at current price" as a
+> new row (key `gold_value_current`) — live gold oz × live gold price
+> only, no GDP or `TRESEGUSM052N` denominator, so it updates every time
+> the gold price does instead of waiting on those series' own release
+> cadence. Confirmed GDP itself (not just `TRESEGUSM052N`) is the actual
+> binding constraint on the existing headline row's 2026-Q1 lag. Confirmed
+> live in production: the new row ships `asOf: "2026-06"` right next to
+> the existing row's `asOf: "2026-Q1"` — the vintage gap is now visible on
+> the page itself. See §24.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -31,7 +29,8 @@ prior sessions and no access to this repo's chat history.
 > `docs/review/2026-07-20c-*.md`, `docs/review/2026-07-20d-*.md`,
 > `docs/review/2026-07-21a-*.md`, `docs/review/2026-07-21b-*.md`,
 > `docs/review/2026-07-21c-*.md`, `docs/review/2026-07-21d-*.md`,
-> `docs/review/2026-07-22a-*.md` (superseded, left in place). When you add
+> `docs/review/2026-07-22a-*.md`, `docs/review/2026-07-22b-*.md`
+> (superseded, left in place). When you add
 > a new round, update this line
 > to point at it.
 
@@ -3315,6 +3314,86 @@ here.
 | LBMA's public feed is reachable AND fresh | **VERIFIED** — live CI: latest observation 2026-07-21, 1 day old, well under the 20d threshold now applied to it |
 | XAU is absent from exchangerate-api.com's truly-keyless tier | **VERIFIED** — live CI probe of the full response body, not a truncated preview |
 | Switching to LBMA moves the headline reserves-incl-gold value toward today's spot | **DISCONFIRMED.** The headline is bottlenecked to `TRESEGUSM052N`/GDP's own latest common quarter (2026-Q1) regardless of gold price source; the observed 4.9%→5.1% shift reflects two sources' differing March-2026 values, not a spot-price effect |
+
+---
+
+## 24. A decoupled "gold at current price" row, so §23's fix actually shows up somewhere (2026-07-22, same day, fifteenth pass)
+
+**What this round covers:** §23 found LBMA's fresher gold price doesn't
+reach the "Reserves incl. gold (market)" headline at all — that row is
+bottlenecked to `TRESEGUSM052N`/GDP's own latest common quarter
+(2026-Q1) regardless of price source, and checking directly confirmed
+GDP itself is the binding constraint (FRED's `GDP` series is dated
+`2026-01-01`, 202 days old — Q2 2026 GDP hasn't been published yet, not
+specific to `TRESEGUSM052N`). Given the user's explicit direction — "have
+the figure with the existing and live gold price as a separate number" —
+this round adds that second figure rather than changing the existing
+row's (correct, if slow) definition.
+
+### 24.1 Design: a dollar figure, not another ratio
+
+New row, "Gold holdings, at current price" (`scripts/fetch.py`, key
+`gold_value_current`): live gold troy-oz holdings (Treasury) × the live
+gold price (LBMA, or the World Bank Pink Sheet fallback tier — same
+`gold_value_monthly` computation the headline row already builds),
+taking its own latest overlapping month rather than being intersected
+with `TRESEGUSM052N`/GDP at all. **Deliberately a plain dollar figure
+($B), not a %-of-GDP ratio** — since GDP itself is the Q1-2026
+bottleneck (confirmed above, not assumed), dividing this row's fresh
+numerator by GDP would recreate the exact mixed-vintage problem §23
+diagnosed, just with an even bigger vintage gap on the denominator side.
+Tag mirrors `reserves_incl_gold_tag` (`live` / `manual_price`) since both
+rows are built from the identical gold-value computation; the row is
+omitted entirely (not given a manual-dollar fallback) if the live ounce
+count itself is unavailable, the same precedent
+`interest_rate_to_keep_debt_flat` (TASKprojections.md) set for its own
+live-only equation-#3 row.
+
+### 24.2 Verified in production
+
+Live `workflow_dispatch` run
+(`https://github.com/willywonka616/macro-indicator-dashboard/actions/runs/29894871465`,
+job `88842789540`, committed as `46c168a`) — read directly from the
+resulting `public/data.json`:
+```json
+{
+  "label": "Gold holdings, at current price",
+  "value": 1052.8, "display": "$1,052.8B",
+  "tag": "live", "key": "gold_value_current",
+  "src": "derived · Treasury (gold oz 2026-06) + LBMA (PM fix, direct) (price 2026-07)",
+  "asOf": "2026-06"
+}
+```
+Note `asOf: "2026-06"` here vs. `"2026-Q1"` on "Reserves incl. gold
+(market)" directly above it in the same panel — the two rows' vintages
+are now visibly different on the page itself, not just in STATUS.md
+prose. `provenance.fallbacksFired` contains only the pre-existing,
+unrelated COFER entry — no gold-related fallback fired.
+
+### 24.3 Local + browser verification
+
+Extended the scratchpad mock-test suite: golden-path run asserts the new
+row's tag/display/exact value (`round(oz × price / 1e9, 1)`); the
+manual-price-input scenario (§18's fallback path) asserts the row
+survives tagged `manual_price`; the full-manual-fallback scenario (live
+ounce count itself unavailable) asserts the row is **absent** from the
+panel entirely. All three pass.
+
+Browser (Playwright): patched a local `data.json` with the row, confirmed
+it renders directly below "Reserves incl. gold (market)" with its `$` 
+display, `ƒx` equation button (new `equations.js` entry — definition,
+"what fills each term" with a LIVE DATA tag, and a caveat explaining why
+it's a dollar figure and not a ratio), zero console errors. Patched file
+discarded before committing.
+
+### 24.4 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| GDP itself (not just `TRESEGUSM052N`) is the binding constraint on the 2026-Q1 bottleneck | **VERIFIED** — FRED's `GDP` series confirmed dated `2026-01-01` (202d old) in the CI verify log, independent of `TRESEGUSM052N` |
+| The new row is genuinely decoupled and shows a materially fresher `asOf` than the headline row | **VERIFIED** — live production `public/data.json`: `2026-06` vs. `2026-Q1` on the same panel |
+| The new row correctly omits itself (not a stale manual fallback) when the live ounce count fails | **VERIFIED** — local mock-test scenario 3 asserts absence |
+| No regression to the existing "Reserves incl. gold (market)" row or its equation button | **VERIFIED** — full mock-test suite (every prior round's assertions) still passes; live production value/tag for that row unchanged by this addition |
 
 ---
 
