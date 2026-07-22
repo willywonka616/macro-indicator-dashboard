@@ -6,18 +6,20 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-22c-verification.md` (run output) and
-> `docs/review/2026-07-22c-values.md` (headline values), base commit
-> `46c168a` — a same-day follow-up on §23's bottleneck finding: per the
-> user's explicit direction, added "Gold holdings, at current price" as a
-> new row (key `gold_value_current`) — live gold oz × live gold price
-> only, no GDP or `TRESEGUSM052N` denominator, so it updates every time
-> the gold price does instead of waiting on those series' own release
-> cadence. Confirmed GDP itself (not just `TRESEGUSM052N`) is the actual
-> binding constraint on the existing headline row's 2026-Q1 lag. Confirmed
-> live in production: the new row ships `asOf: "2026-06"` right next to
-> the existing row's `asOf: "2026-Q1"` — the vintage gap is now visible on
-> the page itself. See §24.
+> `docs/review/2026-07-22d-verification.md` (run output) and
+> `docs/review/2026-07-22d-values.md` (headline values), base commit
+> `174f680` — a real bug found and fixed: the user noticed "Reserves incl.
+> gold (market)" reading HIGHER despite gold's price falling, and asked
+> for a month-by-month GDP-basis table to check. GDP's own basis turned
+> out fine (same units, same treatment, every row) — the actual bug was
+> in `reserves_incl_gold_pct_gdp()`'s quarter-bucketing, which silently
+> picked January 2026's gold price instead of March's, because it
+> iterated a dict built from a SET INTERSECTION (unordered) instead of a
+> chronologically-ordered source. Fixed with a new deterministic
+> `quarterly_last()` helper, applied everywhere this pattern appeared
+> (including a second, previously-unnoticed instance in `real_10y_rate`).
+> Confirmed live: the headline moved from 5.1% to the correct 4.5%. Full
+> before/after table and root-cause writeup in §25.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -29,8 +31,8 @@ prior sessions and no access to this repo's chat history.
 > `docs/review/2026-07-20c-*.md`, `docs/review/2026-07-20d-*.md`,
 > `docs/review/2026-07-21a-*.md`, `docs/review/2026-07-21b-*.md`,
 > `docs/review/2026-07-21c-*.md`, `docs/review/2026-07-21d-*.md`,
-> `docs/review/2026-07-22a-*.md`, `docs/review/2026-07-22b-*.md`
-> (superseded, left in place). When you add
+> `docs/review/2026-07-22a-*.md`, `docs/review/2026-07-22b-*.md`,
+> `docs/review/2026-07-22c-*.md` (superseded, left in place). When you add
 > a new round, update this line
 > to point at it.
 
@@ -854,7 +856,7 @@ gap had gone unnoticed because it was never added to this table.
 | Debt, 10-yr projection / revenue | ~700% (his stated forward projection) | **679.3%** at his own vintage (June 2024, FY2034: $50,664.2B ÷ $7,458.7B) | **derived**, from CBO's own baseline dollar levels (debt held by public ÷ total revenue) at the June-2024 vintage | **Real check, not exact — see §21.** −21pt off his stated ~700%, the more interesting of the two 10-yr targets since he *derives* this ratio rather than transcribing it (TASKprojections.md §5). Close enough to support June 2024 as his source vintage (same conclusion as the row above), not close enough to claim exact reproduction. Was "not yet checkable" prior to §21 (no CBO integration existed) |
 | Held by CB / domestic / abroad | 13% / 57% / 29% | 13% / 57% / 29% | **manual**, carried from `data/manual.json` (TIC) | Trivial — same figures, not independently derived |
 | Debt service / revenue | 22% (Ch.17 table); **~20% (Ch.3 prose, "the US is also borrowing ~20% of its income each year to cover interest expenses")** | 19.6% (net-to-public / **total** receipts, net of refunds) | live, `scripts/treasury.py` | **Matches the Ch.3 figure** (−0.4pt) — **does not match Ch.17's 22%** (−2.4pt). The book gives two figures for this ratio, ~2pt apart, in the same March-2025 vintage; exact reproduction of both is impossible. This pipeline reproduces the one computed on the standard (net-to-public / total, net-of-refunds) definition — see §14.1 for the recomputed matrix confirming no realised basis reproduces 22% |
-| FX reserves / GDP | 3% | **5.1%** (excl.-gold FX, live + gold at market, live oz × live price) | **live** (2026-07-22, §22/§23 — no manual price input) | **Fully automated — see §22 (source) and §23 (a real bottleneck found the same day).** §18's manual PRICE INPUT is retired; the gold price now comes from LBMA's daily fix (primary) or the World Bank Pink Sheet (fallback), both live. **But the headline value is bottlenecked to `TRESEGUSM052N`/GDP's own latest common quarter (2026-Q1, per `asOf`) regardless of which gold-price leg is active** — §23 found the fresher LBMA price does NOT make this row more current; it changed 4.9%→5.1% only because LBMA's and the World Bank's respective *March-2026* values genuinely differ, not because June/July gold pricing entered the calculation. Further from Dalio's 3% than §18's manual-price figure — expected, gold having risen past his March-2025 vintage; the widening tracks real gold-price differences, not a bug |
+| FX reserves / GDP | 3% | **4.5%** (excl.-gold FX, live + gold at market, live oz × live price, correctly March-2026) | **live** (2026-07-22, §22/§23/§25 — no manual price input) | **Fully automated (§22), with two real bugs found and fixed the same day (§23, §25).** §18's manual PRICE INPUT is retired; the gold price now comes from LBMA's daily fix (primary) or the World Bank Pink Sheet (fallback). The headline is bottlenecked to `TRESEGUSM052N`/GDP's own latest common quarter (2026-Q1, per `asOf`) regardless of gold-price leg — §23's finding stands. **§23's own explanation for the 4.9%→5.1% swing was itself wrong, corrected in §25**: it was NOT two sources' differing March-2026 values — it was a quarter-bucketing bug silently pricing gold off *January* instead of March, before either §22 or §23 landed. Fixed in §25; the row now correctly prices off March 2026 ($4,608/oz) and reads 4.5%, still further from Dalio's 3% than §18's manual-price figure — expected, gold having risen past his March-2025 vintage |
 | Total debt (Dalio's "other debt") / GDP | 340% | 362.6% (TCMDO, all sectors incl. financial) | live, `FRED: TCMDO` | **Does not match** — +22.6pt gap. Two alternative readings tried and **both eliminated**: nonfinancial-sectors-only (TCMDODNS, 256.7%, −83pt) and non-government debt (TCMDO minus government's own ~99%, 263.9%, −76pt) — both further from 340% than TCMDO itself. See §14.4 |
 | Current account, 3-yr avg / GDP | −4% | −3.7% | live, `IEABC` (FRED) | Matches closely |
 | World trade in USD | 52.6% | 52.6% | **manual**, carried from `data/manual.json` | Trivial — same figure |
@@ -3394,6 +3396,138 @@ discarded before committing.
 | The new row is genuinely decoupled and shows a materially fresher `asOf` than the headline row | **VERIFIED** — live production `public/data.json`: `2026-06` vs. `2026-Q1` on the same panel |
 | The new row correctly omits itself (not a stale manual fallback) when the live ounce count fails | **VERIFIED** — local mock-test scenario 3 asserts absence |
 | No regression to the existing "Reserves incl. gold (market)" row or its equation button | **VERIFIED** — full mock-test suite (every prior round's assertions) still passes; live production value/tag for that row unchanged by this addition |
+
+---
+
+## 25. The real bug: quarterly bucketing picked the wrong month, not a GDP issue (2026-07-22, same day, sixteenth pass)
+
+**What prompted this round:** the user noticed "Reserves incl. gold
+(market)" read 5.1% — HIGHER than recent months, despite gold's price
+having fallen. Correctly reasoned a ratio can't rise on a falling
+numerator unless the denominator changed basis, and asked for a
+month-by-month table (gold price, gold $ value, GDP $ with units/vintage,
+resulting %) to check whether GDP's basis was consistent everywhere.
+
+**The hypothesis was half right and half wrong, in an instructive way.**
+GDP's basis was NOT the problem — its units (`"Billions of Dollars"`,
+confirmed from FRED's own metadata) and its treatment (`S.to_dollars`,
+the standard already-annualized FRED level, ~$30-32T) were identical in
+every row once measured directly. **But the underlying instinct — "the
+basis isn't consistent" — was correct, just pointing at the wrong
+series.** The real bug was in how the *gold value* numerator gets
+matched to a quarter, not in GDP at all.
+
+### 25.1 Root cause
+
+`reserves_incl_gold_pct_gdp()` and `real_10y_rate()` (`scripts/series.py`)
+both collapsed a monthly `{(y,m): value}` dict into quarters like this:
+```python
+res_q = {}
+for (y, m), v in combined_m.items():
+    res_q[(y, (m - 1) // 3 + 1)] = v
+```
+This is correct **only if** iterating `combined_m.items()` visits months
+in chronological order, so the LAST month written for a given quarter is
+also the LATEST one — an assumption that holds for a dict built directly
+from an ascending `[(date, value)]` list (insertion order = calendar
+order), but `combined_m` here was built from `res_m.keys() &
+gold_value_usd_monthly.keys()` — a **set intersection** — and Python does
+not guarantee that iterates in calendar order, or any particular order
+tied to the keys' meaning at all.
+
+**Reproduced directly, not just theorized:** built two realistic monthly
+dicts (matching `TRESEGUSM052N`'s ~76-year history intersected with a
+gold-price leg's own differently-ranged history — the actual shape in
+production), ran the exact bucketing loop, and confirmed it silently
+picked **January 2026** for the "2026-Q1" bucket instead of the intended
+March — consistently, not randomly (int-tuple hashing is deterministic in
+CPython, so this wasn't "different every run," but it was still the wrong
+month, chosen for reasons unrelated to the calendar).
+
+### 25.2 The fix
+
+Added `series.py`'s `quarterly_last()`: a single function that explicitly
+compares month numbers and keeps the latest, with no dependence on
+iteration order —
+```python
+def quarterly_last(monthly: dict) -> dict:
+    best_month = {}
+    out = {}
+    for (y, m), v in monthly.items():
+        q = (y, (m - 1) // 3 + 1)
+        if q not in best_month or m > best_month[q]:
+            best_month[q] = m
+            out[q] = v
+    return out
+```
+Routed every quarter-bucketing call site through it: `reserves_pct_gdp`,
+`reserves_incl_gold_pct_gdp`, `real_10y_rate`, and `debt_to_revenue_pct`
+(the last one was already safe — its input dict is built via an explicit
+`sorted()` in `treasury.py`'s `_ttm_sum` — routed through the shared
+helper anyway for defense-in-depth, so correctness there doesn't keep
+depending on that invariant holding forever). Added a regression test
+reproducing the exact bug shape (two differently-ranged monthly dicts,
+tagged with their own month number so the "winner" is directly visible),
+asserting `quarterly_last()` picks March for 2026-Q1.
+
+### 25.3 Confirmed live: before and after
+
+**Live CI diagnostic added to `verify()`** (this round): prints GDP's and
+`TRESEGUSM052N`'s raw values/units directly, plus a full
+reserves-incl-gold breakdown for the last 4 quarters — answering the
+user's exact question from a run log going forward, not by re-deriving it
+under time pressure.
+
+**Before the fix** (run `29900861697`, still-buggy `series.py`, gold leg
+= LBMA): the breakdown showed `2026-Q1 (gold priced as of 2026-03):
+gold price $4,608.35/oz ... -> 4.539%` from the NEW diagnostic code
+(which was written correctly from the start), while the row ACTUALLY
+SHIPPED that same run was `5.1%`/`5.054%` — i.e., the diagnostic and the
+real shipped computation already disagreed with each other, live, in the
+same run — direct proof the shipped function was wrong, not the new
+diagnostic.
+
+**After the fix** (run `29901538886`, committed as `174f680`): both agree.
+
+| Quarter | Gold priced as of | Gold price | Gold value | GDP (units: Billions of Dollars, FRED) | Reserves+gold | **Resulting %** |
+|---|---|---|---|---|---|---|
+| 2025-Q2 | 2025-06 | $3,287.45/oz | $859.7B | $30.486T (obs. date 2025-04-01) | $1,104.3B | **3.622%** |
+| 2025-Q3 | 2025-09 | $3,825.30/oz | $1,000.3B | $31.098T (obs. date 2025-07-01) | $1,244.8B | **4.003%** |
+| 2025-Q4 | 2025-12 | $4,367.80/oz | $1,142.2B | $31.423T (obs. date 2025-10-01) | $1,385.4B | **4.409%** |
+| 2026-Q1 | 2026-03 | $4,608.35/oz | $1,205.1B | $31.866T (obs. date 2026-01-01) | $1,446.4B | **4.539%** |
+
+**GDP's units are `'Billions of Dollars'` in every row — same string,
+same `S.to_dollars()` conversion, no basis change anywhere in this
+table.** The row that actually moves between quarters is "gold priced as
+of," and now it's always the true last month of the labelled quarter —
+confirmed by the "priced as of" column matching the quarter label in
+every row, which it did NOT before this fix (it silently said "2026-Q1"
+while pricing off January).
+
+Shipped `public/data.json` (`174f680`): "Reserves incl. gold (market)"
+now reads **4.5%** (was 5.1%), matching the corrected breakdown exactly.
+This is now a genuinely SMALLER number than it read before the LBMA
+switch too (was 4.9% under the pre-LBMA, also-buggy code) — the direction
+of the correction was not predictable in advance; it simply reflects
+March 2026's actual gold price ($4,608, LBMA's last trading day that
+month) now being used instead of whatever January's arbitrarily-selected
+value was.
+
+**A second row was silently affected too:** "Real 10-year rate (10y −
+CPI)" now shows `asOf: "2026-Q2"` — this row shared the identical bug and
+has also been recomputed correctly; no separate before/after table was
+built for it since the user's question was specifically about reserves,
+but it's flagged here since it shipped a wrong quarter-month pairing too.
+
+### 25.4 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| GDP's units and treatment are identical in every quarter | **VERIFIED** — read directly from FRED metadata + `S.to_dollars` calls in a live CI diagnostic; not the actual bug |
+| The bug is in quarter-bucketing (set/dict iteration order), not GDP | **VERIFIED** — reproduced directly with realistic key sets; the exact wrong-month selection (January instead of March) demonstrated outside of any live network call |
+| The fix produces the true latest month for every quarter | **VERIFIED** — regression test + live CI: "gold priced as of" now matches the quarter label in all 4 rows |
+| The shipped headline value changed as a direct result | **VERIFIED** — `public/data.json` before (`5.1%`) vs. after (`4.5%`) the fix, same LBMA leg both times |
+| `real_10y_rate` had the identical bug | **VERIFIED** — identical code pattern found by direct code inspection, same fix applied, same live-CI confirmation the row now resolves |
 
 ---
 
