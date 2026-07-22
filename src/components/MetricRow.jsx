@@ -24,7 +24,24 @@ export default function MetricRow({ r }) {
             <EquationButton row={r} />
           </div>
           {r.note && (
-            <div style={{ fontSize: 11, color: c.muted, marginTop: 1 }}>{r.note}</div>
+            // TASKgoldautomation.md §7: a fallback firing must be visible to
+            // a reader of the page, not only to someone reading build logs
+            // or a GitHub Actions annotation. Every fallback-staleness note
+            // in this codebase is written starting with "⚠" (fetch.py's
+            // gold/COFER/manual-freshness notes) — that convention is reused
+            // here as the signal to render in the warning color instead of
+            // the neutral muted one, rather than adding a second, parallel
+            // "is this stale" field that could drift out of sync with it.
+            <div
+              style={{
+                fontSize: 11,
+                color: r.note.startsWith("⚠") ? c.caution : c.muted,
+                fontWeight: r.note.startsWith("⚠") ? 600 : 400,
+                marginTop: 1,
+              }}
+            >
+              {r.note}
+            </div>
           )}
           {r.src && r.src !== "—" && (
             <div style={{ fontSize: 10, color: c.faint }}>
