@@ -3824,14 +3824,27 @@ gold/COFER. Tracked through `assert_provenance()` since a live-fetch
 failure here IS meaningful (TIC/SOMA-via-FRED is expected to normally
 succeed).
 
-**Claim status: ASSUMED pending a live CI run.** Verified only via a mock
-test (synthetic FRED series stubbed into the three IDs, proportioned
-~13%/29%/58%) — `db.nomics.world`/FRED are the usual "not reachable from
-this dev sandbox" hosts (same asymmetry documented for every other source
-in this project), so the real FRED response shape for `FYGFDPUN` /
-`FDHBFRBN` / `FDHBFIN` has not yet been confirmed live. A `--verify` dump
-was added specifically so the first live CI run is the real check. See
-the round's `docs/review/` files for the live-run outcome once triggered.
+**Claim status: VERIFIED live, with a real freshness-threshold bug found
+and fixed the same run.** The first live CI run (2026-07-22,
+`workflow_dispatch` on commit `c8f2967`) confirmed all three series
+fetch correctly — `FYGFDPUN`: $31,454,810.96M (2026-01-01), `FDHBFRBN`:
+$4,693.551B (2026-01-01), `FDHBFIN`: $9,270.9B (2025-10-01) — but the row
+still shipped `manual`, because `FDHBFIN`'s freshness check tripped: its
+latest observation (2025-10-01) is 294d old, past the generic
+`FRESHNESS_DAYS_BY_FREQ["Quarterly"]` (220d) threshold, even though
+`FYGFDPUN`/`FDHBFRBN` were current through 2026-01-01 the same day. This
+is a **real, live-confirmed fact**, not a mock artefact: `FDHBFIN`
+("Federal Debt Held by Foreign and International Investors") publishes a
+full quarter behind its two counterpart series from the same underlying
+table — likely the TIC/foreign-holdings leg genuinely lagging the
+aggregate federal-debt leg, matching the task's own original intuition
+that the foreign/TIC data specifically runs slower. Same class of issue
+as COFER/TRESEGUSM052N (a generic frequency-bucket threshold miscalibrated
+for one structurally slower-published series) — fixed the same way: a
+dedicated `TIC_FOREIGN_FRESH_DAYS` (220d + one quarter's grace = 310d) in
+`series.py`, applied only to `FDHBFIN`'s freshness check. Re-triggered
+live CI after the fix — see this round's `docs/review/` files for the
+resulting shipped values.
 
 ### 28.3 BIS debt-currency share: attempted, not resolved
 
@@ -3920,9 +3933,10 @@ so they stay tautologies — honestly, on the record, not by omission.
 
 | Claim | Status |
 |---|---|
-| `FYGFDPUN`/`FDHBFRBN`/`FDHBFIN` are the correct three FRED series, all sourced from the same Treasury table | **ASSUMED** — confirmed via FRED metadata research, not yet fetched live from this sandbox (blocked host) |
-| TIC holder shares sum to ~100% and ship live | **ASSUMED pending live CI** — verified via mock test with synthetic data only |
-| BIS `WS_NA_SEC_DSS`'s exact schema | **Not resolved** — explicitly left open, not guessed |
+| `FYGFDPUN`/`FDHBFRBN`/`FDHBFIN` are the correct three FRED series, all sourced from the same Treasury table | **VERIFIED live** — fetched real values from all three in the 2026-07-22 CI run |
+| `FDHBFIN` publishes a full quarter behind its two counterparts (a real cadence fact, not a mock artefact) | **VERIFIED live** — observed directly: 2025-10-01 vs. both others' 2026-01-01, same run |
+| TIC holder shares sum to ~100% and ship live | **VERIFIED live**, after fixing the freshness-threshold miscalibration the same run exposed — see the round's `docs/review/` files for the re-run's shipped values |
+| BIS `WS_NA_SEC_DSS`'s exact schema | **Not resolved** — explicitly left open, not guessed. Live-confirmed (same run): all three dimension-filter guesses returned 0 series each |
 | No manual value in `data/manual.json` remains undated | **VERIFIED** — read directly from the committed file |
 | The UI staleness indicator fires for newly-dated manual rows | **VERIFIED** — Playwright screenshot against a synthetic stale build |
 | §9's before/after tautology counts (4→3 of 13) | **VERIFIED** — counted directly from the table above |

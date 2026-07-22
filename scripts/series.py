@@ -130,6 +130,18 @@ COFER_FRESH_DAYS = 270
 # calibrated to domestic series like CPIAUCSL.
 TRESEGUS_FRESH_DAYS = 180
 
+# FDHBFIN ("Federal Debt Held by Foreign and International Investors",
+# TASKmanualvalues.md's tic_holder_shares) publishes a full quarter behind
+# its two counterpart series from the same underlying Treasury table —
+# confirmed live (2026-07-22 CI run): FYGFDPUN and FDHBFRBN were both
+# current through 2026-01-01 (Q1 2026) while FDHBFIN's latest was still
+# 2025-10-01 (Q4 2025), 294d old and tripping the generic 220d Quarterly
+# threshold on a perfectly healthy series — the same "generic threshold
+# miscalibrated for a structurally slower-published series" pattern as
+# COFER/TRESEGUSM052N above, not a bug in the fetch itself. One extra
+# quarter (~90d) of headroom above the generic Quarterly threshold.
+TIC_FOREIGN_FRESH_DAYS = FRESHNESS_DAYS_BY_FREQ["Quarterly"] + 90
+
 # --- manual-value freshness (STATUS.md §19) -------------------------------
 #
 # A hand-entered value with a date is exactly as capable of going stale as

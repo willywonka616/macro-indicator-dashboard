@@ -940,8 +940,15 @@ def build_us(manual: dict, force: bool) -> dict:
         fygfdpun_units, fygfdpun_obs = series_obs("FYGFDPUN")
         fdhbfrbn_units, fdhbfrbn_obs = series_obs("FDHBFRBN")
         fdhbfin_units, fdhbfin_obs = series_obs("FDHBFIN")
-        for sid, obs in (("FYGFDPUN", fygfdpun_obs), ("FDHBFRBN", fdhbfrbn_obs), ("FDHBFIN", fdhbfin_obs)):
-            S.require_fresh(sid, obs[-1][0], S.FRESHNESS_DAYS_BY_FREQ["Quarterly"])
+        # FDHBFIN gets its own, longer threshold — confirmed live (2026-07-22
+        # CI run) that it publishes a full quarter behind FYGFDPUN/FDHBFRBN
+        # even when healthy; see series.py's TIC_FOREIGN_FRESH_DAYS docstring.
+        for sid, obs, max_days in (
+            ("FYGFDPUN", fygfdpun_obs, S.FRESHNESS_DAYS_BY_FREQ["Quarterly"]),
+            ("FDHBFRBN", fdhbfrbn_obs, S.FRESHNESS_DAYS_BY_FREQ["Quarterly"]),
+            ("FDHBFIN", fdhbfin_obs, S.TIC_FOREIGN_FRESH_DAYS),
+        ):
+            S.require_fresh(sid, obs[-1][0], max_days)
         holders = S.tic_holder_shares(fygfdpun_obs, fygfdpun_units, fdhbfrbn_obs, fdhbfrbn_units,
                                        fdhbfin_obs, fdhbfin_units)
         total_pct = holders["centralBank"]["latest"] + holders["domestic"]["latest"] + holders["abroad"]["latest"]
