@@ -6,20 +6,26 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-22f-verification.md` (run output) and
-> `docs/review/2026-07-22f-values.md` (headline values), base commit
-> `a73c4df` — `TASKequation3growth.md`: checked whether equation #3's
-> growth term uses revenue growth (Dalio's definition) or GDP growth
-> before commentary shipped on the row. Verified live, two independent
-> ways, that it was ALREADY revenue growth (`cbo_data["rev_total"]`, CBO's
-> own `proj_rev_total`) — no GDP-growth path was ever possible, since
-> CBO's dataset never publishes a raw GDP level, only `*_gdp_share`
-> ratios. No calculation changed. What WAS missing and has now been
-> added: the interpretive commentary the task asked for — a required rate
-> above the actual rate is easy to misread as reassuring, but the actual
-> figure is an average across the whole debt stock including old
-> low-coupon issues, so the gap closes as the stock rolls over, not a
-> standing buffer. See §27.
+> `docs/review/2026-07-22g-verification.md` (run output) and
+> `docs/review/2026-07-22g-values.md` (headline values), base commit
+> `c7cdbe8` — `TASKmanualvalues.md`: retired the 10 originally-undated
+> `manual.json` values and de-tautologised §9. TIC holder shares
+> (central bank/domestic/foreign split of debt held by the public) are
+> now live from FRED (`FYGFDPUN`/`FDHBFRBN`/`FDHBFIN`), summing to
+> 100.0% and materially different from Dalio's book figures (14.7% /
+> 55.3% / 30.0% vs. his 13% / 57% / 29%) — a genuine test, not a
+> tautology. The first live run caught a real bug: `FDHBFIN` publishes a
+> full quarter behind its two counterpart series even when healthy,
+> tripping the generic freshness threshold — fixed with a dedicated,
+> longer threshold (`TIC_FOREIGN_FRESH_DAYS`), same pattern as
+> COFER/TRESEGUSM052N. BIS's world-debt-in-USD share was attempted live
+> (DBnomics) but the exact SDMX schema couldn't be confirmed — all three
+> guessed dimension filters returned 0 series, confirmed live; stays
+> manual, honestly. Every remaining manual value (world trade/equity in
+> USD, gov assets-minus-debt, share-hard-FX, sovereign wealth, BIS debt
+> share) now has an explicit `asOf` — no fabricated dates, no undated
+> values left. §9's calibration table now marks each row genuine-test vs.
+> tautology: 4→3 of 13 tautologies. See §28.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -33,8 +39,9 @@ prior sessions and no access to this repo's chat history.
 > `docs/review/2026-07-21c-*.md`, `docs/review/2026-07-21d-*.md`,
 > `docs/review/2026-07-22a-*.md`, `docs/review/2026-07-22b-*.md`,
 > `docs/review/2026-07-22c-*.md`, `docs/review/2026-07-22d-*.md`,
-> `docs/review/2026-07-22e-*.md` (superseded, left in place). When you add
-> a new round, update this line to point at it.
+> `docs/review/2026-07-22e-*.md`, `docs/review/2026-07-22f-*.md`
+> (superseded, left in place). When you add a new round, update this
+> line to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
