@@ -6,20 +6,20 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-22e-verification.md` (run output) and
-> `docs/review/2026-07-22e-values.md` (headline values), base commit
-> `7de91cc` — `TASKtotaldebtreconcile.md`, a hard time-boxed (2-iteration)
-> attempt to reconcile total debt (`TCMDO`, 362.6% of GDP) against Dalio's
-> 340%. Both remaining hypotheses eliminated: isolating ONLY the financial
-> sector via a new series, `DODFS` (280.7%, worse than `TCMDO` alone — not
-> the source of the gap), and vintage (TCMDO at Dalio's own March-2025
-> snapshot, correctly paired with same-quarter GDP: 362.5%, essentially
-> flat vs. today). A flawed first draft of the vintage check — mismatched
-> debt/GDP vintages — was caught and disclosed before being reported
-> anywhere. Total debt is now closed as a documented, unreconciled ~23pt
-> known difference (most likely Bridgewater's own internal aggregate, on a
-> basis public series don't reproduce) rather than an open investigation —
-> see §26.
+> `docs/review/2026-07-22f-verification.md` (run output) and
+> `docs/review/2026-07-22f-values.md` (headline values), base commit
+> `a73c4df` — `TASKequation3growth.md`: checked whether equation #3's
+> growth term uses revenue growth (Dalio's definition) or GDP growth
+> before commentary shipped on the row. Verified live, two independent
+> ways, that it was ALREADY revenue growth (`cbo_data["rev_total"]`, CBO's
+> own `proj_rev_total`) — no GDP-growth path was ever possible, since
+> CBO's dataset never publishes a raw GDP level, only `*_gdp_share`
+> ratios. No calculation changed. What WAS missing and has now been
+> added: the interpretive commentary the task asked for — a required rate
+> above the actual rate is easy to misread as reassuring, but the actual
+> figure is an average across the whole debt stock including old
+> low-coupon issues, so the gap closes as the stock rolls over, not a
+> standing buffer. See §27.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -32,9 +32,9 @@ prior sessions and no access to this repo's chat history.
 > `docs/review/2026-07-21a-*.md`, `docs/review/2026-07-21b-*.md`,
 > `docs/review/2026-07-21c-*.md`, `docs/review/2026-07-21d-*.md`,
 > `docs/review/2026-07-22a-*.md`, `docs/review/2026-07-22b-*.md`,
-> `docs/review/2026-07-22c-*.md`, `docs/review/2026-07-22d-*.md`
-> (superseded, left in place). When you add a new round, update this line
-> to point at it.
+> `docs/review/2026-07-22c-*.md`, `docs/review/2026-07-22d-*.md`,
+> `docs/review/2026-07-22e-*.md` (superseded, left in place). When you add
+> a new round, update this line to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -3641,6 +3641,106 @@ calibration honestly, not about changing what the dashboard displays").
 | Vintage (same-quarter TCMDO/GDP pairing) doesn't explain the gap | **VERIFIED** — live CI (362.5%) cross-checked against the independently-computed, already-shipped chart value at the same quarter (362.514%) |
 | The first vintage-check draft's mismatched-denominator flaw | **VERIFIED as a real mistake, caught before publication** — reproduced the wrong (341.8%) and right (362.5%) figures side by side, root cause identified (vintage mismatch between numerator and denominator) |
 | Total debt is now closed as a documented known difference, not an open investigation | **VERIFIED** — STATUS.md §9's row, the "three rows needed more" bullet, and §14.4's own text all updated with consistent forward/backward pointers |
+
+---
+
+## 27. Equation #3's growth term: already correct, but the commentary it needed was missing (2026-07-22, eighteenth pass)
+
+**What this round covers:** `TASKequation3growth.md` — a check on the
+equation-#3 row ("Interest rate to keep debt flat," 4.21% required vs.
+3.41% actual, a −0.8pt gap) before any commentary shipped on it. The
+task's concern: Dalio's equation uses REVENUE growth, not GDP growth, and
+under CBO's current-law baseline (expiring tax provisions assumed to
+lapse) the two diverge — using the wrong one would produce a
+plausible-looking but wrong required rate, and the task noted the
+difference could plausibly be the same size as the observed gap.
+
+### 27.1 The growth term was already correct — verified, not assumed
+
+`series.py`'s `interest_rate_to_keep_debt_flat()` computes `growth` from
+`cbo_data["rev_total"]`, which `cbo.py`'s `FIELDS` dict maps to CBO's own
+`proj_rev_total` — genuinely revenue, confirmed two ways:
+
+1. **Magnitude check**, live CBO data (2026-02 vintage, fetched directly
+   via `raw.githubusercontent.com`): `rev_total` values run $5.2-6.6T
+   across the projection window — revenue-scale, not GDP-scale (GDP is
+   ~$30-32T, independently confirmed via FRED in an earlier round). Where
+   `rev_total_gdp_share` is present (e.g. FY2026: 17.541%), dividing
+   backs out an implied GDP of ~$31.9T — consistent with FRED's own
+   figure, confirming `rev_total` and GDP are two genuinely different,
+   correctly-scaled fields, not a mislabeled duplicate.
+2. **Direct recomputation**, live: FY2026 revenue growth =
+   `5,595.9 / 5,234.6 − 1 = 6.90%`; the primary-deficit term = `813.7 /
+   30,172.4 × 100 = 2.696%`; `6.90 − 2.696 = 4.204% ≈ 4.21%` — reproduces
+   the exact shipped required rate to two decimal places, computed
+   independently from raw CBO fields, not by re-running the pipeline's
+   own function and trusting it circularly.
+
+**No GDP-growth path exists to have been used by mistake, either**: CBO's
+`ten_year_budget` dataset (the only source this row reads from) never
+publishes GDP as its own dollar level — only as `*_gdp_share` ratios of
+other fields. Building a GDP-growth version would have required an
+entirely separate computation this code never attempts.
+
+**Claim status: VERIFIED** — two independent checks (magnitude and
+full recomputation), both against live CBO data fetched fresh for this
+round, not against the pipeline's own output.
+
+### 27.2 Primary-deficit and starting-debt basis: also confirmed correct
+
+Re-verified (not just cited from the existing docstring) against the
+same live 2026-02 vintage: `outlays_total − outlays_net_interest −
+rev_total = 7,448.6 − 1,039.0 − 5,595.9 = 813.7`, matching
+`-proj_primary_deficit` (`-813.7`, sign-flipped) exactly, confirming
+interest is excluded from the expenses side before comparing to revenue
+— Dalio's specified basis. "Starting Debt Level" uses CBO's own
+`proj_debt_held_by_public_begin`, not a derived prior-year lookup.
+
+**Claim status: VERIFIED** — recomputed live, not re-asserted from an
+earlier round's finding.
+
+### 27.3 What was actually missing: the interpretive commentary
+
+No calculation changed. What acceptance criterion 4 asked for — and what
+was genuinely missing — was commentary explaining that "required >
+actual" is easy to misread as reassuring. Added to two places:
+
+- **The row's live `note`** (`fetch.py`): now states explicitly that a
+  below-threshold actual rate is "not a settled cushion" — the actual
+  figure is an average across the whole outstanding debt stock including
+  old low-coupon issues, and new issuance costs more, so the average
+  drifts up as the stock rolls over, closing (or crossing) the gap over
+  time even with no change in the required rate itself. The reverse case
+  (actual above required) is also handled: the burden is already rising
+  on interest cost alone, before any primary deficit is counted.
+- **`equations.js`'s caveats** (the ƒx panel): two new caveats — one
+  explicitly stating the growth term is revenue, not GDP, and why that
+  distinction matters under CBO's current-law baseline; one with the
+  fuller average-vs-marginal explanation for anyone opening the panel.
+
+Confirmed live in production (run `29936313846`, committed as `a73c4df`):
+```
+display: "4.2%"  (unchanged — no calculation logic changed)
+note: "... gap vs. the rate required to keep debt flat: -0.8pt: the actual
+rate sits BELOW the stabilising threshold today — read carefully: not a
+settled cushion. The actual figure is an AVERAGE across all outstanding
+debt, including old low-coupon issues; new issuance costs more, so the
+average rate drifts up as the stock rolls over, closing this gap (or
+crossing it) over time even with no change in the required rate itself."
+```
+
+**Claim status: VERIFIED** — read directly from the committed
+`public/data.json`, confirming the commentary shipped and the headline
+value is unchanged (as it should be, since only documentation changed).
+
+### 27.4 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| The growth term is revenue growth, not GDP growth | **VERIFIED** — magnitude check + independent full recomputation against live CBO data, matching the exact shipped 4.21% |
+| CBO's dataset has no GDP-level field to have been mistakenly used | **VERIFIED** — read directly from `cbo.py`'s `FIELDS` mapping and the live vintage's own keys; only `*_gdp_share` ratios exist |
+| Primary-deficit and starting-debt terms match Dalio's basis | **VERIFIED** — recomputed live this round, not re-cited from a prior round's claim |
+| The new commentary shipped correctly and the value is unchanged | **VERIFIED** — live production `public/data.json`, `display: "4.2%"` unchanged, new note text present verbatim |
 
 ---
 
