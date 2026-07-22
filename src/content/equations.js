@@ -184,6 +184,18 @@ export const equations = {
     },
     caveats: [
       "Dalio flags this indicator as inexact himself: a surplus can either add to reserves or pay down debt, and which one a government chooses changes where the improvement shows up.",
+      "This figure is only ever as current as the SLOWEST of its three live inputs — right now that's FX reserves excl. gold and GDP, both capped at the same latest quarter regardless of how fresh the gold price itself is. See \"Gold holdings, at current price\" below for a companion figure using today's gold price directly, with no GDP denominator to wait on.",
+    ],
+  },
+
+  gold_value_current: {
+    kind: "derived",
+    definition: [
+      "Gold holdings, at current price =",
+      "Gold holdings in troy oz × Gold price",
+    ],
+    caveats: [
+      "A plain dollar figure, deliberately not divided by GDP or combined with FX reserves excl. gold — both of those update on a slower quarterly cadence that would hide how current the gold price itself is. Compare against \"Reserves incl. gold\" above, which is the fuller (but slower-to-update) measure.",
     ],
   },
 

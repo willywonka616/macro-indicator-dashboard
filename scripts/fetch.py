@@ -477,6 +477,20 @@ def build_us(manual: dict, force: bool) -> dict:
     # no compound terms at all (nothing to break down; it's one flat
     # book figure, not four separate live inputs).
     reserves_incl_gold_terms = None
+    # STATUS.md §23 follow-up: "Reserves incl. gold (market)" below is
+    # bottlenecked to TRESEGUSM052N/GDP's own latest common quarter
+    # (currently 2026-Q1) no matter how fresh the gold price is -- neither
+    # series it's combined with releases faster than that, so a live gold
+    # price never reaches that row's headline. This second row uses ONLY
+    # gold's own live oz x live price (no GDP or TRESEGUSM052N dependency
+    # at all), so it's genuinely current every run. Deliberately a dollar
+    # figure, not another %-of-GDP ratio: dividing a fresh numerator by
+    # Q1-2026 GDP would recreate the exact same mixed-vintage problem this
+    # row exists to avoid. Stays None if the live ounce count itself fails
+    # (outer except below) -- omitted from the panel entirely rather than
+    # given a manual fallback, same precedent as the equation-#3 row
+    # (TASKprojections.md) when its own live source is unavailable.
+    gold_value_row = None
     try:
         gold_oz_monthly = G.gold_holdings_troy_oz()
         oz_asof = max(gold_oz_monthly)
@@ -571,6 +585,32 @@ def build_us(manual: dict, force: bool) -> dict:
                     f"old itself, past its {S.GOLD_MANUAL_PRICE_FRESH_DAYS}d review threshold; "
                     f"data/manual.json needs a human to update it"
                 )
+
+        # STATUS.md §23: a plain dollar figure, live oz x live price only
+        # (see the comment above gold_value_row's initialization for why
+        # this deliberately isn't a %-of-GDP ratio). Uses the SAME tag as
+        # "Reserves incl. gold (market)" -- both come from the identical
+        # gold_value_monthly computation, just divided differently (or not
+        # at all) downstream.
+        gv_asof = max(gold_value_monthly)
+        gv_usd_b = gold_value_monthly[gv_asof] / 1e9
+        gold_value_row = {
+            "label": "Gold holdings, at current price", "value": round(gv_usd_b, 1),
+            "display": f"${gv_usd_b:,.1f}B", "unit": "", "tone": "neutral",
+            "tag": reserves_incl_gold_tag, "key": "gold_value_current",
+            "src": f"derived · {gold_src_detail}",
+            "asOf": f"{gv_asof[0]}-{gv_asof[1]:02d}",
+            # gold_stale_note (⚠-prefixed, renders in the UI's warning color
+            # — see MetricRow.jsx) takes priority when a fallback is active;
+            # otherwise explain why this row exists alongside the one above.
+            "note": gold_stale_note or (
+                "Live gold oz x live gold price only — no FX-reserves or GDP "
+                "denominator, so unlike the row above this one updates every "
+                "time the gold price does, not just when TRESEGUSM052N/GDP "
+                "themselves advance a quarter (STATUS.md §23)."
+            ),
+            "history": [],
+        }
 
         reserves_incl_gold = S.reserves_incl_gold_pct_gdp(
             raw["TRESEGUSM052N"][1], raw["TRESEGUSM052N"][0], gold_value_monthly,
@@ -863,6 +903,7 @@ def build_us(manual: dict, force: bool) -> dict:
                 "Dalio tracks both, so both are shown here rather than picking one.",
         "rows": [
             reserves_incl_gold_row,
+            *([gold_value_row] if gold_value_row else []),
             live_row("FX reserves excl. gold", reserves, "risk", "FRED: TRESEGUSM052N", "of GDP",
                      key="fx_reserves_excl_gold"),
             manual_row("Sovereign wealth assets", mu["sovereignWealth"], key="sovereign_wealth"),
