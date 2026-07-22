@@ -25,8 +25,8 @@
     "shareHardFX": { "display": "No", "tone": "mitig", "src": "—" },
     "goldPriceManualFallback": {
       "pricePerOz": 4000, "asOf": "2026-07-20",
-      "src": "market data (spot, hand-entered) — live DBnomics/IMF PCPS price source has been frozen at 2025-06 since at least 2026-07 (STATUS.md §16/§17)",
-      "note": "⚠ manual price input ($4,000/oz as of 2026-07-20) — the live gold-price source is dead, but Treasury's gold-holdings (troy oz) figure is still live and current; this price is applied to that live ounce count rather than falling back to a fully manual output. Update this figure (and the date) periodically until a working live source is found. Cross-checked 2026-07-20: ~$4,001-4,008/oz per tradingeconomics.com and mygoldcalc.com.",
+      "src": "market data (spot, hand-entered) — last-resort snapshot from when the gold price had no working live source (STATUS.md §16/§17)",
+      "note": "⚠ Last-resort fallback ONLY — TASKgoldautomation.md (STATUS.md §22) replaced the DBnomics/IMF PCPS source (frozen since 2025-06) with a live World Bank Commodity Markets (\"Pink Sheet\") fetch, direct download then a GitHub-mirror fallback; this manual price should no longer fire under normal operation and is kept only for the case where both World Bank legs are down. $4,000/oz as of 2026-07-20, cross-checked that day against tradingeconomics.com and mygoldcalc.com (~$4,001-4,008/oz) — update this figure (and the date) if it is ever actually shipped again, since by construction it will be stale by the time it fires.",
       "history": [
         { "date": "2025-06", "pricePerOz": 3351.86, "note": "last live DBnomics/IMF PCPS observation before the source froze" },
         { "date": "2026-01", "pricePerOz": 5595, "note": "approximate Jan-2026 peak, for context only — not used in any computation" },
