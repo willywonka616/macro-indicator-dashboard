@@ -666,6 +666,26 @@ def verify() -> bool:
               f"{'STALE' if f['stale'] else 'ok'}")
     except Exception as e:  # noqa: BLE001
         print(f"  FAILED: {e}")
+
+    # Side-by-side recent months, all three legs — printed unconditionally
+    # (not just "latest") so a reader can see exactly how the SAME month
+    # differs between a daily-last-observation leg (LBMA) and a
+    # whole-month-average leg (World Bank), the discrepancy STATUS.md §23
+    # traced the 4.9%->5.1% reserves-incl-gold shift to. Answers "what
+    # price did month X actually carry on each source" without needing a
+    # separate ad hoc script.
+    try:
+        all_months = sorted(set(lbma) | set(direct) | set(mirror))[-6:]
+        print("\n  last 6 months, all three legs side by side (USD/oz):")
+        print(f"    {'month':<9} {'LBMA (last day)':>16} {'WB direct (avg)':>16} {'WB mirror (avg)':>16}")
+        for ym in all_months:
+            l = f"{lbma[ym]:.2f}" if ym in lbma else "—"
+            d = f"{direct[ym]:.2f}" if ym in direct else "—"
+            m = f"{mirror[ym]:.2f}" if ym in mirror else "—"
+            print(f"    {ym[0]}-{ym[1]:02d}  {l:>16} {d:>16} {m:>16}")
+    except NameError:
+        print("\n  (skipping side-by-side comparison — at least one leg failed to fetch above)")
+
     # Ask the real selector, not just "did the direct parse succeed" —
     # gold_price_usd_per_oz_labeled() also rejects a direct leg that parsed
     # fine but is itself stale (see its docstring), so this line reports

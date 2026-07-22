@@ -252,6 +252,52 @@ def verify() -> int:
     except Exception as e:  # noqa: BLE001
         print(f"  comparison FAILED: {e}")
 
+    # GDP + TRESEGUSM052N raw $ values, units, and vintage, plus a full
+    # reserves-incl-gold breakdown — a user-facing question (2026-07-22:
+    # "reserves rose on a falling gold price — is GDP's basis/units the
+    # same in every run?") found this project had never actually printed
+    # GDP's raw dollar figure anywhere, only its %-of-GDP derivatives.
+    # This exists so that question is answerable directly from a run log
+    # from now on, not by re-deriving it under time pressure.
+    print("\nGDP + reserves-incl-gold breakdown (2026-07-22 follow-up):")
+    try:
+        gdp_units2, gdp_obs2 = series_obs("GDP")
+        print(f"  GDP units (from FRED metadata): {gdp_units2!r}")
+        print("  last 4 GDP observations (raw FRED value, then converted via S.to_dollars):")
+        for d, v in gdp_obs2[-4:]:
+            print(f"    {d}: {v} ({gdp_units2}) -> ${S.to_dollars(v, gdp_units2)/1e12:.3f}T")
+        tres_units2, tres_obs2 = series_obs("TRESEGUSM052N")
+        print(f"  TRESEGUSM052N units (from FRED metadata): {tres_units2!r}")
+        print("  last 4 TRESEGUSM052N observations:")
+        for d, v in tres_obs2[-4:]:
+            print(f"    {d}: {v} ({tres_units2}) -> ${S.to_dollars(v, tres_units2)/1e9:.2f}B")
+
+        oz2 = G.gold_holdings_troy_oz()
+        price2, label2 = G.gold_price_usd_per_oz_labeled()
+        gold_value2 = {k: oz2[k] * price2[k] for k in oz2.keys() & price2.keys()}
+        res_m2 = S.as_monthly(tres_obs2)
+        gdp_q2 = S.as_quarterly(gdp_obs2)
+        print(f"  gold price leg this run: {label2}")
+        print("  reserves-incl-gold, full breakdown for the last 4 quarters actually reached:")
+        combined_m = {k: S.to_dollars(res_m2[k], tres_units2) + gold_value2[k]
+                      for k in res_m2.keys() & gold_value2.keys()}
+        res_q2 = {}
+        for (y, m), v in combined_m.items():
+            q = (y, (m - 1) // 3 + 1)
+            if q not in res_q2 or m > res_q2[q][0]:
+                res_q2[q] = (m, v)
+        for q in sorted(res_q2.keys() & gdp_q2.keys())[-4:]:
+            month_used, combined_v = res_q2[q]
+            gdp_v = S.to_dollars(gdp_q2[q], gdp_units2)
+            gold_v = gold_value2.get((q[0], month_used))
+            price_v = price2.get((q[0], month_used))
+            pct = combined_v / gdp_v * 100.0
+            print(f"    {q[0]}-Q{q[1]} (gold priced as of {q[0]}-{month_used:02d}): "
+                  f"gold price ${price_v:,.2f}/oz, gold value ${gold_v/1e9:.1f}B, "
+                  f"reserves+gold ${combined_v/1e9:.1f}B, GDP ${gdp_v/1e12:.3f}T -> {pct:.3f}%")
+    except Exception as e:  # noqa: BLE001
+        print(f"  breakdown FAILED: {e}")
+
     # IMF COFER (no key) — non-fatal; dumps indicators + the computed USD share.
     I.verify()
 
