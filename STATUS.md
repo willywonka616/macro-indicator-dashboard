@@ -6,20 +6,20 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-22d-verification.md` (run output) and
-> `docs/review/2026-07-22d-values.md` (headline values), base commit
-> `174f680` — a real bug found and fixed: the user noticed "Reserves incl.
-> gold (market)" reading HIGHER despite gold's price falling, and asked
-> for a month-by-month GDP-basis table to check. GDP's own basis turned
-> out fine (same units, same treatment, every row) — the actual bug was
-> in `reserves_incl_gold_pct_gdp()`'s quarter-bucketing, which silently
-> picked January 2026's gold price instead of March's, because it
-> iterated a dict built from a SET INTERSECTION (unordered) instead of a
-> chronologically-ordered source. Fixed with a new deterministic
-> `quarterly_last()` helper, applied everywhere this pattern appeared
-> (including a second, previously-unnoticed instance in `real_10y_rate`).
-> Confirmed live: the headline moved from 5.1% to the correct 4.5%. Full
-> before/after table and root-cause writeup in §25.
+> `docs/review/2026-07-22e-verification.md` (run output) and
+> `docs/review/2026-07-22e-values.md` (headline values), base commit
+> `7de91cc` — `TASKtotaldebtreconcile.md`, a hard time-boxed (2-iteration)
+> attempt to reconcile total debt (`TCMDO`, 362.6% of GDP) against Dalio's
+> 340%. Both remaining hypotheses eliminated: isolating ONLY the financial
+> sector via a new series, `DODFS` (280.7%, worse than `TCMDO` alone — not
+> the source of the gap), and vintage (TCMDO at Dalio's own March-2025
+> snapshot, correctly paired with same-quarter GDP: 362.5%, essentially
+> flat vs. today). A flawed first draft of the vintage check — mismatched
+> debt/GDP vintages — was caught and disclosed before being reported
+> anywhere. Total debt is now closed as a documented, unreconciled ~23pt
+> known difference (most likely Bridgewater's own internal aggregate, on a
+> basis public series don't reproduce) rather than an open investigation —
+> see §26.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -32,8 +32,8 @@ prior sessions and no access to this repo's chat history.
 > `docs/review/2026-07-21a-*.md`, `docs/review/2026-07-21b-*.md`,
 > `docs/review/2026-07-21c-*.md`, `docs/review/2026-07-21d-*.md`,
 > `docs/review/2026-07-22a-*.md`, `docs/review/2026-07-22b-*.md`,
-> `docs/review/2026-07-22c-*.md` (superseded, left in place). When you add
-> a new round, update this line
+> `docs/review/2026-07-22c-*.md`, `docs/review/2026-07-22d-*.md`
+> (superseded, left in place). When you add a new round, update this line
 > to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
@@ -828,11 +828,11 @@ left open:
    test of which side is actually stale (§3), not yet implemented. If
    DBnomics is confirmed behind, either switch the live source to IMF
    directly or find another live mirror.
-8. **Investigate what Dalio's "other debt" (340%) row actually scopes** (§9)
-   — TCMDO (all sectors, 362.6%) is the closer of two tried series but still
-   22.6pts over; TCMDODNS (nonfinancial only) was refuted, not confirmed.
-   Untested idea: total debt minus government debt, to avoid double-counting
-   against the debt/GDP row shown separately.
+8. ~~Investigate what Dalio's "other debt" (340%) row actually scopes~~ —
+   **closed, see §26.** Four hypotheses (total-minus-govt, TCMDODNS,
+   isolated-financial-sector via `DODFS`, vintage) all tried and
+   eliminated under a time-boxed investigation; recorded as a known,
+   unreconciled ~23pt difference rather than left open.
 
 ---
 
@@ -857,7 +857,7 @@ gap had gone unnoticed because it was never added to this table.
 | Held by CB / domestic / abroad | 13% / 57% / 29% | 13% / 57% / 29% | **manual**, carried from `data/manual.json` (TIC) | Trivial — same figures, not independently derived |
 | Debt service / revenue | 22% (Ch.17 table); **~20% (Ch.3 prose, "the US is also borrowing ~20% of its income each year to cover interest expenses")** | 19.6% (net-to-public / **total** receipts, net of refunds) | live, `scripts/treasury.py` | **Matches the Ch.3 figure** (−0.4pt) — **does not match Ch.17's 22%** (−2.4pt). The book gives two figures for this ratio, ~2pt apart, in the same March-2025 vintage; exact reproduction of both is impossible. This pipeline reproduces the one computed on the standard (net-to-public / total, net-of-refunds) definition — see §14.1 for the recomputed matrix confirming no realised basis reproduces 22% |
 | FX reserves / GDP | 3% | **4.5%** (excl.-gold FX, live + gold at market, live oz × live price, correctly March-2026) | **live** (2026-07-22, §22/§23/§25 — no manual price input) | **Fully automated (§22), with two real bugs found and fixed the same day (§23, §25).** §18's manual PRICE INPUT is retired; the gold price now comes from LBMA's daily fix (primary) or the World Bank Pink Sheet (fallback). The headline is bottlenecked to `TRESEGUSM052N`/GDP's own latest common quarter (2026-Q1, per `asOf`) regardless of gold-price leg — §23's finding stands. **§23's own explanation for the 4.9%→5.1% swing was itself wrong, corrected in §25**: it was NOT two sources' differing March-2026 values — it was a quarter-bucketing bug silently pricing gold off *January* instead of March, before either §22 or §23 landed. Fixed in §25; the row now correctly prices off March 2026 ($4,608/oz) and reads 4.5%, still further from Dalio's 3% than §18's manual-price figure — expected, gold having risen past his March-2025 vintage |
-| Total debt (Dalio's "other debt") / GDP | 340% | 362.6% (TCMDO, all sectors incl. financial) | live, `FRED: TCMDO` | **Does not match** — +22.6pt gap. Two alternative readings tried and **both eliminated**: nonfinancial-sectors-only (TCMDODNS, 256.7%, −83pt) and non-government debt (TCMDO minus government's own ~99%, 263.9%, −76pt) — both further from 340% than TCMDO itself. See §14.4 |
+| Total debt (Dalio's "other debt") / GDP | 340% | 362.6% (TCMDO, all sectors incl. financial) | live, `FRED: TCMDO` | **Known difference, ~23pts, unreconciled after bounded investigation — see §26.** Four hypotheses tried and eliminated: non-government debt (TCMDO minus government's own ~99%, 263.9%, −76pt), nonfinancial-sectors-only (TCMDODNS, excludes financial AND foreign, 256.7%, −83pt), isolated-financial-sector-only (TCMDO − `DODFS`, keeps foreign in, 280.7%, −59pt — worse than TCMDO alone, not better), and vintage (TCMDO at Dalio's own March-2025 snapshot: 362.5%, essentially flat vs. today — timing is not the cause). Most probable residual: Bridgewater's own internal debt aggregate, on a basis public FRED/Z.1 series likely don't reproduce by construction. Row keeps shipping TCMDO unchanged — this is a labelling correction, not a source change |
 | Current account, 3-yr avg / GDP | −4% | −3.7% | live, `IEABC` (FRED) | Matches closely |
 | World trade in USD | 52.6% | 52.6% | **manual**, carried from `data/manual.json` | Trivial — same figure |
 | World debt in USD | 80.7% | 80.7% | **manual**, carried from `data/manual.json` | Trivial — same figure |
@@ -911,18 +911,21 @@ data source:**
   3% rather than closing it. **That would be correct behaviour, not a
   regression** — his 3% reflects gold priced as of his March-2025 vintage;
   a live figure reflects whatever day the pipeline last ran.
-- **Total debt**: investigated but **not resolved**. TCMDO (all sectors) at
-  362.6% is the closest of three tried readings, still 22.6pts over Dalio's
-  340%. Two alternative hypotheses tested and **both eliminated**:
-  nonfinancial-sectors-only (TCMDODNS, refuted this session — 256.7%,
-  further from target) and non-government debt, i.e. TCMDO minus the
-  government's own ~99% (tested §14.4 — 263.9%, also further from target,
-  not closer). What Dalio's "other debt" row actually scopes remains
-  unknown; a household+corporate-debt-specifically aggregation (summed
-  from separate FRED series rather than derived by subtraction) is a
-  candidate for a future session but wasn't attempted here. **Reported as
-  an open gap with two hypotheses now eliminated, not forced to
-  reconcile.**
+- **Total debt**: investigated under a hard, time-boxed limit
+  (TASKtotaldebtreconcile.md — two iterations, then stop regardless) and
+  closed as a **known difference, unreconciled**, not left open-ended.
+  TCMDO (all sectors) at 362.6% remains the closest of four tried
+  readings, still 22.6pts over Dalio's 340%. All four eliminated:
+  non-government debt (TCMDO minus government's own ~99% — 263.9%, §14.4);
+  nonfinancial-sectors-only (TCMDODNS, excludes financial AND foreign —
+  256.7%); isolated-financial-sector-only (TCMDO minus `DODFS`, keeps
+  foreign debt in — 280.7%, *worse* than TCMDO alone, so financial-sector
+  double-counting is not the explanation either); and vintage (TCMDO at
+  Dalio's own March-2025 snapshot — 362.5%, essentially flat vs. today, so
+  timing explains none of the gap). See §26 for the full writeup. Most
+  probable residual cause: Bridgewater's own internal debt aggregate, on a
+  basis public FRED/Z.1 series likely don't reproduce by construction —
+  the row keeps shipping TCMDO unchanged.
 
 **Two rows already matched before this session** (debt/GDP, COFER USD
 share) and needed no change. **Debt/revenue now has a book anchor and
@@ -1801,6 +1804,12 @@ both updated to record this rather than leave the gap unattended. A
 household+corporate-debt-specifically aggregation (summed from separate
 FRED series, not derived by subtraction) is named as the remaining
 untested candidate, not attempted this pass.
+
+> **Update (2026-07-22, §26):** two more hypotheses (isolated
+> financial-sector debt via `DODFS`, and vintage) were tried under a
+> time-boxed follow-up task and also eliminated. Total debt is now closed
+> as a documented, unreconciled ~23pt known difference rather than an
+> open investigation — see §26 for the final writeup.
 
 ### 14.5 Loose ends closed
 
@@ -3528,6 +3537,110 @@ but it's flagged here since it shipped a wrong quarter-month pairing too.
 | The fix produces the true latest month for every quarter | **VERIFIED** — regression test + live CI: "gold priced as of" now matches the quarter label in all 4 rows |
 | The shipped headline value changed as a direct result | **VERIFIED** — `public/data.json` before (`5.1%`) vs. after (`4.5%`) the fix, same LBMA leg both times |
 | `real_10y_rate` had the identical bug | **VERIFIED** — identical code pattern found by direct code inspection, same fix applied, same live-CI confirmation the row now resolves |
+
+---
+
+## 26. Total debt reconciliation: time-boxed, closed as a known difference (2026-07-22, seventeenth pass)
+
+**What this round covers:** `TASKtotaldebtreconcile.md` — a hard,
+explicitly time-boxed (two iterations, then stop) attempt to reconcile
+this pipeline's total-debt figure (`TCMDO`, 362.6% of GDP) against
+Dalio's Ch.17 "Total Debt · OTHER" row (340%, US, March 2025). The task's
+own framing, correctly: two hypotheses already eliminated in §14.4
+(total-minus-government, 263.9%; `TCMDODNS` nonfinancial-only, 256.7%) —
+don't re-investigate those. What remained: whether isolating the
+financial sector specifically (not conflated with foreign-debt exclusion,
+which `TCMDODNS` also does) or vintage timing could close the gap.
+
+### 26.1 Iteration 1 — composition, tested properly this time
+
+`TCMDODNS` excludes BOTH the financial sector AND rest-of-world debt (per
+its own FRED title, "Domestic Nonfinancial Sectors") — it was never a
+clean isolation of "remove double-counted financial-sector debt," the
+specific mechanism the task asked to test. Found and added a genuinely
+different series: `DODFS` ("Domestic Financial Sectors; Debt Securities
+and Loans; Liability, Level") — confirmed live to exist and resolve.
+Computing `TCMDO − DODFS` keeps foreign debt in, removing *only* the
+financial sector:
+```
+TCMDO (all sectors):                          362.6% of GDP
+TCMDODNS (excl. financial AND foreign):        256.7% of GDP  (already eliminated, §14.4)
+DODFS (financial sector only):                  81.9% of GDP
+TCMDO minus DODFS (excl. ONLY financial):      280.7% of GDP
+```
+**Eliminated — and moves the wrong way, more cleanly than `TCMDODNS`
+did.** Removing only the financial sector (280.7%, −59.3pt vs. 340%) is
+*worse* than `TCMDO` itself (362.6%, +22.6pt), not better — financial-
+sector double-counting is not the source of the gap. This is a sharper,
+more direct refutation than `TCMDODNS`'s (which conflated two exclusions)
+because it isolates exactly the one mechanism the task asked about.
+
+**Claim status: VERIFIED** — live CI (`DODFS` resolved and fetched
+successfully; not assumed to exist without checking).
+
+### 26.2 Iteration 2 — vintage, and a self-caught mistake
+
+Dalio's snapshot is March 2025 (~2025-Q1). **First attempt at this check
+was wrong and caught before being reported anywhere**: it divided
+2025-Q1 `TCMDO` by the *current* (2026-Q1) GDP observation, an
+apples-to-oranges pairing that understates the true ratio — GDP has grown
+since 2025-Q1, so dividing an older, smaller debt level by a newer,
+larger GDP figure produces a misleadingly-closer-looking number (341.8%)
+for the wrong reason (a mismatched denominator vintage, not a genuine
+timing effect). Fixed to pair both series at the *same* quarter:
+```
+TCMDO at 2025-Q1, GDP ALSO at 2025-Q1 (same-quarter pairing): 362.5% of GDP
+TCMDO today (2026-Q1): 362.6% of GDP
+```
+**Eliminated — the ratio has been essentially flat.** 362.5% in March
+2025 vs. 362.6% today is a 0.1pt difference; vintage explains essentially
+none of the 22.6pt gap. (This also matches the shipped "Total debt (all
+sectors)" row's own chart history at `y: 2025.0`, read directly from
+`public/data.json` without a new fetch: 362.514% — independent
+confirmation the corrected live figure is right.)
+
+**Claim status: VERIFIED** — the flawed first version is disclosed
+explicitly, not quietly corrected; both the buggy (341.8%) and fixed
+(362.5%) figures are recorded so the mistake and its correction are both
+part of the record, consistent with this project's practice of showing
+what broke and how it was found, not just the final answer.
+
+### 26.3 Closed: known difference, ~23pts, unreconciled
+
+Per the task's own acceptance criteria, this stops here — no third
+iteration. **Every hypothesis tried is now eliminated:**
+
+| Hypothesis | Result | Verdict |
+|---|---|---|
+| Total debt minus government's own debt (avoid double-counting vs. the debt/GDP row) | 263.9% (−76.1pt) | Eliminated, §14.4 |
+| Nonfinancial-sectors-only (`TCMDODNS`, excludes financial AND foreign) | 256.7% (−83.3pt) | Eliminated, §14.4 |
+| Isolated financial-sector-only (`TCMDO − DODFS`, keeps foreign in) | 280.7% (−59.3pt) | Eliminated, §26.1 |
+| Vintage (Dalio's March-2025 snapshot, same-quarter GDP pairing) | 362.5% (+22.5pt, essentially unchanged) | Eliminated, §26.2 |
+
+**Most probable residual cause**, per the task's own framing and nothing
+found here to contradict it: Dalio's 340% is most likely Bridgewater's
+own internal debt aggregate, built on a definitional basis that public
+FRED/Z.1 series don't reproduce by construction — not a fixable mismatch
+on this project's end. §9's calibration table row is relabeled
+accordingly (a documented known difference, not an untriaged mismatch),
+and the "three rows needed more" bullet list and §14.4's own text are
+both updated with forward pointers to this closure rather than left
+describing it as still open.
+
+**The row keeps shipping `TCMDO` (362.6%) unchanged** — this round is a
+labelling and investigation-closure exercise, not a source change, per
+the task's own explicit instruction ("this is about labelling the
+calibration honestly, not about changing what the dashboard displays").
+
+### 26.4 Verified vs. assumed — this round's new claims
+
+| Claim | Status |
+|---|---|
+| `DODFS` exists as a live FRED series and resolves | **VERIFIED** — live CI fetch, not assumed from the series ID alone |
+| Isolating only the financial sector (not foreign too) still doesn't reconcile, and moves further from 340% than `TCMDO` | **VERIFIED** — live CI: 280.7% vs. TCMDO's 362.6%, both compared against the same 340% target |
+| Vintage (same-quarter TCMDO/GDP pairing) doesn't explain the gap | **VERIFIED** — live CI (362.5%) cross-checked against the independently-computed, already-shipped chart value at the same quarter (362.514%) |
+| The first vintage-check draft's mismatched-denominator flaw | **VERIFIED as a real mistake, caught before publication** — reproduced the wrong (341.8%) and right (362.5%) figures side by side, root cause identified (vintage mismatch between numerator and denominator) |
+| Total debt is now closed as a documented known difference, not an open investigation | **VERIFIED** — STATUS.md §9's row, the "three rows needed more" bullet, and §14.4's own text all updated with consistent forward/backward pointers |
 
 ---
 
