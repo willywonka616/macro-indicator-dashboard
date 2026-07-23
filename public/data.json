@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-23T05:29:15Z",
+  "generatedAt": "2026-07-23T05:43:28Z",
   "meta": {
     "seed": false,
     "schema": 1
@@ -12052,26 +12052,109 @@
             "key": "borrowing_need",
             "label": "Current borrowing need",
             "z": 2.4,
-            "extra": "39% of revenue",
-            "note": "TASKcbrawvalues.md §3: recomputing this live needs the MSPD maturity profile (for the rollover piece) — its endpoint is a best-effort probe (treasury.py's maturity_profile_probe()), unconfirmed from this project's dev sandbox. Stays manual until a live CI run confirms it resolves; see STATUS.md."
+            "book": {
+              "display": "39% of revenue",
+              "asOf": "2025-03"
+            },
+            "note": "TASKborrowingneed.md: live construction is deficit / revenue, both trailing-12mo (Treasury MTS). Verified against this book figure at today's reading (34.0% live vs. 39% book, 2026-07) before shipping — see STATUS.md §30.",
+            "live": {
+              "display": "34%",
+              "value": 34.0,
+              "asOf": "2026-06",
+              "src": "derived · Treasury MTS (mts_table_1 deficit) / (mts_table_4 total receipts, net of refunds), TTM",
+              "terms": [
+                {
+                  "label": "Deficit (TTM)",
+                  "src": "Treasury MTS (mts_table_1, current_month_dfct_sur_amt)",
+                  "asOf": "2026-06",
+                  "tag": "live"
+                },
+                {
+                  "label": "Total receipts, net of refunds (TTM)",
+                  "src": "Treasury (MTS mts_table_4, total receipts net of refunds, TTM)",
+                  "asOf": "2026-06",
+                  "tag": "live"
+                }
+              ]
+            },
+            "terms": [
+              {
+                "label": "Deficit (TTM)",
+                "src": "Treasury MTS (mts_table_1, current_month_dfct_sur_amt)",
+                "asOf": "2026-06",
+                "tag": "live"
+              },
+              {
+                "label": "Total receipts, net of refunds (TTM)",
+                "src": "Treasury (MTS mts_table_4, total receipts net of refunds, TTM)",
+                "asOf": "2026-06",
+                "tag": "live"
+              }
+            ]
           },
           {
             "key": "borrowing_need_stress",
             "label": "— if rollover problems",
             "z": 2.5,
-            "extra": "239% of revenue"
+            "book": {
+              "display": "239% of revenue",
+              "asOf": "2025-03"
+            },
+            "note": "TASKborrowingneed.md: needs debt-maturing-within-12-months from MSPD (mspd_table_3_market). A genuine, unresolved data-quality issue was found there (individual security rows sum to ~2.9x the table's own reported total; CUSIP reopening was investigated and ruled out as the sole cause). Stays manual rather than ship a number built on data with a known ~3x discrepancy — see STATUS.md §30 for the full investigation and residual."
           },
           {
             "key": "borrowing_need_projected",
             "label": "Projected borrowing need",
             "z": 2.8,
-            "extra": "44% of revenue"
+            "book": {
+              "display": "44% of revenue",
+              "asOf": "2025-03"
+            },
+            "note": "TASKborrowingneed.md: live construction is CBO's own projected (outlays − revenue) / revenue at the current vintage's final projected year — same deficit/revenue logic as the current-need row above, no MSPD dependency.",
+            "live": {
+              "display": "38%",
+              "value": 37.5,
+              "asOf": "FY2036",
+              "src": "CBO 10-Year Budget Projections (publication #51118), FY2036 (projected outlays − revenue) / revenue",
+              "terms": [
+                {
+                  "label": "Projected outlays − revenue, CBO FY-end",
+                  "src": "CBO 10-Year Budget Projections (publication #51118)",
+                  "asOf": "FY2036",
+                  "tag": "projection"
+                },
+                {
+                  "label": "Projected revenue, CBO FY-end",
+                  "src": "CBO 10-Year Budget Projections (publication #51118)",
+                  "asOf": "FY2036",
+                  "tag": "projection"
+                }
+              ]
+            },
+            "terms": [
+              {
+                "label": "Projected outlays − revenue, CBO FY-end",
+                "src": "CBO 10-Year Budget Projections (publication #51118)",
+                "asOf": "FY2036",
+                "tag": "projection"
+              },
+              {
+                "label": "Projected revenue, CBO FY-end",
+                "src": "CBO 10-Year Budget Projections (publication #51118)",
+                "asOf": "FY2036",
+                "tag": "projection"
+              }
+            ]
           },
           {
             "key": "borrowing_need_projected_stress",
             "label": "— if rollover problems",
             "z": 2.9,
-            "extra": "254% of revenue"
+            "book": {
+              "display": "254% of revenue",
+              "asOf": "2025-03"
+            },
+            "note": "Same MSPD data-quality issue as the current-need stress row above, plus a projected-maturity-structure assumption on top — stays manual. See STATUS.md §30."
           },
           {
             "key": "own_currency",
