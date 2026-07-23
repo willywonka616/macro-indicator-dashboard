@@ -578,6 +578,20 @@ def mspd_schema_probe(near_date: str | None = None) -> dict:
     total_rows = [r for r in same_date_rows if _is_mspd_total_row(r.get("security_class1_desc"))]
     indiv_rows = [r for r in same_date_rows if not _is_mspd_total_row(r.get("security_class1_desc"))]
     sum_indiv = sum(_num(r.get("outstanding_amt")) or 0.0 for r in indiv_rows)
+    # Round 1 found sum_indiv ~2.9x the table's own "Total Marketable" row
+    # — strongly suggests CUSIPs (security_class2_desc) appear in more than
+    # one row each. Count distinct CUSIPs vs. row count directly, and show
+    # every row for one repeated CUSIP (if any) so the actual duplication
+    # shape — not just its existence — is visible.
+    cusips = [r.get("security_class2_desc") for r in indiv_rows]
+    distinct_cusips = set(cusips)
+    dup_example = None
+    if len(distinct_cusips) < len(cusips):
+        from collections import Counter
+        counts = Counter(cusips)
+        dup_cusip, dup_n = counts.most_common(1)[0]
+        dup_example = {"cusip": dup_cusip, "count": dup_n,
+                        "rows": [r for r in indiv_rows if r.get("security_class2_desc") == dup_cusip]}
     return {
         "recordDate": record_date,
         "distinctRecordDatesInPage": sorted({r["record_date"] for r in rows}, reverse=True)[:10],
@@ -586,6 +600,8 @@ def mspd_schema_probe(near_date: str | None = None) -> dict:
         "nRowsThisDate": len(same_date_rows),
         "totalRows": total_rows,
         "nIndividualRows": len(indiv_rows),
+        "nDistinctCusips": len(distinct_cusips),
+        "duplicateCusipExample": dup_example,
         "sumOutstandingAmtIndividualRows_rawUnits": sum_indiv,
         "sampleIndividualRow": indiv_rows[0] if indiv_rows else None,
     }
@@ -641,56 +657,52 @@ def mspd_maturing_debt(record_date: str, window_days: int = 366,
 
 # --- Deficit: MTS Table 1 (Summary of Receipts and Outlays) --------------
 # TASKborrowingneed.md §2: "trailing-12-month from the Treasury MTS data
-# already fetched." mts_table_1 is used (not table_4+table_9 combined) so
-# the receipts and outlays totals come from the SAME summary table at the
-# SAME vintage, avoiding any risk of a subtle basis mismatch between two
-# different tables' definitions of "total."
+# already fetched."
+#
+# Real schema (confirmed live, TASKborrowingneed.md exploratory round —
+# an earlier version of this function assumed mts_table_1 had separate
+# "Total Receipts"/"Total Outlays" ROWS like mts_table_4 does; it doesn't):
+# mts_table_1 has ONE ROW PER PERIOD (a month name like "June", or an
+# aggregate like "Year-to-Date"/"FY 2026"), and that row carries
+# `current_month_gross_rcpt_amt`, `current_month_gross_outly_amt`, and
+# `current_month_dfct_sur_amt` all as COLUMNS on the same row — not a
+# receipts-vs-outlays row split. `current_month_dfct_sur_amt` is used
+# directly rather than subtracting two other columns.
 DEFICIT_ENDPOINT = "/v1/accounting/mts/mts_table_1"
 
 
-def _is_total_outlays(desc: str) -> bool:
-    d = desc.lower()
-    if "on-budget" in d or "off-budget" in d or "net" in d:
-        return False
-    return "total" in d and "outlay" in d
-
-
 def government_deficit_monthly() -> dict:
-    """{(year, month): deficit, $} — current-month TOTAL outlays minus
-    current-month TOTAL receipts (net of refunds), both read from
-    mts_table_1's own grand-total rows. Positive = deficit, negative =
-    surplus, matching common usage (and TASKborrowingneed.md's framing,
-    "deficit ~$1.9T")."""
+    """{(year, month): deficit, $} from mts_table_1's own
+    `current_month_dfct_sur_amt` column. Positive = deficit, negative =
+    surplus (this pipeline's convention, matching TASKborrowingneed.md's
+    framing "deficit ~$1.9T") — MTS's own official convention labels this
+    column "Deficit(-)/Surplus(+)", i.e. the RAW field is negative for a
+    deficit, so the sign is flipped here. **Sign convention confirmed by
+    cross-checking a live run's raw values against the known fact that
+    the US has run a deficit every month for years** (see verify()'s
+    diagnostic dump) — not assumed from the field name alone.
+
+    "Year-to-Date"/"FY ..." rows are aggregates, not single months —
+    excluded so they don't get treated as (and double-count) a monthly
+    observation."""
     rows = _get(DEFICIT_ENDPOINT, {"sort": "record_date"})
     if not rows:
         raise RuntimeError("government_deficit_monthly: mts_table_1 returned no rows")
-    s = rows[0]
-    classk = _pick(s, ["classification_desc"], contains=["classification", "desc"]) \
-        or _pick(s, [], contains=["desc"])
-    amtk = _pick(s, ["current_month_rcpt_outly_amt", "current_month_net_rcpt_amt",
-                     "current_month_gross_rcpt_amt"],
-                 contains=["month", "amt"], exclude=["fytd", "prior", "year"])
-    if not (classk and amtk):
-        raise RuntimeError(f"government_deficit_monthly: could not map fields from {list(s)}")
-    receipts, outlays = {}, {}
+    out = {}
     for row in rows:
-        desc = str(row.get(classk, ""))
-        amt = _num(row.get(amtk))
-        if amt is None:
+        raw = _num(row.get("current_month_dfct_sur_amt"))
+        if raw is None:
+            continue
+        desc = str(row.get("classification_desc", ""))
+        if desc == "Year-to-Date" or desc.startswith("FY "):
             continue
         ym = _ym(row["record_date"])
-        if _is_total_receipts(desc):
-            receipts[ym] = max(receipts.get(ym, 0.0), amt)
-        elif _is_total_outlays(desc):
-            outlays[ym] = max(outlays.get(ym, 0.0), amt)
-    months = receipts.keys() & outlays.keys()
-    if not months:
+        out[ym] = -raw  # MTS convention: raw is negative for a deficit
+    if not out:
         raise RuntimeError(
-            f"government_deficit_monthly: no month has both a 'total receipts' and "
-            f"'total outlays' row (found {len(receipts)} receipts months, "
-            f"{len(outlays)} outlays months) — check mts_table_1's classification_desc "
-            f"values via --verify")
-    return {ym: outlays[ym] - receipts[ym] for ym in months}
+            "government_deficit_monthly: no single-month rows resolved from "
+            "mts_table_1 — check classification_desc values via --verify")
+    return out
 
 
 def deficit_ttm_dollars() -> dict:
@@ -953,6 +965,14 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
               f"outstanding_amt against the known ~$29-31T total marketable debt — "
               f"they should roughly agree with each other, and that agreement "
               f"reveals the real scale/units)")
+        print(f"    distinct CUSIPs (security_class2_desc) among individual rows: "
+              f"{sp['nDistinctCusips']} vs. {sp['nIndividualRows']} individual rows")
+        if sp["duplicateCusipExample"]:
+            dup = sp["duplicateCusipExample"]
+            print(f"    CUSIPs repeat! Most-repeated: {dup['cusip']} appears {dup['count']}x — "
+                  f"full rows: {dup['rows']}")
+        else:
+            print(f"    no repeated CUSIPs — every individual row is a distinct security")
         print(f"    sample individual row: {sp['sampleIndividualRow']}")
 
         print("\n  MSPD maturing-debt sum, latest snapshot (TASKborrowingneed.md, "
@@ -981,17 +1001,22 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
     except Exception as e:  # noqa: BLE001
         print(f"    FAILED: {e}")
 
-    print("\n  mts_table_1 schema dump (TASKborrowingneed.md — deficit computation "
-          "found 0 matching rows last round; real classification_desc values needed):")
+    print("\n  mts_table_1 schema dump (TASKborrowingneed.md — deficit computation):")
     try:
-        _dump("mts_table_1", DEFICIT_ENDPOINT, ["rcpt_outly", "amt"])
+        _dump("mts_table_1", DEFICIT_ENDPOINT, ["dfct_sur", "amt"])
     except Exception as e:  # noqa: BLE001
         print(f"    FAILED: {e}")
 
     print("\n  Government deficit, TTM (TASKborrowingneed.md — mts_table_1 "
-          "Total Receipts / Total Outlays):")
+          "current_month_dfct_sur_amt, sign-flipped so positive = deficit):")
     try:
         dmonthly = government_deficit_monthly()
+        recent = sorted(dmonthly)[-6:]
+        print(f"    last 6 months (positive = deficit, per this pipeline's convention "
+              f"— sanity-check: the US has run a deficit every month for years, so "
+              f"these should all be positive):")
+        for ym in recent:
+            print(f"      {ym[0]}-{ym[1]:02d}: ${dmonthly[ym]/1e9:.1f}B")
         last = max(dmonthly)
         print(f"    resolved: {len(dmonthly)} months, latest {last[0]}-{last[1]:02d} = "
               f"${dmonthly[last]/1e9:.1f}B")
