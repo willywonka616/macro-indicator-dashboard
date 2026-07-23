@@ -95,13 +95,13 @@
           "note": "TASKborrowingneed.md: live construction is deficit / revenue, both trailing-12mo (Treasury MTS). Verified against this book figure at today's reading (34.0% live vs. 39% book, 2026-07) before shipping — see STATUS.md §30." },
         { "key": "borrowing_need_stress", "label": "— if rollover problems", "z": 2.5,
           "book": { "display": "239% of revenue", "asOf": "2025-03" },
-          "note": "TASKborrowingneed.md: needs debt-maturing-within-12-months from MSPD (mspd_table_3_market). A genuine, unresolved data-quality issue was found there (individual security rows sum to ~2.9x the table's own reported total; CUSIP reopening was investigated and ruled out as the sole cause). Stays manual rather than ship a number built on data with a known ~3x discrepancy — see STATUS.md §30 for the full investigation and residual." },
+          "note": "TASKborrowingneed.md/TASKmspdparsing.md: needs debt-maturing-within-12-months from MSPD (mspd_table_3_market). Individual security rows sum to ~2.9x the table's own reported total. Two hypotheses tested and both eliminated: CUSIP reopening (deduplicating by CUSIP left the sum unchanged) and aggregation-level duplication (only 2 non-detail rows exist per snapshot — a Federal Financing Bank subtotal and the grand total — nowhere near enough to explain the gap; detail-only ratio was still 2.9073, essentially unchanged). MSPD parsing is closed after this bounded investigation — the residual is unexplained. Stays manual rather than ship a number built on data with a known, unresolved ~3x discrepancy — see STATUS.md §31." },
         { "key": "borrowing_need_projected", "label": "Projected borrowing need", "z": 2.8,
           "book": { "display": "44% of revenue", "asOf": "2025-03" },
           "note": "TASKborrowingneed.md: live construction is CBO's own projected (outlays − revenue) / revenue at the current vintage's final projected year — same deficit/revenue logic as the current-need row above, no MSPD dependency." },
         { "key": "borrowing_need_projected_stress", "label": "— if rollover problems", "z": 2.9,
           "book": { "display": "254% of revenue", "asOf": "2025-03" },
-          "note": "Same MSPD data-quality issue as the current-need stress row above, plus a projected-maturity-structure assumption on top — stays manual. See STATUS.md §30." },
+          "note": "Same MSPD data-quality issue as the current-need stress row above (both hypotheses tested and eliminated — MSPD parsing closed, see STATUS.md §31), plus a projected-maturity-structure assumption on top — stays manual." },
         { "key": "own_currency", "label": "Debt in own currency", "z": -2.0, "extra": "100%", "mitig": true, "constant": true,
           "note": "Stated constant, not a sourced manual value — the US borrows in its own currency by definition; there is no external series this could drift from, so it carries no asOf." }
       ]

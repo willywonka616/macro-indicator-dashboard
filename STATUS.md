@@ -6,26 +6,23 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-23b-verification.md` (run output) and
-> `docs/review/2026-07-23b-values.md` (headline values), base commit
-> `5d8826a` — `TASKborrowingneed.md`: the government gauge's borrowing-need
-> rows go live. Current borrowing need (deficit ÷ revenue, Treasury MTS)
-> reads 34.0% live against Dalio's 39% book figure; projected borrowing
-> need (same construction on CBO's FY2036 baseline) reads 38% against his
-> 44%. The Z-score wall stays completely unchanged (byte-identical diff).
-> Four live CI round trips found and fixed two real bugs before anything
-> shipped: a backwards deficit sign (confirmed against the well-known
-> fact of persistent monthly deficits, not assumed from the field name —
-> corrected TTM deficit, +$1,829.2B, matches the task's own "~$1.9T"
-> almost exactly) and mts_table_1's real one-row-per-period schema
-> (receipts/outlays/deficit are columns, not separate rows, as an earlier
-> version assumed). The "— if rollover problems" stress variants stay
-> manual: MSPD's individual security rows sum to ~2.9x the table's own
-> "Total Marketable" total, and the leading hypothesis (CUSIP-reopening
-> double-counting) was tested directly by deduplicating — which did NOT
-> change the sum, disconfirming it. Per the task's own "cap it, document
-> the residual" instruction, this stays an open item rather than a forced
-> fix. See §30.
+> `docs/review/2026-07-23c-verification.md` (run output) and
+> `docs/review/2026-07-23c-values.md` (headline values), base commit
+> `6613635` — `TASKmspdparsing.md`: a bounded, single-hypothesis follow-up
+> to §30. Tested whether MSPD's ~2.9x individual-rows-vs-"Total
+> Marketable" gap is aggregation-level duplication (detail rows interleaved
+> with per-class subtotal and grand-total rows, each summed once per
+> hierarchy level). **Disconfirmed live**: only 2 non-detail rows exist
+> per snapshot out of 888 (a small Federal Financing Bank line + the one
+> grand total) — no per-security-class subtotal tier at all — and the
+> detail-only ratio (2.9073) barely moved from the unfiltered ratio
+> (~2.9074). Per the task's own instruction, MSPD parsing is now
+> **closed**: two hypotheses tested (CUSIP reopening, §30; aggregation-
+> level duplication, §31), both eliminated, no third opened. The real
+> cause of the gap remains genuinely unexplained — recorded plainly, not
+> chased further. No shipped row changed this round (the two
+> roll-problems stress rows were already manual and remain so); Z-scores
+> stay byte-identical. See §31.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -40,9 +37,9 @@ prior sessions and no access to this repo's chat history.
 > `docs/review/2026-07-22a-*.md`, `docs/review/2026-07-22b-*.md`,
 > `docs/review/2026-07-22c-*.md`, `docs/review/2026-07-22d-*.md`,
 > `docs/review/2026-07-22e-*.md`, `docs/review/2026-07-22f-*.md`,
-> `docs/review/2026-07-22g-*.md`, `docs/review/2026-07-23a-*.md`
-> (superseded, left in place). When you add a new round, update this
-> line to point at it.
+> `docs/review/2026-07-22g-*.md`, `docs/review/2026-07-23a-*.md`,
+> `docs/review/2026-07-23b-*.md` (superseded, left in place). When you
+> add a new round, update this line to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -4255,6 +4252,88 @@ explicit presentation instruction.
 
 See the round's `docs/review/` files for the full before/after table and
 base commit.
+
+---
+
+## 31. MSPD parsing closed: aggregation-level-duplication hypothesis eliminated (2026-07-23, twenty-second pass)
+
+**TASKmspdparsing.md**: a small, bounded follow-up to §30. One hypothesis
+to test — if it held, the two "— if rollover problems" stress rows would
+unlock; if not, they'd stay manual and the investigation trail gets one
+more, final entry. **It did not hold. MSPD parsing is now closed.**
+
+### 31.1 The hypothesis, and the test
+
+§30's CUSIP-deduplication test disconfirmed "reopening duplication" as
+the cause of the MSPD individual-rows-vs-Total-Marketable ~2.9x gap
+(deduping left the sum unchanged). This task's hypothesis: the gap is
+**aggregation-level** duplication instead — the table interleaving
+per-CUSIP detail rows with subtotal rows (per security class) and a
+grand-total row, each carrying its own `outstanding_amt`, so summing
+every row over-counts once per hierarchy level ("three levels ≈ 3x").
+
+Live-tested (`workflow_dispatch` on `863286a`, committed as `6613635`),
+splitting rows by whether `security_class2_desc` is a real CUSIP-like
+string (detail) or `'null'` (an aggregate row at some level):
+
+```
+record_date 2026-06-30: 888 rows total — 886 detail (real CUSIP) + 2 aggregate (null CUSIP)
+aggregate rows by security_class1_desc:
+  'Federal Financing Bank': 1 row — outstanding_amt 3,590.9655
+  'Total Marketable': 1 row — outstanding_amt 31,085,831.2471383
+sum(outstanding_amt), DETAIL rows only: 90,375,417
+sum(outstanding_amt), ALL rows (detail + aggregate): 121,464,840
+'Total Marketable' row's own outstanding_amt: 31,085,831
+ratio, detail-only / Total Marketable: 2.9073   (success threshold: ~1.00)
+ratio, all-rows / Total Marketable: 3.9074
+```
+
+**Disconfirmed, clearly.** Only 2 non-detail rows exist per snapshot out
+of 888 — a single "Federal Financing Bank" subtotal (a tiny $3.6B, not a
+material contributor) and the one grand "Total Marketable" row already
+known about. There is no per-security-class subtotal tier at all — no
+"three levels," just two (detail + one grand total, plus one
+oddly-scoped FFB line). Excluding the 2 aggregate rows barely moved the
+ratio (2.9073 vs. the ~2.9074 implied by the naive all-individual-rows
+sum in §30) — essentially no change, the opposite of what the hypothesis
+predicted.
+
+### 31.2 Closed, per the task's own instruction
+
+TASKmspdparsing.md §"If it doesn't [hold]" is explicit: "Stop... keep
+both rows manual, and note that MSPD parsing is closed after bounded
+investigation. Do not open a new hypothesis." Followed exactly:
+
+- **Two hypotheses tested, both eliminated**: CUSIP reopening (§30 —
+  deduplication left the sum unchanged) and aggregation-level
+  duplication (§31.1 — only 2 non-detail rows exist, nowhere near enough
+  to explain a ~2.9x gap).
+- **No third hypothesis opened.** The real cause of the discrepancy
+  remains genuinely unexplained. This is recorded as a closed,
+  bounded-investigation residual, not a puzzle left dangling for a
+  future session to feel obligated to keep chasing.
+- `data/manual.json`'s two roll-problems rows now cite both eliminated
+  hypotheses inline, so a reader never has to reconstruct this trail
+  from git history.
+- **No code or data changes to the shipped rows this round** — the
+  current + projected borrowing-need rows (§30) are unaffected; the two
+  roll-problems rows were already manual and stay manual. The only
+  functional addition is the diagnostic probe itself
+  (`mspd_aggregation_level_probe()`), kept for a future session that
+  might reopen this with new information, per the task's framing.
+
+### 31.3 Verified vs. assumed
+
+| Claim | Status |
+|---|---|
+| Aggregation-level duplication (per-class subtotal rows) exists in mspd_table_3_market | **DISCONFIRMED live** — only 2 non-detail rows exist per snapshot, not per-class subtotals for all ~6 security classes |
+| The detail-only ratio approaches ~1.00 after filtering | **DISCONFIRMED** — 2.9073, essentially unchanged from the unfiltered ratio |
+| Both duplication hypotheses (reopening, aggregation-level) are now closed, bounded investigations | **VERIFIED** — this round's live test plus §30's, both read directly from CI logs |
+| The roll-problems rows correctly remain manual, no regression to the rows that do ship live | **VERIFIED** — read directly from `public/data.json` at commit `6613635`; `borrowing_need`/`borrowing_need_projected` still carry `live`, the two stress rows still don't |
+| Z-scores in both gauges are byte-identical before/after this round | **VERIFIED** — direct diff against the pre-round `data/manual.json`, both gauges, every row, in order |
+
+See the round's `docs/review/` files for the full classification-field
+dump and base commit.
 
 ---
 
