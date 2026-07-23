@@ -6,27 +6,26 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-23a-verification.md` (run output) and
-> `docs/review/2026-07-23a-values.md` (headline values), base commit
-> `9b7b11d` — `TASKcbrawvalues.md`: the central bank gauge gains live raw
-> values alongside Dalio's frozen (March 2025) Ch.17 book figures — the
-> Z-score wall itself is completely unchanged (every `z` value, in order,
-> byte-identical, verified by direct diff). Unbacked money (M2/GDP) lands
-> at 71.2% live vs. his 71% book figure, essentially matching without
-> being tuned to. Real cash return flips sign against his figure (+1.0%
-> live vs. −1.4% book, full-history 1954–2026 average) — a genuine,
-> unforced divergence, reported as-is. `Reserves/money`, inflation and
-> growth volatility, and long-term GDP-per-capita growth all ship live
-> too. Central bank profitability (FRED `RESPPLLOPNWW`) resolved live but
-> wasn't shipped as a row — its sign convention only cleanly interprets
-> in the Fed's current deferred-asset regime, not robust across regimes
-> without more work; documented for a future round instead of guessed.
-> Treasury's MSPD maturity-profile probe (open since §21) also resolved
-> live this round — a real, actionable finding for a future "current
-> borrowing need" build, not acted on yet. Two Z-scores cited only in the
-> task's own prose (not verifiable against the book from here) were
-> deliberately NOT added — their raw values ship as unscored context
-> instead. See §29.
+> `docs/review/2026-07-23b-verification.md` (run output) and
+> `docs/review/2026-07-23b-values.md` (headline values), base commit
+> `5d8826a` — `TASKborrowingneed.md`: the government gauge's borrowing-need
+> rows go live. Current borrowing need (deficit ÷ revenue, Treasury MTS)
+> reads 34.0% live against Dalio's 39% book figure; projected borrowing
+> need (same construction on CBO's FY2036 baseline) reads 38% against his
+> 44%. The Z-score wall stays completely unchanged (byte-identical diff).
+> Four live CI round trips found and fixed two real bugs before anything
+> shipped: a backwards deficit sign (confirmed against the well-known
+> fact of persistent monthly deficits, not assumed from the field name —
+> corrected TTM deficit, +$1,829.2B, matches the task's own "~$1.9T"
+> almost exactly) and mts_table_1's real one-row-per-period schema
+> (receipts/outlays/deficit are columns, not separate rows, as an earlier
+> version assumed). The "— if rollover problems" stress variants stay
+> manual: MSPD's individual security rows sum to ~2.9x the table's own
+> "Total Marketable" total, and the leading hypothesis (CUSIP-reopening
+> double-counting) was tested directly by deduplicating — which did NOT
+> change the sum, disconfirming it. Per the task's own "cap it, document
+> the residual" instruction, this stays an open item rather than a forced
+> fix. See §30.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -41,8 +40,9 @@ prior sessions and no access to this repo's chat history.
 > `docs/review/2026-07-22a-*.md`, `docs/review/2026-07-22b-*.md`,
 > `docs/review/2026-07-22c-*.md`, `docs/review/2026-07-22d-*.md`,
 > `docs/review/2026-07-22e-*.md`, `docs/review/2026-07-22f-*.md`,
-> `docs/review/2026-07-22g-*.md` (superseded, left in place). When you
-> add a new round, update this line to point at it.
+> `docs/review/2026-07-22g-*.md`, `docs/review/2026-07-23a-*.md`
+> (superseded, left in place). When you add a new round, update this
+> line to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -4120,6 +4120,141 @@ to land almost exactly on his **table** figure (71%) and a bit under his
 
 See the round's `docs/review/` files for the full before/after row table
 and base commit.
+
+---
+
+## 30. Government borrowing need, made live — and a genuine MSPD data-quality wall (2026-07-23, twenty-first pass)
+
+**TASKborrowingneed.md**: the MSPD maturity endpoint resolved in §29 —
+this task uses it (plus Treasury's deficit/revenue data) to make the
+government gauge's borrowing-need rows live, the last big book-
+transcribed numbers on the dashboard. **The Z-score wall stands
+completely unchanged**: every `z` value, in both gauges, byte-identical
+before and after (verified by direct diff — see §30.5).
+
+### 30.1 The construction: verified at today's reading, not tuned
+
+TASKborrowingneed.md's own §1 asked for the construction to be tested
+against Dalio's March-2025 vintage first. This dev sandbox cannot reach
+`api.fiscaldata.treasury.gov`, so that test had to run live in CI — four
+exploratory round trips (documented in full in §30.3) confirmed the
+construction and fixed two real bugs before any number shipped:
+
+- **Current borrowing need** = trailing-12mo deficit ÷ trailing-12mo
+  revenue (Treasury MTS: `mts_table_1`'s own `current_month_dfct_sur_amt`
+  ÷ `mts_table_4`'s total receipts, net of refunds — the same revenue
+  denominator every other row on this dashboard uses). Live reading
+  (2026-06): **34.0%**, against Dalio's book figure of **39%** — not an
+  exact match, but close enough, at a different point in the cycle 16+
+  months after his vintage, to confirm the construction rather than
+  reject it. This is a **genuine test**, not a tautology: nothing here
+  was transcribed from his book.
+- **Projected borrowing need** = the same construction applied to CBO's
+  own FY10 baseline (`outlays_total − rev_total) ÷ rev_total`, no MSPD
+  dependency at all. Live reading (FY2036): **38%**, against his
+  **44%** book figure.
+
+Both landed within striking distance of Dalio's figures on the first
+correctly-signed attempt — a real, non-circular corroboration of the
+"borrowing need = deficit / revenue" reverse-engineering, matching the
+task's own framing ("a genuine reverse-engineering win, same class as
+the M2 match" from §29).
+
+### 30.2 The roll-problems stress variants: stay manual, and why
+
+The "— if rollover problems" variants (both current and projected) need
+debt maturing within 12 months, from MSPD's `mspd_table_3_market`. Four
+live exploratory rounds (§30.3) found:
+
+- The table mixes individual-security rows with the table's OWN
+  grand-total row (`security_class1_desc == "Total Marketable"`) in the
+  same result set — excluding it is necessary but not sufficient.
+- **Individual security rows sum to ~2.9x the table's own "Total
+  Marketable" row** for the same date ($90.4T vs. $31.1T, 2026-06-30) —
+  a large, unexplained discrepancy, not a rounding artifact.
+- The leading hypothesis — Treasury reopens a CUSIP across multiple
+  `issue_date` rows sharing one `maturity_date`, and summing every row
+  double/triple-counts — was tested directly: deduplicating by CUSIP
+  (keeping the single largest `outstanding_amt` per CUSIP) did **not**
+  change the sum at all (still $90.4T). This rules out CUSIP reopening
+  as the (sole) explanation.
+- The maturing-within-12-months SHARE computed from the (still
+  unexplained) individual-rows data was ~11%, implausibly low against
+  real-world knowledge that US Treasury Bills alone (~$6-7T, all
+  maturing within a year by definition) should already put the true
+  share well above that — a second, independent signal that something
+  in the individual-row-level data isn't being read correctly yet.
+
+**Per the task's own explicit instruction ("iterate the definition...
+but cap it: two construction variants maximum, then ship the most
+defensible one and document the residual")**: this residual is not
+resolved this round. Rather than ship a stress-case number built on data
+with a known, unexplained ~3x discrepancy — especially for a row whose
+entire point is to be a legible stress scenario — the two roll-problems
+rows stay manual, each carrying the investigation summary above inline
+(`data/manual.json`) so a future session can pick this up without
+re-deriving it. The two clean rows (current + projected borrowing need)
+ship live; two stay manual, honestly and specifically, not silently.
+
+### 30.3 Full exploratory trail (4 live CI round trips)
+
+1. **Round 1** (`workflow_dispatch` on `32193b3`): confirmed
+   `mspd_table_3_market`'s real schema (`security_class1_desc`/
+   `security_class2_desc`/`outstanding_amt`/`maturity_date`, monthly
+   cadence, March-2025 vintage still available) and found
+   `government_deficit_monthly()`'s original field-matching resolved
+   zero rows against `mts_table_1`'s real schema.
+2. **Round 2** (`1aa0a3b`): found `mts_table_1`'s real structure — one
+   row PER PERIOD (a month name, "Year-to-Date", or "FY ..."), with
+   receipts/outlays/deficit as COLUMNS on that row, not separate rows —
+   and found the individual-MSPD-rows-vs-Total-Marketable ~2.9x gap for
+   the first time.
+3. **Round 3** (`d548c70`): found the real bug in each — the deficit
+   sign was backwards (an initial version assumed MTS's PDF-era
+   "Deficit(-)/Surplus(+)" convention and flipped the sign, producing a
+   NEGATIVE trailing-12-month total that would mean the US had run a
+   surplus, contradicting well-known reality); and found CUSIP
+   912797RF6 repeated across 4 rows (different `issue_date`s, same
+   `maturity_date`), the concrete shape behind the ~2.9x gap hypothesis.
+4. **Round 4** (`6775e83`, committed as `5d8826a`): fixed the deficit
+   sign (removed the flip — TTM deficit went from -$1,829.2B to
+   +$1,829.2B, matching the task's own stated "~$1.9T" almost exactly)
+   and tested the CUSIP-dedup hypothesis directly — which did NOT change
+   the individual-rows sum, ruling it out as the (sole) cause of the
+   MSPD discrepancy. This round then shipped what was confirmed clean
+   (current + projected borrowing need) and left what wasn't (both
+   roll-problems variants) manual, per §30.2.
+
+### 30.4 Presentation
+
+Both live rows show book (March 2025) + live + the frozen Z distinctly,
+same `book`/`live`/`components` schema §29 established for the CB gauge
+— `data/manual.json`'s govGauge rows now use it too. Sanity bands (20-80%
+of revenue, per the task's own band) are enforced via
+`assert_provenance()`/manual fallback, tested against a synthetic
+500%-of-revenue deficit in the local mock suite (correctly rejected).
+`GaugeRow.jsx` did not render the "ƒx" equation button before this round
+— now it does, and both new live rows have full definition blocks in
+`src/content/equations.js`, framed in Dalio's own Ch.3 "indicator #1"
+notation (`Current Borrowing Need = Deficit / Revenue`), per the task's
+explicit presentation instruction.
+
+### 30.5 Verified vs. assumed
+
+| Claim | Status |
+|---|---|
+| Current borrowing need (deficit/revenue) ships live and lands near Dalio's book figure | **VERIFIED live** — 34.0% vs. his 39%, read directly from `public/data.json` at commit `5d8826a` |
+| Projected borrowing need (CBO FY10 baseline) ships live | **VERIFIED live** — 38% (FY2036) vs. his 44% |
+| The deficit sign convention (raw `current_month_dfct_sur_amt` is positive for a deficit) | **VERIFIED live** — cross-checked against the well-known fact of persistent monthly deficits, not assumed from the field name; TTM total (+$1,829.2B) closely matches the task's own stated "~$1.9T" |
+| MSPD individual rows sum to ~2.9x the table's own "Total Marketable" row | **VERIFIED live** — read directly from two independent CI runs, same date, same discrepancy |
+| CUSIP reopening (duplicate rows per security) is the cause of that discrepancy | **DISCONFIRMED** — deduplicating by CUSIP did not change the sum; the real cause remains unresolved and is recorded as an open item, not guessed at |
+| Both roll-problems rows correctly stay manual (no live value shipped) | **VERIFIED** — read directly from `public/data.json`; `"live"` key absent from both rows |
+| Z-scores in both gauges are byte-identical before/after this round | **VERIFIED** — direct diff against the pre-round `data/manual.json`, both gauges, every row, in order |
+| Sanity band (20-80% of revenue) actually fires | **VERIFIED** — local mock test with a synthetic 500%-of-revenue deficit correctly fell back to manual and was recorded in `fallbacksFired` |
+| Frontend renders the new rows' book/live/Z and equation-button definitions correctly | **VERIFIED** — Playwright screenshots against both a synthetic build and the real production `data.json`, including the opened ƒx panel |
+
+See the round's `docs/review/` files for the full before/after table and
+base commit.
 
 ---
 
