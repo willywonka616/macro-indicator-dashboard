@@ -1704,9 +1704,17 @@ def build_eur(manual: dict) -> dict:
                        reason="live Eurostat gov_10q_ggdebt fetch failed, exceeded its freshness "
                               "threshold, or neither basis had a 2025-Q1 observation to identify against")
     if debt_row is None:
+        note = None
+        if debt_basis_adopted:
+            note = (f"Live basis identification succeeded (see data/manual.json's debtBasisNote for "
+                     f"the full result — {debt_basis_adopted} government was the closer match to "
+                     f"85% at Dalio's March-2025 vintage), but the row ships manual this run: "
+                     f"DBnomics' Eurostat mirror is itself currently frozen well past this pipeline's "
+                     f"freshness threshold.")
         debt_row = manual_row("Government debt (% of GDP)",
                                {"display": "85%", "value": 85.0, "unit": "of GDP", "tone": "risk",
-                                "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03"},
+                                "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03",
+                                **({"note": note} if note else {})},
                                key="debt_to_gdp")
 
     # --- Government interest / revenue (central government basis, matching
@@ -1729,7 +1737,17 @@ def build_eur(manual: dict) -> dict:
     if interest_row is None:
         interest_row = manual_row("Government interest (% of revenue)",
                                    {"display": "8%", "value": 8.0, "unit": "of revenue", "tone": "risk",
-                                    "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03"},
+                                    "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03",
+                                    "note": "Live attempted, not yet resolved (2026-07-23 CI run): both "
+                                            "Q.D41.S1311.MIO_EUR / Q.S1311.D41.MIO_EUR dimension-order "
+                                            "guesses against Eurostat gov_10q_ggnfa (DBnomics) 404'd for "
+                                            "both EA20 and EA19 — the debt dataset's own S1311/PC_GDP "
+                                            "shape (gov_10q_ggdebt) does resolve, so this is specific to "
+                                            "gov_10q_ggnfa's na_item/unit codes for interest paid (D41) "
+                                            "and total revenue (TR), not sector S1311 itself. Same "
+                                            "'schema unconfirmed, attempted and reported' treatment as "
+                                            "scripts/bis.py's world-debt-in-USD row — stays manual rather "
+                                            "than guess further."},
                                    key="interest_to_revenue")
 
     # --- Current account, 3-yr moving average ---
@@ -1752,7 +1770,12 @@ def build_eur(manual: dict) -> dict:
     if ca_row is None:
         ca_row = manual_row("Current account, 3-yr avg",
                              {"display": "+2%", "value": 2.0, "unit": "of GDP", "tone": "caution",
-                              "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03"},
+                              "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03",
+                              "note": "Live fetch (Eurostat bop_gdp6_q) resolves a real, sane value "
+                                      "(1.7% as of 2025-Q3, confirmed 2026-07-23 CI run) but DBnomics' "
+                                      "mirror of it is itself frozen past this pipeline's freshness "
+                                      "threshold — same DBnomics-mirror-lag issue as the debt row above, "
+                                      "not a construction problem."},
                              key="current_account_3yr")
 
     # --- Own-currency status: three-state field (TASKeuroarea.md §2) ---
@@ -1860,17 +1883,31 @@ def build_eurosystem(manual: dict) -> dict:
             q = (y, (m - 1) // 3 + 1)
             if q not in res_q or m > res_q[q][0]:
                 res_q[q] = (m, v)
-        common_q = sorted(gdp["raw"].keys() & res_q.keys())
+        # namq_10_gdp is a per-QUARTER level (confirmed live: ~EUR 3.97T for
+        # one quarter, ~1/4 of the euro area's known ~EUR 15T ANNUAL GDP) —
+        # dividing a reserves STOCK by a single quarter's flow would overstate
+        # this ratio ~4x against Dalio's %-of-ANNUAL-GDP convention (matching
+        # every other %GDP row in this pipeline, US included). Annualize via
+        # trailing-4-quarter sum, same convention as the US current-account
+        # construction's own annualization step (series.py's
+        # current_account_pct_gdp_3yr), not a bare ×4 of one quarter.
+        gdp_quarters = sorted(gdp["raw"].keys())
+        gdp_annual = {}
+        for i, k in enumerate(gdp_quarters):
+            window = gdp_quarters[max(0, i - 3): i + 1]
+            if len(window) == 4:
+                gdp_annual[k] = sum(gdp["raw"][w] for w in window)
+        common_q = sorted(gdp_annual.keys() & res_q.keys())
         if not common_q:
-            raise RuntimeError("no overlapping quarter between ECB reserves and Eurostat GDP")
+            raise RuntimeError("no overlapping quarter between ECB reserves and Eurostat annualized GDP")
         last_q = common_q[-1]
         _, res_v = res_q[last_q]
-        gdp_v = gdp["raw"][last_q]
+        gdp_v = gdp_annual[last_q]
         pct = res_v / gdp_v * 100.0 if gdp_v else None
         if pct is None or not (0.5 <= pct <= 30.0):
             raise RuntimeError(f"validation: FX reserves {pct}% of GDP outside the sane 0.5-30% band")
-        hist = [{"y": S.q_decimal(k), "v": round((res_q[k][1] / gdp["raw"][k]) * 100.0, 2)}
-                for k in sorted(gdp["raw"].keys() & res_q.keys())]
+        hist = [{"y": S.q_decimal(k), "v": round((res_q[k][1] / gdp_annual[k]) * 100.0, 2)}
+                for k in common_q]
         fx_reserves_row = live_row(
             "FX reserves (of euro-area GDP)", pct, pct_display(pct, 1), S.q_label(last_q), "risk",
             f"derived · ECB RAS (reserve assets) / Eurostat namq_10_gdp, both {S.q_label(last_q)}",

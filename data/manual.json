@@ -166,7 +166,7 @@
           { "key": "fx_reserves_pct_gdp", "label": "FX reserves (of euro-area GDP)",
             "unit": "of GDP", "tone": "risk", "tag": "manual", "src": "Dalio Ch.17 book table (EUR column)",
             "display": "9%", "value": 9.0, "asOf": "2025-03",
-            "note": "TASKeuroarea.md §3: attempted live via ECB RAS (Eurosystem official reserve assets, DBnomics, scripts/ecb.py) divided by Eurostat GDP (scripts/eurostat.py). Book value shown here as the fallback — see STATUS.md's EUR section for whether the live construction actually resolved this round." }
+            "note": "TASKeuroarea.md §3: attempted live via ECB RAS (Eurosystem official reserve assets, DBnomics, scripts/ecb.py) divided by Eurostat GDP (scripts/eurostat.py). Live result (2026-07-23 CI run): ECB/RAS is confirmed a real dataset (12,292 series, genuinely 'official reserve assets of the euro area... BPM6' per DBnomics' own description) but its actual SDMX key has far more dimensions than guessed (a real example pulled live: `M.N.4F.1C.S121.S121.FC.FI.RT1.RT.F41A.TM13.EUR.X1.N.N.ALL`, 16 dot-fields, vs the 9-10 guessed here) — none of 3 guessed keys resolved. Same 'confirmed dataset, unconfirmed exact key' state as scripts/bis.py's world-debt-in-USD row; stays manual rather than keep guessing blind. Book value shown as the fallback." }
         ]
       },
       "reserveCurrencyPanel": {
@@ -185,7 +185,7 @@
             "note": "TASKeuroarea.md §3: same definition-sensitive aggregation gap as the US row — stays manual." },
           { "key": "world_cb_reserves_eur", "label": "World CB reserves in EUR", "unit": "", "tone": "mitig", "tag": "manual",
             "src": "Dalio Ch.17 book table (EUR column)", "display": "20.0%", "value": 20.0, "asOf": "2025-03",
-            "note": "TASKeuroarea.md §3: live via IMF COFER EUR share (DBnomics), same dataset/series family as the US panel's USD share — see scripts/imf.py's cofer_eur_share()." }
+            "note": "TASKeuroarea.md §3: attempted live via IMF COFER EUR share (DBnomics), same dataset/series family as the US panel's USD share — see scripts/imf.py's cofer_eur_share(). Live result (2026-07-23 CI run): the guessed series code (Q.W00.RAXGFXAREURRT_PT) 404'd — the USD-to-EUR substitution pattern that worked for every other currency-keyed COFER field apparently isn't how this particular percent-share series is named. Separately, worth noting: the USD share row itself (this same COFER dataset) is ALSO currently stale in DBnomics (57.7% as of 2025-Q1, 568 days old per the same run's log) — a pre-existing, already-documented DBnomics freeze (STATUS.md §17/§18), not something this integration caused. Stays manual." }
         ]
       }
     }
@@ -201,7 +201,7 @@
       "display": "−76%", "unit": "of GDP", "tone": "risk", "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03",
       "note": "Same structural gap as the US row: no single published series for 'total government financial assets' at this scope exists to net against debt — stays manual."
     },
-    "debtBasisNote": "Basis identification (TASKeuroarea.md §3, the 'big one'): Eurostat's own headline euro-area ratio is general government (sector S13, ~88-90%); Dalio's Ch.17 table states government debt is central-government only, and his EUR figure is 85%. Both bases are fetched live (scripts/eurostat.py: general_govt_debt_pct_gdp / central_govt_debt_pct_gdp) and compared AT March-2025 — his vintage, not today's reading — against 85%, to identify which basis his table actually uses. See fetch.py's build_eur() and STATUS.md's EUR section for the result and which basis was adopted as the live headline.",
+    "debtBasisNote": "Basis identification (TASKeuroarea.md §3, the 'big one'): Eurostat's own headline euro-area ratio is general government (sector S13, ~88-90%); Dalio's Ch.17 table states government debt is central-government only, and his EUR figure is 85%. Both bases are fetched live (scripts/eurostat.py: general_govt_debt_pct_gdp / central_govt_debt_pct_gdp) and compared AT March-2025 — his vintage, not today's reading — against 85%, to identify which basis his table actually uses. **Live result (2026-07-23 CI run, both series resolved real data): general government (S13) read 87.7% at 2025-Q1 — only 2.7pt from his 85% target; central government (S1311) read 77.6% at the same quarter — 7.4pt off, in the wrong direction. GENERAL government is the closer match, the OPPOSITE of this task's own stated expectation** (\"expected to be the central-government subsector series\") — a genuine, unforced finding, not tuned to match. See fetch.py's build_eur() (adopts whichever basis is closer, dynamically) and STATUS.md's EUR section for the full writeup. This row still ships manual this round regardless of the identification result: DBnomics' Eurostat mirror is itself currently frozen at 2025-Q2 (478 days old, past the 280d freshness threshold) — the same 'DBnomics mirror lag' failure mode already documented for IMF COFER (STATUS.md §17/§18), not a new problem this integration introduced.",
     "debtProjection10yrFallback": {
       "display": "87%", "value": 87.0, "unit": "of GDP", "tone": "risk", "asOf": "2025-03",
       "src": "Dalio Ch.17 book table (EUR column) — manual, no live source built this round",

@@ -9,11 +9,20 @@ so the incl./excl. split matters the same way it does for the US.
 
 **Honest limitation, same as bis.py/eurostat.py**: this dev sandbox
 cannot reach db.nomics.world directly, so the exact SDMX series key below
-is a best-effort guess from ECB Data Portal documentation, not something
-verified live from here. `verify()` dumps whatever the first live CI run
-actually returns; `reserves_pct_gdp()` raises cleanly on any mismatch and
-the caller falls back to the manual (book) figure, same as every other
-best-effort source in this project (bis.py, gold.py's dead legs).
+was originally a best-effort guess. **Confirmed live, 2026-07-23 CI run**:
+`ECB/RAS` IS the correct dataset (12,292 series; DBnomics' own
+description confirms "official reserve assets of the euro area...
+BPM6") — but none of the 3 guessed `_KEY_ATTEMPTS` resolved (all 404).
+The dataset-root fallback dump (no filter) returned real series codes
+with a MUCH longer key than guessed, e.g.
+`M.N.4F.1C.S121.S121.FC.FI.RT1.RT.F41A.TM13.EUR.X1.N.N.ALL` — 16
+dot-separated fields, vs. the 9-10 fields tried here. The right dataset,
+wrong key shape — same "confirmed source, unconfirmed exact key" state
+as bis.py's BIS integration, left for a future session with this real
+example key as a concrete starting point rather than a blank guess.
+`verify()` dumps whatever a run actually returns; `reserve_assets_eur()`
+raises cleanly on any mismatch and the caller falls back to the manual
+(book) figure, same as every other best-effort source in this project.
 """
 
 from __future__ import annotations

@@ -108,7 +108,18 @@ def cofer_usd_share():
 def cofer_eur_share():
     """Same construction as cofer_usd_share(), euro instead of dollar
     (TASKeuroarea.md) — reuses the identical DBnomics dataset and query
-    shape, just SHARE_SERIES_EUR instead of SHARE_SERIES."""
+    shape, just SHARE_SERIES_EUR instead of SHARE_SERIES.
+
+    **Confirmed live, 2026-07-23 CI run**: `Q.W00.RAXGFXAREURRT_PT` 404'd
+    — the USD->EUR currency-code substitution that works throughout this
+    file's own SHARE_SERIES naming pattern isn't how this particular
+    percent-share series is actually keyed for EUR. Unconfirmed; caller
+    falls back to the manual (book) figure. Worth noting separately: the
+    USD share this same run returned 57.7% as of 2025-Q1 — 568 days old,
+    past its own freshness threshold — so COFER's DBnomics mirror is
+    ALSO currently stale for the row this function's US counterpart
+    feeds (a pre-existing issue, STATUS.md §17/§18, not caused by this
+    euro-area addition)."""
     return _cofer_share(SHARE_SERIES_EUR)
 
 

@@ -10,13 +10,19 @@ government, percent of GDP, euro area (20 members, current composition).
 
 **Honest limitation, same as bis.py**: this dev sandbox cannot reach
 db.nomics.world (or ec.europa.eu) directly, so the exact dimension codes
-below are best-effort — confirmed by web research where possible (the
-`Q.<na_item>.<sector>.<unit>.<geo>` shape and `S13`/`S1311`/`EA20` codes
-are real, sourced from DBnomics' own published example series), but NOT
-verified against a live response the way FRED series are. Every function
-degrades cleanly (raises, caller falls back to manual) and `verify()`
-dumps whatever the first live CI run actually returns, so a wrong guess
-is visible in a job log, not silently wrong in shipped data.
+below were originally best-effort. **Confirmed live, 2026-07-23 CI run
+(commit `eeb68bd`)**: `gov_10q_ggdebt`'s `Q.GD.S13/S1311.PC_GDP.EA20`
+shape resolves correctly for BOTH sectors (general 88.2% latest/87.7% at
+2025-Q1 vintage; central 78.1% latest/77.6% at vintage) — this dataset's
+guess was right. `bop_gdp6_q`'s `Q.PC_GDP.NSA.CA.BAL.EXT_EA20` and
+`namq_10_gdp`'s `Q.B1GQ.CP_MEUR.SCA.EA20` also resolve correctly.
+`gov_10q_ggnfa`'s `Q.D41/TR.S1311.MIO_EUR.EA20` (interest paid / total
+revenue) does NOT resolve (404 on both dimension orders tried) — this
+dataset's na_item/unit codes for interest and revenue remain unconfirmed
+sector-wise; stays manual (see fetch.py's build_eur(), same "confirmed
+dataset, wrong series-level guess" treatment as bis.py). Every function
+still degrades cleanly (raises, caller falls back to manual) and
+`verify()` dumps whatever a run actually returns.
 
 **Central vs general government** (TASKeuroarea.md §3's "big one"): Dalio's
 Ch.17 table's debt figure is central-government only; Eurostat's own

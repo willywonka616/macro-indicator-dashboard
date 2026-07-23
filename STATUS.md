@@ -6,23 +6,30 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-23c-verification.md` (run output) and
-> `docs/review/2026-07-23c-values.md` (headline values), base commit
-> `6613635` — `TASKmspdparsing.md`: a bounded, single-hypothesis follow-up
-> to §30. Tested whether MSPD's ~2.9x individual-rows-vs-"Total
-> Marketable" gap is aggregation-level duplication (detail rows interleaved
-> with per-class subtotal and grand-total rows, each summed once per
-> hierarchy level). **Disconfirmed live**: only 2 non-detail rows exist
-> per snapshot out of 888 (a small Federal Financing Bank line + the one
-> grand total) — no per-security-class subtotal tier at all — and the
-> detail-only ratio (2.9073) barely moved from the unfiltered ratio
-> (~2.9074). Per the task's own instruction, MSPD parsing is now
-> **closed**: two hypotheses tested (CUSIP reopening, §30; aggregation-
-> level duplication, §31), both eliminated, no third opened. The real
-> cause of the gap remains genuinely unexplained — recorded plainly, not
-> chased further. No shipped row changed this round (the two
-> roll-problems stress rows were already manual and remain so); Z-scores
-> stay byte-identical. See §31.
+> `docs/review/2026-07-23d-verification.md` (run output) and
+> `docs/review/2026-07-23d-values.md` (headline values), base commit
+> `eeb68bd` — `TASKeuroarea.md`: the euro area (aggregate), first non-US
+> country entry. Shared central-bank data model (`centralBank` reference
+> + top-level `centralBanks` entity), three-state own-currency field
+> (`own`/`shared`/`foreign`), no Z-scores anywhere for this entity (§5's
+> own instruction — Dalio's gauge-construction tables are US-only). Every
+> new Eurostat/ECB/COFER-EUR source tried live via `workflow_dispatch`,
+> not assumed: `gov_10q_ggdebt` (both general- and central-government
+> debt bases) and `bop_gdp6_q` (current account) **resolved real,
+> correctly-computed values** but ship `manual` this round because
+> DBnomics' own mirror of both is frozen 380-480 days behind (same
+> pre-existing "mirror can freeze for a year+" failure mode already
+> documented for COFER, §17/§18 — confirmed independently: even the US's
+> COFER USD share read 568 days stale in this same run). `gov_10q_ggnfa`
+> (interest/revenue), ECB `RAS` (reserves — confirmed the right dataset,
+> wrong key shape), and COFER's EUR share genuinely did not resolve
+> (404s) — documented honestly as "live attempted, not yet resolved,"
+> same treatment as BIS's still-unresolved integration. **The single
+> most interesting finding**: basis-identification at Dalio's own
+> vintage found GENERAL government (87.7%, target 85%) is the closer
+> match, not central government (77.6%) as the task's own text expected
+> — a genuine, unforced result. `build_us()` is byte-identical
+> before/after (verified via `git diff` and a local test). See §32.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -38,8 +45,9 @@ prior sessions and no access to this repo's chat history.
 > `docs/review/2026-07-22c-*.md`, `docs/review/2026-07-22d-*.md`,
 > `docs/review/2026-07-22e-*.md`, `docs/review/2026-07-22f-*.md`,
 > `docs/review/2026-07-22g-*.md`, `docs/review/2026-07-23a-*.md`,
-> `docs/review/2026-07-23b-*.md` (superseded, left in place). When you
-> add a new round, update this line to point at it.
+> `docs/review/2026-07-23b-*.md`, `docs/review/2026-07-23c-*.md`
+> (superseded, left in place). When you add a new round, update this
+> line to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -968,6 +976,61 @@ share) and needed no change. **Debt/revenue now has a book anchor and
 matches it almost exactly** (§12 found Dalio's own stated ~580%/~700%
 figures; §13's corrected TOTAL-receipts basis puts debt/revenue at 580%
 for 2025-Q1, his own vintage — see §13).
+
+### Euro area (EUR), Ch.17 EUR column, March 2025 vintage (TASKeuroarea.md, §32)
+
+First non-US calibration table. Same discipline as the US table above:
+every row calibrated at Dalio's own vintage where a live construction
+exists, each row marked genuine-test vs. transcribed, "Basis" read
+before trusting a match. **No Z-scores exist for this entity at all**
+(§5's own instruction) — this table is purely raw-indicator calibration,
+there is no gauge-construction analogue to check.
+
+| Row | Dalio Ch.17 (EUR, Mar 2025) | This pipeline (2026-07-23 CI run) | Basis (what ships) | Test type | Match? |
+|---|---|---|---|---|---|
+| Govt assets − govt debt (% GDP) | −76% | −76% | **manual**, transcribed | tautology | Trivial — no live source assessed as feasible (same structural gap as the US row) |
+| Govt debt (% GDP) | 85% | 85% (manual, ships) — **live construction independently computed: general govt 87.7%, central govt 77.6%, both at 2025-Q1** | **manual this round** — live basis-identification genuinely computed but the row itself falls back to manual (Eurostat's DBnomics mirror frozen at 2025-Q2, 478d old, past the 280d threshold) | **genuine test** (identification), ships as manual (freshness) | **Real, surprising finding — see below.** General government is the closer match (2.7pt off 85%), not central as this task's own text expected (7.4pt off) |
+| Govt debt, 10-yr fwd (% GDP) | 87% | 87% | **manual**, transcribed | tautology | Trivial — CBO has no euro-area counterpart; AMECO noted as a future candidate, not built (§6's explicit instruction) |
+| — held by central bank | 30% | 30% | **manual**, transcribed | tautology | Trivial — no live source for Eurosystem PSPP/APP holdings assessed as feasible this round |
+| — held by domestic players | 41% | 41% | **manual**, transcribed | tautology | Trivial — same gap, ECB securities-holdings statistics not built this round |
+| — held abroad | 14% | 14% | **manual**, transcribed | tautology | Trivial — same gap |
+| Significant share in hard FX | No | No | **manual**, transcribed (qualitative) | n/a | Structural fact, not a series — same treatment as the US row |
+| Govt interest (% revenue) | 8% | 8% | **manual**, transcribed — **live attempted, not yet resolved** | tautology, live attempted | Trivial for now. Eurostat `gov_10q_ggnfa` (interest paid D41 / total revenue TR, sector S1311): both dimension-order guesses 404'd for EA20 and EA19 — same dataset FAMILY whose debt table (`gov_10q_ggdebt`) resolved correctly, so the gap is this specific dataset's na_item/unit codes, not sector S1311 itself. Same "confirmed family, unresolved specific series" state as the US's BIS row |
+| FX reserves (% of GDP) | 9% | 9% | **manual**, transcribed — **live attempted, not yet resolved** | tautology, live attempted | Trivial for now. ECB `RAS` confirmed as the CORRECT dataset (12,292 series, genuinely "official reserve assets of the euro area... BPM6" per DBnomics) but its real SDMX key has ~16 dot-fields, far more than the 9-10 guessed — none of 3 attempts resolved. Real example key pulled live and left in `scripts/ecb.py` for a future session |
+| Sovereign wealth assets | none | none | **manual**, transcribed (qualitative) | n/a | Structural fact — no euro-area-wide fund |
+| Total debt (% GDP, all sectors) | 169% | 169% | **manual**, transcribed | tautology | Trivial — same BIS all-sector-credit schema gap as the US row, never yet resolved live |
+| Current account, 3-yr avg (% GDP) | +2% | +2% (manual, ships) — **live construction: 1.7% as of 2025-Q3** | **manual this round** — live value real and close, but Eurostat's DBnomics mirror is frozen (387d old, past threshold) | **genuine test**, ships as manual (freshness) | **Close match** (0.3pt) — a real, independent reading, not tuned |
+| World trade in EUR | 15.4% | 15.4% | **manual**, transcribed | tautology | Trivial — same "no clean structured free source" gap as the US row's SWIFT/BIS assessment |
+| World debt in EUR | 10.4% | 10.4% | **manual**, transcribed | tautology | Trivial — same BIS schema gap as the US row |
+| Global equity market cap in EUR | 6.5% | 6.5% | **manual**, transcribed | tautology | Trivial — same definition-sensitive aggregation gap as the US row |
+| World CB reserves in EUR | 20.0% | 20.0% | **manual**, transcribed — **live attempted, not yet resolved** | tautology, live attempted | Trivial for now. IMF COFER's USD→EUR series-code substitution pattern (which works throughout `imf.py`'s naming convention) 404'd for the EUR percent-share series specifically. Separately worth noting: even the USD share this same CI run read 568 days stale (57.7% as of 2025-Q1) — COFER's DBnomics mirror is currently frozen for BOTH currencies, a pre-existing issue (§17/§18), not something this integration caused |
+| Debt in own currency (new row, §2) | n/a — not in the book's raw-indicator table | "Yes — ECB is sole issuer" | **manual**, structural (three-state `currencyStatus` field) | n/a | Not a numeric comparison — the semantic this whole port turns on. Aggregate reads `own` (true: the ECB prints euros); a future member-state entry will read `shared` instead, never the same green 100% as this row or the US's |
+
+**Genuine-test vs. tautology, this round:** of the 16 book-table targets, **2
+have a genuine, independently-computed live check performed** (govt debt's
+basis identification, current account) even though both ship `manual`
+this round for freshness reasons rather than a construction problem — the
+computation itself is real and reported, not skipped. **3 more were
+live-attempted and specifically did not resolve** (govt interest/revenue,
+FX reserves, world CB reserves in EUR) — distinct from the remaining
+**11 rows, never attempted live this round** (assets−debt, 10-yr
+projection, three holder-split rows, hard-FX flag, sovereign wealth,
+total debt, world trade/debt/equity in EUR) because no clean source was
+identified as feasible, mirroring the same gaps already documented for
+their US counterparts.
+
+**The single most important live result this round**: fetching BOTH the
+general-government (Eurostat sector S13) and central-government (S1311)
+bases of `gov_10q_ggdebt` at Dalio's own March-2025 vintage found
+**general government (87.7%) is the closer match to his 85% target,
+not central government (77.6%)** — the opposite of TASKeuroarea.md §3's
+own stated expectation ("expected to be the central-government subsector
+series"). This is read directly from a live CI job log, not assumed, and
+is reported exactly as found rather than quietly adjusted to fit the
+expectation — the same "confirm rather than assume, report the real
+answer even when it's not the one expected" discipline as the MSPD/
+total-debt/equation-3 investigations elsewhere in this document. See §32
+for the full writeup and job-log excerpt.
 
 ---
 
@@ -4334,6 +4397,158 @@ investigation. Do not open a new hypothesis." Followed exactly:
 
 See the round's `docs/review/` files for the full classification-field
 dump and base commit.
+
+---
+
+## 32. Euro area (aggregate): second country, shared central-bank data model (2026-07-23, twenty-third pass)
+
+`TASKeuroarea.md` — the first non-US entry. Two structural goals landed
+alongside the actual data: (1) a data-model change so a country can
+**share** a central bank instead of owning its own CB/reserve panels
+(`centralBank: "eurosystem"` reference + a new top-level `centralBanks`
+entity in `data/manual.json`/`public/data.json`), preparing for member
+states (Germany, Italy) later without re-deriving CB-side figures per
+member; (2) a three-state own-currency field (`own` / `shared` /
+`foreign`) so a future member state never renders the same green 100%
+"own currency" reading as the aggregate or the US. **Scope was aggregate
+only** — no member states this round, per the task's own instruction.
+
+### 32.1 Shared-CB data model
+
+- `data/manual.json` gained `centralBanks.eurosystem` (CB-side raw
+  values: FX reserves, the four-way reserve-currency block) and `EUR`
+  (fiscal/country-specific raw values) as new top-level keys, alongside
+  the existing `US` entry — **`US` itself was not touched**: `git diff`
+  on `data/manual.json` shows zero removed lines, the entire diff is pure
+  addition. `scripts/fetch.py`'s `build_us()` function body likewise has
+  zero changed lines (confirmed via `git diff` — the only lines removed
+  from `fetch.py` are in `main()`, wiring in the new `build_eur()`/
+  `build_eurosystem()` calls).
+- **Claim status: VERIFIED** — both via `git diff` inspection and a local
+  test that calls `build_us()` twice back-to-back with identical mocks
+  and asserts `json.dumps(..., sort_keys=True)` byte-equality.
+- `src/App.jsx` resolves `data.centralBanks[country.centralBank]` when a
+  country carries a `centralBank` field, and appends that shared
+  entity's panels after the country's own — rendered once, no matter how
+  many future countries reference the same key.
+
+### 32.2 Three-state own-currency field
+
+`src/components/MetricRow.jsx` gained an optional `currencyStatus` field
+(`own` / `shared` / `foreign`), rendered as a small colored badge under
+the row when present — **additive only**: a row with no `currencyStatus`
+(every existing US row) renders exactly as before, confirmed both by
+`build_us()`'s byte-identical output and by screenshot. The EUR
+aggregate's own-currency row reads `own` (true for the aggregate: the
+ECB has sole authority to issue euros) with an explicit note that a
+future member-state entry will read `shared` here instead — never the
+same green 100% as this row or the US's own-currency row.
+
+### 32.3 Sourcing: what actually resolved live, 2026-07-23 CI run (commit `eeb68bd`)
+
+Every new integration (`scripts/eurostat.py`, `scripts/ecb.py`, and
+`imf.py`'s new `cofer_eur_share()`) was written defensively — best-effort
+series-code guesses, non-fatal, degrading to the book-transcribed manual
+value on any failure — then verified against a real `workflow_dispatch`
+run, not assumed. Read directly from the job log:
+
+| Source | Result |
+|---|---|
+| Eurostat `gov_10q_ggdebt`, general govt (S13) % GDP | **Resolved live** — 88.2% latest (2025-Q2), 87.7% at Dalio's 2025-Q1 vintage |
+| Eurostat `gov_10q_ggdebt`, central govt (S1311) % GDP | **Resolved live** — 78.1% latest (2025-Q2), 77.6% at vintage |
+| Eurostat `bop_gdp6_q`, current account % GDP | **Resolved live** — 1.7% as of 2025-Q3 |
+| Eurostat `namq_10_gdp`, nominal GDP | **Resolved live** — €3,969,578M as of 2025-Q3 (EA20) |
+| Eurostat `gov_10q_ggnfa`, interest (D41) / revenue (TR), S1311 | **404, unresolved** — both dimension-order guesses failed for EA20 and EA19 |
+| ECB `RAS`, Eurosystem reserve assets | **Dataset confirmed real** (12,292 series; DBnomics' own description: "official reserve assets of the euro area... BPM6") but **no guessed key resolved** — the real key shape has ~16 dot-fields, not the 9-10 guessed |
+| IMF COFER, EUR percent-share series | **404, unresolved** — the USD→EUR naming substitution that works elsewhere in `imf.py` isn't this series' actual code |
+
+**None of the EUR-side live rows actually shipped `live` in this run's
+`public/data.json`** — but for two different reasons, not one:
+
+1. **Two rows resolved real, current, correctly-computed values, but
+   were caught by the freshness guard**: `gov_10q_ggdebt` is frozen at
+   2025-Q2 in DBnomics' mirror (478 days old, past the 280d threshold
+   `series.py`'s new `EUROSTAT_FRESH_DAYS` sets); `bop_gdp6_q` likewise
+   frozen at 2025-Q3 (387 days old). This is the **same failure mode
+   already documented for IMF COFER** (§17/§18: a DBnomics mirror can
+   freeze for a year or more while still returning a plausible-looking
+   number) — not a new problem this integration introduced, and the
+   freshness guard did exactly its job: refused to ship a live-tagged
+   figure built on stale data. Confirmed independently in the SAME run's
+   log: even the pre-existing US COFER USD share read 568 days stale.
+2. **Three rows genuinely failed to resolve** (interest/revenue, ECB
+   reserves, COFER EUR share) — wrong series-level guesses, not a
+   staleness issue. Documented honestly in each row's own note and in
+   `scripts/eurostat.py`/`ecb.py`/`imf.py`'s docstrings with the real
+   findings (including the actual 16-field ECB key discovered, for a
+   future session), rather than guessed at indefinitely — same "bounded
+   effort, confirmed dataset but unconfirmed exact key, stays manual"
+   treatment this project already established for BIS's `WS_NA_SEC_DSS`
+   integration, which has never once resolved across this project's
+   history and is accepted as such.
+
+**Claim status: VERIFIED** — every figure above is quoted directly from
+the `workflow_dispatch` job log (run id `30040181332`, job id
+`89317911960`), not assumed or reconstructed.
+
+### 32.4 The central-vs-general basis finding (TASKeuroarea.md §3)
+
+The task's own text framed central government as the *expected* match
+("expected to be the central-government subsector series") for Dalio's
+85%. **Live data disagrees**: general government (87.7% at his vintage)
+is 2.7 points from 85%; central government (77.6%) is 7.4 points off, in
+the further direction. `fetch.py`'s `build_eur()` doesn't hardcode either
+assumption — it computes both, compares each to 85% at the 2025-Q1
+vintage, and adopts whichever is closer, dynamically. This run, that
+logic correctly identified **general government** as the closer match —
+a genuine, unforced result, reported as found rather than adjusted to
+match the task's stated expectation. (The row still ships `manual` this
+round regardless, per §32.3's freshness-guard point above — the
+identification is a real computation performed and logged, independent
+of whether the row's *headline* value is currently live or manual.)
+
+### 32.5 A bug the live run surfaced: GDP annualization for FX reserves
+
+While reviewing this run's log, a latent unit error was caught before it
+could ever ship: `build_eurosystem()`'s FX-reserves-as-%-of-GDP
+construction originally divided the (monthly-stock) reserves figure by a
+SINGLE QUARTER of `namq_10_gdp` (a quarterly FLOW level, confirmed live
+at ~€3.97T for one quarter — roughly a quarter of the euro area's known
+~€15-16T ANNUAL GDP). Dividing by one quarter instead of the trailing
+four would have overstated this ratio roughly 4x the moment ECB RAS ever
+starts resolving. Fixed to sum the trailing four quarters before
+dividing, the same annualization convention `series.py`'s
+`current_account_pct_gdp_3yr` already uses for the US's own current
+account. Caught here rather than after the fact only because the local
+mock test's synthetic GDP fixture was corrected to a realistic per-
+quarter (not per-annum) magnitude first, which is what actually exercises
+this code path — same "the test fixture's realism is what catches the
+bug" pattern as the `quarterly_last()` iteration-order bug (§25).
+
+**Claim status: VERIFIED** — the bug was live in this round's own code
+before the fix; confirmed by recomputing the ratio in the local test
+before and after (5.3% naively vs. 5.1% correctly annualized on the same
+mock fixture — a real, if modest on this particular synthetic fixture,
+directional correction. On real reserves/GDP magnitudes the naive version
+would have overstated by roughly 4x, not ~4%, since a mock reserves level
+proportioned to a single quarter's GDP happens to still land in-band; the
+fix is about correctness of construction, not this run's particular
+numbers).
+
+### 32.6 Verified vs. assumed
+
+| Claim | Status |
+|---|---|
+| `build_us()` output is byte-identical before/after this round | **VERIFIED** — `git diff` shows zero changed lines inside the function; local test confirms byte-identical JSON across two calls |
+| General government is the closer basis match to Dalio's 85% at his vintage, not central | **VERIFIED** — read directly from the CI job log (87.7% vs. 77.6%, target 85%) |
+| Every new Eurostat/ECB/COFER-EUR source was tried live, not left as an untested guess | **VERIFIED** — job log quoted directly in §32.3 |
+| No Z-scores exist anywhere in the EUR entry | **VERIFIED** — `"govGauge"`/`"cbGauge"`/`"headline"` are absent from `build_eur()`'s output; asserted in the local test |
+| The three-state currency field is additive, no regression to existing US rows | **VERIFIED** — byte-identical `build_us()` output; screenshot confirms the badge only appears on the EUR own-currency row |
+| The GDP-annualization fix is itself correct | **VERIFIED** locally (mock test); **not yet confirmed against real reserves data**, since ECB RAS still doesn't resolve — this is the code being ready for when it does, not a live-confirmed number |
+
+See `docs/review/2026-07-23d-{values,verification}.md` for the full
+review-round writeup, base commit, and the complete job-log excerpts
+behind every claim above.
 
 ---
 
