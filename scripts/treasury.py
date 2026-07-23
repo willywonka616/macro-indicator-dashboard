@@ -517,6 +517,175 @@ def maturity_profile_probe() -> dict:
     return {"endpoint": None, "error": "none of the candidate endpoints resolved"}
 
 
+# --- MSPD: security-level maturity data (TASKborrowingneed.md) -----------
+# mspd_table_3_market ("Detail of Marketable Treasury Securities
+# Outstanding") is the endpoint confirmed resolving live in
+# TASKcbrawvalues.md's round (STATUS.md §29.3) — the first of
+# MATURITY_ENDPOINT_CANDIDATES. Already scoped to MARKETABLE securities by
+# the table's own name, so nonmarketable debt (savings bonds, Government
+# Account Series) is excluded by construction — no separate filter needed
+# for that decision (TASKborrowingneed.md §2).
+#
+# Genuinely unconfirmed before a live run (this dev sandbox can't reach
+# this host — same asymmetry as every other Treasury/FRED integration in
+# this project): the exact units of `outstanding_amt` (whole dollars vs.
+# thousands), whether `record_date` is daily or monthly cadence, whether
+# a March-2025 vintage snapshot is still retained, and whether any
+# field in this table identifies Fed/SOMA-held securities separately
+# (needed for the optional "exclude SOMA" variant, TASKborrowingneed.md
+# §2). mspd_schema_probe() below answers all four from real data instead
+# of guessing.
+MSPD_TABLE3_MARKET = MATURITY_ENDPOINT_CANDIDATES[0]
+
+
+def mspd_schema_probe(near_date: str | None = None) -> dict:
+    """Diagnostic only. Fetches one record_date's full snapshot (the
+    latest, or the one closest to `near_date` if given) and reports:
+    distinct security_type_desc/class values (does anything here mark a
+    security as Fed-held?), the raw scale of outstanding_amt (compared
+    against the known ~$29-31T ballpark for total marketable debt, to
+    infer whether it's whole dollars or thousands), and which actual
+    record_date was used."""
+    # Find the actual record_date to query — Treasury dates snap to
+    # business days, so "the 31st" may not exist; ask for whichever
+    # dates the API actually has near the target instead of guessing.
+    probe_params = {"sort": "-record_date", "page[size]": "500"}
+    if near_date:
+        lo = (dt.date.fromisoformat(near_date) - dt.timedelta(days=20)).isoformat()
+        hi = (dt.date.fromisoformat(near_date) + dt.timedelta(days=20)).isoformat()
+        probe_params = {"filter": f"record_date:gte:{lo},record_date:lte:{hi}",
+                         "sort": "-record_date", "page[size]": "500"}
+    rows = _get(MSPD_TABLE3_MARKET, probe_params, max_pages=2)
+    if not rows:
+        raise RuntimeError(f"mspd_schema_probe: no rows near {near_date or 'latest'}")
+    record_date = rows[0]["record_date"]
+    same_date_rows = [r for r in rows if r["record_date"] == record_date]
+    fields = list(rows[0])
+    type_desc_cols = [c for c in fields if c.endswith("_desc")]
+    total_outstanding = sum(_num(r.get("outstanding_amt")) or 0.0 for r in same_date_rows)
+    return {
+        "recordDate": record_date,
+        "distinctRecordDatesInPage": sorted({r["record_date"] for r in rows}, reverse=True)[:10],
+        "fields": fields,
+        "distinctByDescCol": {c: _distinct(same_date_rows, c, limit=15) for c in type_desc_cols},
+        "nRowsThisDate": len(same_date_rows),
+        "sumOutstandingAmtThisDate_rawUnits": total_outstanding,
+        "sampleRow": same_date_rows[0],
+    }
+
+
+def mspd_maturing_debt(record_date: str, window_days: int = 366,
+                        amt_scale: float = 1.0) -> dict:
+    """Sum `outstanding_amt` (marketable securities only, by this table's
+    own scope) for the given `record_date` snapshot, split into maturing-
+    within-`window_days` vs. total. Bills are INCLUDED in "maturing"
+    (TASKborrowingneed.md §2: "a bill that can't roll is exactly the
+    problem" — Dalio's stress framing wants them in). SOMA (Fed-held)
+    securities are NOT excluded in this pass unless `mspd_schema_probe`
+    finds a holder-identifying field — see STATUS.md for which variant
+    shipped. `amt_scale` converts `outstanding_amt`'s raw units to whole
+    dollars (determined live via mspd_schema_probe, not assumed here).
+
+    Fully paginated — a single date's snapshot spans many thousands of
+    individual securities.
+    """
+    params = {"filter": f"record_date:eq:{record_date}", "sort": "maturity_date",
+              "page[size]": "1000"}
+    rows = _get(MSPD_TABLE3_MARKET, params, max_pages=200)
+    if not rows:
+        raise RuntimeError(f"mspd_maturing_debt: no rows for record_date={record_date}")
+    cutoff = dt.date.fromisoformat(record_date) + dt.timedelta(days=window_days)
+    total_outstanding = 0.0
+    maturing = 0.0
+    n_maturing = 0
+    for r in rows:
+        amt = _num(r.get("outstanding_amt"))
+        if amt is None:
+            continue
+        total_outstanding += amt
+        md = r.get("maturity_date")
+        if not md:
+            continue
+        try:
+            md_d = dt.date.fromisoformat(md)
+        except ValueError:
+            continue
+        if md_d <= cutoff:
+            maturing += amt
+            n_maturing += 1
+    return {
+        "recordDate": record_date,
+        "maturingUsd": maturing * amt_scale,
+        "totalOutstandingUsd": total_outstanding * amt_scale,
+        "nSecurities": len(rows), "nMaturing": n_maturing,
+    }
+
+
+# --- Deficit: MTS Table 1 (Summary of Receipts and Outlays) --------------
+# TASKborrowingneed.md §2: "trailing-12-month from the Treasury MTS data
+# already fetched." mts_table_1 is used (not table_4+table_9 combined) so
+# the receipts and outlays totals come from the SAME summary table at the
+# SAME vintage, avoiding any risk of a subtle basis mismatch between two
+# different tables' definitions of "total."
+DEFICIT_ENDPOINT = "/v1/accounting/mts/mts_table_1"
+
+
+def _is_total_outlays(desc: str) -> bool:
+    d = desc.lower()
+    if "on-budget" in d or "off-budget" in d or "net" in d:
+        return False
+    return "total" in d and "outlay" in d
+
+
+def government_deficit_monthly() -> dict:
+    """{(year, month): deficit, $} — current-month TOTAL outlays minus
+    current-month TOTAL receipts (net of refunds), both read from
+    mts_table_1's own grand-total rows. Positive = deficit, negative =
+    surplus, matching common usage (and TASKborrowingneed.md's framing,
+    "deficit ~$1.9T")."""
+    rows = _get(DEFICIT_ENDPOINT, {"sort": "record_date"})
+    if not rows:
+        raise RuntimeError("government_deficit_monthly: mts_table_1 returned no rows")
+    s = rows[0]
+    classk = _pick(s, ["classification_desc"], contains=["classification", "desc"]) \
+        or _pick(s, [], contains=["desc"])
+    amtk = _pick(s, ["current_month_rcpt_outly_amt", "current_month_net_rcpt_amt",
+                     "current_month_gross_rcpt_amt"],
+                 contains=["month", "amt"], exclude=["fytd", "prior", "year"])
+    if not (classk and amtk):
+        raise RuntimeError(f"government_deficit_monthly: could not map fields from {list(s)}")
+    receipts, outlays = {}, {}
+    for row in rows:
+        desc = str(row.get(classk, ""))
+        amt = _num(row.get(amtk))
+        if amt is None:
+            continue
+        ym = _ym(row["record_date"])
+        if _is_total_receipts(desc):
+            receipts[ym] = max(receipts.get(ym, 0.0), amt)
+        elif _is_total_outlays(desc):
+            outlays[ym] = max(outlays.get(ym, 0.0), amt)
+    months = receipts.keys() & outlays.keys()
+    if not months:
+        raise RuntimeError(
+            f"government_deficit_monthly: no month has both a 'total receipts' and "
+            f"'total outlays' row (found {len(receipts)} receipts months, "
+            f"{len(outlays)} outlays months) — check mts_table_1's classification_desc "
+            f"values via --verify")
+    return {ym: outlays[ym] - receipts[ym] for ym in months}
+
+
+def deficit_ttm_dollars() -> dict:
+    """{(year, month): trailing-12-month deficit, $} — the numerator for
+    "current borrowing need" (TASKborrowingneed.md), same TTM windowing as
+    revenue_ttm_dollars()."""
+    monthly = government_deficit_monthly()
+    ttm = _ttm_sum(monthly)
+    if not ttm:
+        raise RuntimeError("deficit_ttm_dollars: fewer than 12 overlapping months")
+    return ttm
+
+
 # --- TTM dollar sums (not ratios) — feeds debt_to_revenue ----------------
 
 def _ttm_sum(monthly: dict) -> dict:
@@ -745,6 +914,62 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
         print(f"    none of {MATURITY_ENDPOINT_CANDIDATES} resolved "
               f"({mprobe.get('error')}) — recorded as an honest open item, "
               f"not guessed")
+
+    print("\n  MSPD schema probe (TASKborrowingneed.md — units, cadence, "
+          "holder-identifying fields, latest snapshot):")
+    try:
+        sp = mspd_schema_probe()
+        print(f"    record_date used: {sp['recordDate']}")
+        print(f"    distinct record_dates seen in a 500-row page: {sp['distinctRecordDatesInPage']}")
+        print(f"    fields: {sp['fields']}")
+        for col, vals in sp["distinctByDescCol"].items():
+            print(f"    distinct {col}: {vals}")
+        print(f"    rows at this record_date: {sp['nRowsThisDate']}")
+        print(f"    sum(outstanding_amt) at this record_date, RAW units: "
+              f"{sp['sumOutstandingAmtThisDate_rawUnits']:,.0f}")
+        print(f"    (compare against ~$29-31T known total marketable debt to infer "
+              f"whole-dollars vs. thousands scale)")
+        print(f"    sample row: {sp['sampleRow']}")
+
+        print("\n  MSPD maturing-debt sum, latest snapshot (TASKborrowingneed.md, "
+              "amt_scale=1 — raw units, scale not yet confirmed):")
+        mat = mspd_maturing_debt(sp["recordDate"], window_days=366, amt_scale=1.0)
+        print(f"    record_date {mat['recordDate']}: {mat['nSecurities']} securities, "
+              f"{mat['nMaturing']} maturing within 366 days")
+        print(f"    total outstanding (raw units): {mat['totalOutstandingUsd']:,.0f}")
+        print(f"    maturing within 1yr (raw units): {mat['maturingUsd']:,.0f}")
+        if mat["totalOutstandingUsd"]:
+            print(f"    maturing share of total: {mat['maturingUsd']/mat['totalOutstandingUsd']*100:.1f}%")
+    except Exception as e:  # noqa: BLE001
+        print(f"    FAILED: {e}")
+
+    print("\n  MSPD schema probe near March 2025 (TASKborrowingneed.md — "
+          "does a vintage-comparable snapshot still exist?):")
+    try:
+        sp25 = mspd_schema_probe(near_date="2025-03-31")
+        print(f"    record_date used: {sp25['recordDate']}")
+        print(f"    rows at this record_date: {sp25['nRowsThisDate']}")
+        print(f"    sum(outstanding_amt), RAW units: {sp25['sumOutstandingAmtThisDate_rawUnits']:,.0f}")
+    except Exception as e:  # noqa: BLE001
+        print(f"    FAILED: {e}")
+
+    print("\n  Government deficit, TTM (TASKborrowingneed.md — mts_table_1 "
+          "Total Receipts / Total Outlays):")
+    try:
+        dmonthly = government_deficit_monthly()
+        last = max(dmonthly)
+        print(f"    resolved: {len(dmonthly)} months, latest {last[0]}-{last[1]:02d} = "
+              f"${dmonthly[last]/1e9:.1f}B")
+        dttm = deficit_ttm_dollars()
+        lastt = max(dttm)
+        print(f"    TTM deficit, latest {lastt[0]}-{lastt[1]:02d} = ${dttm[lastt]/1e9:.1f}B")
+        rttm = revenue_ttm_dollars()
+        if lastt in rttm:
+            print(f"    TTM revenue, same month = ${rttm[lastt]/1e9:.1f}B "
+                  f"-> current borrowing need = {dttm[lastt]/rttm[lastt]*100:.1f}% of revenue "
+                  f"(book: 39%)")
+    except Exception as e:  # noqa: BLE001
+        print(f"    FAILED: {e}")
 
     max_days = S.FRESHNESS_DAYS_BY_FREQ["Monthly"]
     try:
