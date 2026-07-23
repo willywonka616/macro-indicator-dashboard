@@ -8,7 +8,7 @@ import Tag from "./components/Tag.jsx";
 import EquationButton from "./components/EquationButton.jsx";
 
 /* Countries planned but not yet wired up. */
-const PLANNED = ["Euro area · ECB", "Japan", "China"];
+const PLANNED = ["Japan", "China"];
 
 const dotColor = (tag) =>
   tag === "live" ? c.calm : tag === "model" || tag === "projection" ? c.mitig : c.caution;
@@ -50,6 +50,12 @@ export default function App() {
   const d = data.countries[code];
   const cm = commentary[code] || {};
   const codes = Object.keys(data.countries);
+  // Shared central-bank entity (TASKeuroarea.md §1): a country may
+  // reference one via `centralBank` instead of owning its own CB/reserve
+  // panels — those panels render once, appended after the country's own.
+  const sharedCB = d.centralBank ? data.centralBanks?.[d.centralBank] : null;
+  const allPanels = sharedCB ? [...d.panels, ...sharedCB.panels] : d.panels;
+  const hasZModel = Boolean(d.headline && d.govGauge && d.cbGauge);
 
   return (
     <Shell>
@@ -97,6 +103,7 @@ export default function App() {
       )}
 
       {/* four vital signs — summary tiles (the full charts live in the panels below) */}
+      {d.vitals.length > 0 && (
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <h2 style={{ fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: c.text, fontWeight: 700 }}>Four vital signs</h2>
@@ -121,10 +128,13 @@ export default function App() {
           ))}
         </div>
       </div>
+      )}
 
-      {/* detailed panels — full-width, one per row, each history rendered as a big chart */}
+      {/* detailed panels — full-width, one per row, each history rendered as a big chart.
+          Includes the shared central-bank entity's own panels (if any), appended
+          after this country's — TASKeuroarea.md §1. */}
       <div className="flex flex-col gap-3 mb-6">
-        {d.panels.map((p, i) => <Panel key={i} p={p} longNote={cm.panelNotes?.[p.eyebrow]} />)}
+        {allPanels.map((p, i) => <Panel key={i} p={p} longNote={cm.panelNotes?.[p.eyebrow]} />)}
       </div>
 
       {/* red flags */}
@@ -140,7 +150,12 @@ export default function App() {
         ))}
       </div>
 
-      {/* ---- Dalio model section (moved to the bottom: not reproducible) ---- */}
+      {/* ---- Dalio model section (moved to the bottom: not reproducible) ----
+          Gauge panels only exist for entities with a published Z-score model
+          (US only, per the book — TASKeuroarea.md §5). Hidden here, but
+          EXPLICITLY marked below (not just silently absent) for any entity
+          that ships raw values without one. */}
+      {hasZModel ? (
       <div className="mb-3" style={{ borderTop: `1px solid ${c.line}`, paddingTop: 20 }}>
         <div className="flex items-center gap-2 mb-1">
           <h2 style={{ fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: c.text, fontWeight: 700 }}>Dalio's risk model</h2>
@@ -193,6 +208,15 @@ export default function App() {
           ))}
         </div>
       </div>
+      ) : d.zModelNote ? (
+      <div className="mb-3 rounded-lg p-4" style={{ borderTop: `1px solid ${c.line}`, marginTop: 12, background: c.panel, border: `1px solid ${c.line}` }}>
+        <div className="flex items-center gap-2 mb-1.5">
+          <h2 style={{ fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: c.text, fontWeight: 700 }}>Dalio's risk model</h2>
+          <span style={{ fontSize: 10, color: c.faint, border: `1px dashed ${c.line}`, borderRadius: 4, padding: "2px 6px" }}>not published for this entity</span>
+        </div>
+        <p style={{ fontSize: 12, color: c.muted, lineHeight: 1.55, maxWidth: 680 }}>{d.zModelNote}</p>
+      </div>
+      ) : null}
 
       <footer style={{ borderTop: `1px solid ${c.line}`, paddingTop: 16, marginTop: 8 }}>
         <p style={{ fontSize: 11, lineHeight: 1.6, color: c.faint }}>

@@ -5,13 +5,26 @@ import EquationButton from "./EquationButton.jsx";
 
 /* One metric line inside a Panel.
  * `r` = { label, value, display?, unit, tone, src, asOf?, history?, note?,
- * key?, terms? }. Renders `display` (pre-formatted string) when present,
- * else `value`. `note`, if present, is a short framing caption shown
- * under label/src — for a row that means little without context (e.g.
- * "net" vs "gross" interest), not a full explanation (that's Panel.jsx's
- * longNote). When there's history, a full-width chart is drawn below the
- * row. `key`/`terms` (if present) drive the "ƒx" equation-maths button —
- * see EquationButton.jsx. */
+ * key?, terms?, currencyStatus? }. Renders `display` (pre-formatted string)
+ * when present, else `value`. `note`, if present, is a short framing
+ * caption shown under label/src — for a row that means little without
+ * context (e.g. "net" vs "gross" interest), not a full explanation (that's
+ * Panel.jsx's longNote). When there's history, a full-width chart is drawn
+ * below the row. `key`/`terms` (if present) drive the "ƒx" equation-maths
+ * button — see EquationButton.jsx.
+ *
+ * `currencyStatus` (TASKeuroarea.md §2) is the three-state own-currency
+ * semantic: "own" (this entity can unilaterally print what it borrows in —
+ * the US, or the euro area as a whole) / "shared" (uses a currency it
+ * cannot unilaterally issue — a future euro-area MEMBER STATE) / "foreign"
+ * (borrows in someone else's currency outright). Optional — a row with no
+ * currencyStatus renders exactly as before this field existed. */
+const CURRENCY_STATUS = {
+  own: { label: "Own currency — can print what it borrows in", color: (c) => c.mitig },
+  shared: { label: "Shared currency — no unilateral issuer", color: (c) => c.caution },
+  foreign: { label: "Foreign currency — cannot print at all", color: (c) => c.alarm },
+};
+
 export default function MetricRow({ r }) {
   const shown = r.display ?? r.value;
   const hasChart = r.history && r.history.length > 1;
@@ -47,6 +60,19 @@ export default function MetricRow({ r }) {
             <div style={{ fontSize: 10, color: c.faint }}>
               {r.src}
               {r.asOf ? ` · ${r.asOf}` : ""}
+            </div>
+          )}
+          {r.currencyStatus && CURRENCY_STATUS[r.currencyStatus] && (
+            <div
+              className="inline-block mt-1 rounded px-1.5 py-0.5"
+              style={{
+                fontSize: 9.5,
+                color: CURRENCY_STATUS[r.currencyStatus].color(c),
+                border: `1px solid ${CURRENCY_STATUS[r.currencyStatus].color(c)}66`,
+                background: `${CURRENCY_STATUS[r.currencyStatus].color(c)}12`,
+              }}
+            >
+              {CURRENCY_STATUS[r.currencyStatus].label}
             </div>
           )}
         </div>

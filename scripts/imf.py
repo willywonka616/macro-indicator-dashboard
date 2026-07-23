@@ -32,6 +32,12 @@ DATASET = "https://api.db.nomics.world/v22/series/IMF/COFER"
 # COFER exposes a ready-made percent series: allocated reserves, US dollar,
 # share (RaTe, _PT = percent), world, quarterly. Use it directly — no summing.
 SHARE_SERIES = "Q.W00.RAXGFXARUSDRT_PT"
+# Same series family, euro instead of dollar (TASKeuroarea.md: "World CB
+# reserves in EUR", Dalio's Ch.17 EUR-column target 20.0%) — the currency
+# code is the only part of the series name that changes, so this is a
+# well-grounded guess rather than a blind one, but still unconfirmed from
+# this sandbox until a live run's verify() dump proves it out.
+SHARE_SERIES_EUR = "Q.W00.RAXGFXAREURRT_PT"
 
 
 def _get(url, params, tries=3):
@@ -70,13 +76,11 @@ def _qdec(k):
     return round(k[0] + (k[1] - 1) / 4.0, 3)
 
 
-def cofer_usd_share():
-    """{"latest": float, "asOf": "YYYY-Qn", "history": [{y, v}]} — USD % of
-    world allocated reserves, read directly from the COFER percent series."""
-    js = _get(f"{DATASET}/{SHARE_SERIES}", {"observations": "1"})
+def _cofer_share(series_code: str) -> dict:
+    js = _get(f"{DATASET}/{series_code}", {"observations": "1"})
     docs = js.get("series", {}).get("docs", [])
     if not docs:
-        raise RuntimeError(f"COFER: {SHARE_SERIES} returned no series — check code via --verify")
+        raise RuntimeError(f"COFER: {series_code} returned no series — check code via --verify")
     doc = docs[0]
 
     share = {}
@@ -88,11 +92,24 @@ def cofer_usd_share():
         except (TypeError, ValueError):
             continue
     if not share:
-        raise RuntimeError(f"COFER: {SHARE_SERIES} has no usable observations")
+        raise RuntimeError(f"COFER: {series_code} has no usable observations")
 
     last = max(share)
     hist = [{"y": _qdec(k), "v": round(share[k], 1)} for k in sorted(share)]
     return {"latest": round(share[last], 1), "asOf": f"{last[0]}-Q{last[1]}", "history": hist}
+
+
+def cofer_usd_share():
+    """{"latest": float, "asOf": "YYYY-Qn", "history": [{y, v}]} — USD % of
+    world allocated reserves, read directly from the COFER percent series."""
+    return _cofer_share(SHARE_SERIES)
+
+
+def cofer_eur_share():
+    """Same construction as cofer_usd_share(), euro instead of dollar
+    (TASKeuroarea.md) — reuses the identical DBnomics dataset and query
+    shape, just SHARE_SERIES_EUR instead of SHARE_SERIES."""
+    return _cofer_share(SHARE_SERIES_EUR)
 
 
 def verify() -> bool:
@@ -112,4 +129,11 @@ def verify() -> bool:
               f" — freshness: {f['age_days']}d old, {S.COFER_FRESH_DAYS}d threshold, {fresh_s}")
     except Exception as e:  # noqa: BLE001
         print(f"[cofer] unavailable — build will use the manual value: {e}")
+
+    # TASKeuroarea.md: EUR share, same series family as USD above.
+    try:
+        r_eur = cofer_eur_share()
+        print(f"  computed EUR share: {r_eur['latest']}% as of {r_eur['asOf']} ({len(r_eur['history'])} pts)")
+    except Exception as e:  # noqa: BLE001
+        print(f"[cofer] EUR share unavailable — build will use the manual value: {e}")
     return True

@@ -143,6 +143,25 @@ TRESEGUS_FRESH_DAYS = 180
 # quarter (~90d) of headroom above the generic Quarterly threshold.
 TIC_FOREIGN_FRESH_DAYS = FRESHNESS_DAYS_BY_FREQ["Quarterly"] + 90
 
+# --- euro-area cadences (TASKeuroarea.md §3) ------------------------------
+#
+# Eurostat government finance statistics are quarterly with a real ~3-4
+# month publication lag (confirmed via web research on gov_10q_ggdebt's own
+# release calendar: "t+113 days" after quarter-end) — meaningfully slower
+# than the ~220d headroom the generic Quarterly bucket already carries for
+# FRED's own quarterly series (which are dated to quarter START, not
+# release date, unlike Eurostat's). Reusing the generic Quarterly threshold
+# unmodified would be reusing a US-calibrated number for a structurally
+# different release cadence — TASKeuroarea.md's explicit instruction not
+# to do. 280d = ~9 months of headroom past a t+113d normal lag.
+EUROSTAT_FRESH_DAYS = 280
+
+# ECB RAS (Eurosystem official reserve assets) is monthly, BOP/IMF-style
+# sourced data (BPM6 classification) — same reasoning as TRESEGUSM052N's
+# own longer-than-domestic-monthly threshold above, not the generic 60d
+# Monthly bucket calibrated to domestic FRED series like CPIAUCSL.
+ECB_RESERVES_FRESH_DAYS = 180
+
 # --- manual-value freshness (STATUS.md §19) -------------------------------
 #
 # A hand-entered value with a date is exactly as capable of going stale as
@@ -545,6 +564,22 @@ def trailing_stdev_monthly(yoy_m: dict, years: float) -> dict:
     y0, m0 = window[0]
     return {"latest": round(sd, 2), "asOf": f"{y}-{m:02d}",
             "windowStart": f"{y0}-{m0:02d}", "n": len(window)}
+
+
+def trailing_avg_quarterly_pct(pct_q: dict, quarters: int = 12) -> dict:
+    """Trailing N-quarter mean of an ALREADY-%-of-GDP quarterly series
+    (TASKeuroarea.md: Eurostat's bop_gdp6_q ships current account as a
+    ready-made %GDP ratio, unlike the US's IEABC which needs dividing by
+    GDP separately in fetch.py — this is the euro-area equivalent of
+    current_account_pct_gdp_3yr's trailing-average step, without the
+    annualization/GDP-division steps that function also does)."""
+    keys = sorted(pct_q)
+    window = keys[-quarters:]
+    if len(window) < quarters:
+        raise RuntimeError(f"trailing_avg_quarterly_pct: need {quarters} quarters, have {len(window)}")
+    avg = sum(pct_q[k] for k in window) / len(window)
+    hist = [{"y": q_decimal(k), "v": round(pct_q[k], 2)} for k in keys]
+    return {"latest": round(avg, 2), "asOf": q_label(window[-1]), "history": hist}
 
 
 def cagr_quarterly(obs) -> dict:

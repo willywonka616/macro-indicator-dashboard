@@ -36,6 +36,8 @@ import imf as I
 import gold as G
 import cbo as C
 import bis as B
+import eurostat as E
+import ecb as EC
 
 FRED = "https://api.stlouisfed.org/fred"
 ROOT = Path(__file__).resolve().parent.parent
@@ -415,6 +417,15 @@ def verify() -> int:
     # the schema, available vintages, latest values, and the calibration
     # check against Dalio's own vintage (June 2024).
     C.verify()
+
+    # Eurostat + ECB (TASKeuroarea.md) — non-fatal, same treatment as
+    # BIS/COFER above: dumps whatever the best-effort series-code guesses
+    # actually return, so the real schema (or exact failure) is visible in
+    # the run log before build_eur() is trusted to ship anything live.
+    print("\nEurostat government finance + balance of payments (TASKeuroarea.md):")
+    E.verify()
+    print("\nECB Eurosystem reserve assets (TASKeuroarea.md):")
+    EC.verify()
 
     # Manual-value freshness audit (STATUS.md §19) — checked unconditionally
     # here, not only when a fallback actually fires in a real build, so
@@ -1610,6 +1621,320 @@ def build_us(manual: dict, force: bool) -> dict:
     return country
 
 
+def build_eur(manual: dict) -> dict:
+    """TASKeuroarea.md: the euro area (aggregate) — first non-US entry.
+    Ships raw values only (live where a clean source exists, Dalio's
+    March-2025 book column otherwise) — NO Z-scores are computed or
+    fabricated (his gauge-construction tables are US-only, §5). Shares
+    its central bank (`centralBank: "eurosystem"`) with any future
+    member-state entry rather than owning its own CB panel — see
+    build_eurosystem() below for the shared side."""
+    mu = manual["EUR"]
+    fallbacks_fired: list = []
+
+    def manual_row(label, spec, tag="manual", key=None):
+        row = {"label": label, "unit": spec.get("unit", ""), "tone": spec.get("tone", "neutral"),
+               "tag": tag, "src": spec.get("src", "—")}
+        row["display"] = spec["display"]
+        if "value" in spec:
+            row["value"] = spec["value"]
+        if "asOf" in spec:
+            row["asOf"] = spec["asOf"]
+        if "note" in spec:
+            row["note"] = spec["note"]
+        if key:
+            row["key"] = key
+        return row
+
+    def live_row(label, metric, tone, src, unit, decimals=None, note=None, key=None, tag="live"):
+        row = {"label": label, "value": num(metric["latest"]),
+               "display": pct_display(metric["latest"], decimals), "unit": unit,
+               "tone": tone, "tag": tag, "src": src, "asOf": metric["asOf"]}
+        if metric.get("history"):
+            row["history"] = metric["history"]
+        if note:
+            row["note"] = note
+        if key:
+            row["key"] = key
+        return row
+
+    # --- Central-vs-general government debt basis (TASKeuroarea.md §3, "the
+    # big one"): fetch BOTH sector bases, identify which one reproduces
+    # Dalio's 85% AT HIS March-2025 VINTAGE (not today's reading), adopt
+    # that basis as the live headline, and show the other as context. ---
+    debt_tag = "manual"
+    debt_row = None
+    debt_context_row = None
+    debt_basis_adopted = None
+    try:
+        central = E.central_govt_debt_pct_gdp()
+        general = E.general_govt_debt_pct_gdp()
+        central_vintage = E.vintage_value(central, 2025, 1)
+        general_vintage = E.vintage_value(general, 2025, 1)
+        if central_vintage is None and general_vintage is None:
+            raise RuntimeError("neither basis has a 2025-Q1 observation to identify against")
+        if general_vintage is None or (central_vintage is not None
+                                        and abs(central_vintage - 85.0) <= abs(general_vintage - 85.0)):
+            debt_basis_adopted, chosen, other = "central", central, general
+        else:
+            debt_basis_adopted, chosen, other = "general", general, central
+        S.require_fresh("Eurostat government debt (chosen basis)", chosen["asOf"], S.EUROSTAT_FRESH_DAYS)
+        sector_code = "S1311" if debt_basis_adopted == "central" else "S13"
+        debt_row = live_row(
+            "Government debt (% of GDP)", chosen, "risk",
+            f"Eurostat gov_10q_ggdebt (DBnomics), {debt_basis_adopted} government "
+            f"({sector_code}, geo={chosen['geo']})",
+            "of GDP", decimals=0, key="debt_to_gdp",
+            note=f"Basis identified at Dalio's March-2025 vintage (TASKeuroarea.md §3): "
+                 f"central-govt was {central_vintage}% and general-govt was {general_vintage}% "
+                 f"that quarter, against his 85% target — {debt_basis_adopted} government is the "
+                 f"closer match and is adopted for this row going forward, not re-decided each run.")
+        debt_tag = "live"
+        other_label = "general" if debt_basis_adopted == "central" else "central"
+        if other.get("history"):
+            debt_context_row = live_row(
+                f"— {other_label} government basis (context)", other, "neutral",
+                f"Eurostat gov_10q_ggdebt (DBnomics), {other_label} government, geo={other['geo']}",
+                "of GDP", decimals=1, key="debt_to_gdp_other_basis",
+                note=f"Shown for comparison only — Dalio's own table uses the {debt_basis_adopted}-"
+                     f"government basis (row above), identified at his March-2025 vintage.")
+    except Exception as e:  # noqa: BLE001
+        print(f"EUR government debt (central/general basis) unavailable: {e}")
+    assert_provenance(fallbacks_fired, "EUR government debt (% of GDP)", "live", debt_tag,
+                       reason="live Eurostat gov_10q_ggdebt fetch failed, exceeded its freshness "
+                              "threshold, or neither basis had a 2025-Q1 observation to identify against")
+    if debt_row is None:
+        debt_row = manual_row("Government debt (% of GDP)",
+                               {"display": "85%", "value": 85.0, "unit": "of GDP", "tone": "risk",
+                                "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03"},
+                               key="debt_to_gdp")
+
+    # --- Government interest / revenue (central government basis, matching
+    # the debt row above) ---
+    interest_tag = "manual"
+    interest_row = None
+    try:
+        ir = E.central_govt_interest_pct_revenue()
+        S.require_fresh("Eurostat central govt interest/revenue", ir["asOf"], S.EUROSTAT_FRESH_DAYS)
+        interest_row = live_row(
+            "Government interest (% of revenue)", ir, "risk",
+            f"derived · Eurostat gov_10q_ggnfa (DBnomics), central government interest (D41) / "
+            f"total revenue (TR), geo={ir['geo']}",
+            "of revenue", decimals=1, key="interest_to_revenue")
+        interest_tag = "live"
+    except Exception as e:  # noqa: BLE001
+        print(f"EUR government interest/revenue unavailable: {e}")
+    assert_provenance(fallbacks_fired, "EUR government interest (% of revenue)", "live", interest_tag,
+                       reason="live Eurostat gov_10q_ggnfa fetch failed or exceeded its freshness threshold")
+    if interest_row is None:
+        interest_row = manual_row("Government interest (% of revenue)",
+                                   {"display": "8%", "value": 8.0, "unit": "of revenue", "tone": "risk",
+                                    "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03"},
+                                   key="interest_to_revenue")
+
+    # --- Current account, 3-yr moving average ---
+    ca_tag = "manual"
+    ca_row = None
+    try:
+        ca = E.current_account_pct_gdp()
+        S.require_fresh("Eurostat current account", ca["asOf"], S.EUROSTAT_FRESH_DAYS)
+        ca_3yr = S.trailing_avg_quarterly_pct(ca["raw"], quarters=12)
+        ca_row = live_row(
+            "Current account, 3-yr avg", ca_3yr, "caution",
+            f"Eurostat bop_gdp6_q (DBnomics), geo={ca['geo']}", "of GDP", decimals=1,
+            key="current_account_3yr")
+        ca_tag = "live"
+    except Exception as e:  # noqa: BLE001
+        print(f"EUR current account unavailable: {e}")
+    assert_provenance(fallbacks_fired, "EUR current account, 3-yr avg", "live", ca_tag,
+                       reason="live Eurostat bop_gdp6_q fetch failed, exceeded its freshness "
+                              "threshold, or fewer than 12 quarters were available")
+    if ca_row is None:
+        ca_row = manual_row("Current account, 3-yr avg",
+                             {"display": "+2%", "value": 2.0, "unit": "of GDP", "tone": "caution",
+                              "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03"},
+                             key="current_account_3yr")
+
+    # --- Own-currency status: three-state field (TASKeuroarea.md §2) ---
+    oc = mu["ownCurrency"]
+    own_currency_row = {
+        "label": "Debt in own currency", "display": oc["display"], "tone": oc["tone"],
+        "tag": "manual", "src": "Dalio Ch.17 (structural fact)", "asOf": oc.get("asOf"),
+        "note": oc.get("note"), "key": "own_currency", "currencyStatus": oc["currencyStatus"],
+    }
+
+    gov_panel = {
+        "eyebrow": "Government debt (euro area aggregate)", "tag": "model",
+        "note": "Fiscal rows are per-country even though the currency and central bank are shared "
+                "(TASKeuroarea.md §1) — this panel is the euro area's own, not the Eurosystem's.",
+        "rows": [
+            manual_row("Gov assets − gov debt", mu["govAssetsMinusDebt"], key="gov_assets_minus_debt"),
+            debt_row,
+            *([debt_context_row] if debt_context_row else []),
+            # Note: debt_10yr_projection / held_by_* deliberately carry NO
+            # `key` here — equations.js's entries under those names quote
+            # US-specific sources (CBO, Treasury TIC data) that would be
+            # factually wrong if shown for this book-transcribed EUR figure.
+            # EquationButton's own documented rule is "no entry = no
+            # button" (see EquationButton.jsx) — omitting the key is that,
+            # deliberately, not an oversight (TASKeuroarea.md §7: reuse
+            # existing content only where it's actually still true).
+            manual_row("Debt, 10-yr projection", mu["debtProjection10yrFallback"]),
+            manual_row("— held by central bank", mu["holders"]["centralBank"]),
+            manual_row("— held by domestic players", mu["holders"]["domestic"]),
+            manual_row("— held abroad", mu["holders"]["abroad"]),
+            manual_row("Share in hard (foreign) FX", mu["shareHardFX"], key="share_hard_fx"),
+            interest_row,
+            own_currency_row,
+            manual_row("Sovereign wealth assets", mu["sovereignWealth"], key="sovereign_wealth"),
+        ],
+    }
+    broader_panel = {
+        "eyebrow": "Broader health (euro area aggregate)", "tag": "model",
+        "note": "Economy-wide leverage and the external balance, same as the US panel.",
+        "rows": [
+            # total_debt_all_sectors: same reasoning as above — equations.js's
+            # entry names FRED TCMDO specifically, wrong for this book figure.
+            manual_row("Total debt (all sectors)", mu["totalDebtAllSectorsFallback"]),
+            ca_row,
+        ],
+    }
+
+    country = {
+        "name": mu["name"], "baseline": mu["baseline"], "centralBank": mu["centralBank"],
+        "zModelNote": mu["zModelNote"],
+        "vitals": [],
+        "panels": [gov_panel, broader_panel],
+        "redFlags": mu["redFlags"],
+        "provenance": {
+            "modelSnapshot": mu.get("modelSnapshot"), "manualLastChecked": mu.get("lastChecked"),
+            "debtBasisNote": mu.get("debtBasisNote"), "debtBasisAdopted": debt_basis_adopted,
+            "fallbacksFired": fallbacks_fired,
+        },
+    }
+    _validate_eur(country)
+    return country
+
+
+def build_eurosystem(manual: dict) -> dict:
+    """The shared central-bank entity (TASKeuroarea.md §1): CB-side panels
+    that belong to the CURRENCY, not to any one member state — rendered
+    once regardless of how many euro-area countries reference it via
+    `centralBank: "eurosystem"`."""
+    cb_mu = manual["centralBanks"]["eurosystem"]
+
+    def manual_row(label, spec, tag="manual", key=None):
+        row = {"label": label, "unit": spec.get("unit", ""), "tone": spec.get("tone", "neutral"),
+               "tag": tag, "src": spec.get("src", "—"), "display": spec["display"]}
+        if "value" in spec:
+            row["value"] = spec["value"]
+        if "asOf" in spec:
+            row["asOf"] = spec["asOf"]
+        if "note" in spec:
+            row["note"] = spec["note"]
+        if key:
+            row["key"] = key
+        return row
+
+    def live_row(label, value, display, asof, tone, src, unit, note=None, key=None, history=None):
+        row = {"label": label, "value": num(value), "display": display, "unit": unit,
+               "tone": tone, "tag": "live", "src": src, "asOf": asof}
+        if history:
+            row["history"] = history
+        if note:
+            row["note"] = note
+        if key:
+            row["key"] = key
+        return row
+
+    # --- FX reserves (% of euro-area GDP): ECB RAS / Eurostat GDP ---
+    fx_reserves_tag = "manual"
+    fx_reserves_row = None
+    try:
+        reserves = EC.reserve_assets_eur()
+        gdp = E.gdp_eur_millions()
+        S.require_fresh("ECB RAS reserve assets", reserves["asOf"], S.ECB_RESERVES_FRESH_DAYS)
+        S.require_fresh("Eurostat GDP (EA)", gdp["asOf"], S.EUROSTAT_FRESH_DAYS)
+        res_q = {}
+        for (y, m), v in reserves["raw"].items():
+            q = (y, (m - 1) // 3 + 1)
+            if q not in res_q or m > res_q[q][0]:
+                res_q[q] = (m, v)
+        common_q = sorted(gdp["raw"].keys() & res_q.keys())
+        if not common_q:
+            raise RuntimeError("no overlapping quarter between ECB reserves and Eurostat GDP")
+        last_q = common_q[-1]
+        _, res_v = res_q[last_q]
+        gdp_v = gdp["raw"][last_q]
+        pct = res_v / gdp_v * 100.0 if gdp_v else None
+        if pct is None or not (0.5 <= pct <= 30.0):
+            raise RuntimeError(f"validation: FX reserves {pct}% of GDP outside the sane 0.5-30% band")
+        hist = [{"y": S.q_decimal(k), "v": round((res_q[k][1] / gdp["raw"][k]) * 100.0, 2)}
+                for k in sorted(gdp["raw"].keys() & res_q.keys())]
+        fx_reserves_row = live_row(
+            "FX reserves (of euro-area GDP)", pct, pct_display(pct, 1), S.q_label(last_q), "risk",
+            f"derived · ECB RAS (reserve assets) / Eurostat namq_10_gdp, both {S.q_label(last_q)}",
+            "of GDP", key="fx_reserves_pct_gdp", history=hist)
+        fx_reserves_tag = "live"
+    except Exception as e:  # noqa: BLE001
+        print(f"Eurosystem FX reserves unavailable: {e}")
+    if fx_reserves_row is None:
+        fx_reserves_row = manual_row("FX reserves (of euro-area GDP)",
+                                      cb_mu["reservePanel"]["rows"][0], key="fx_reserves_pct_gdp")
+
+    # --- World CB reserves in EUR: IMF COFER, same dataset as the US USD share ---
+    cofer_eur_tag = "manual"
+    cofer_eur_row = None
+    try:
+        cofer_eur = I.cofer_eur_share()
+        S.require_fresh("IMF COFER EUR share", cofer_eur["asOf"], S.COFER_FRESH_DAYS)
+        cofer_eur_row = live_row(
+            "World CB reserves in EUR", cofer_eur["latest"], pct_display(cofer_eur["latest"], 1),
+            cofer_eur["asOf"], "mitig", "IMF COFER (DBnomics)", "",
+            key="world_cb_reserves_eur", history=cofer_eur.get("history"))
+        cofer_eur_tag = "live"
+    except Exception as e:  # noqa: BLE001
+        print(f"IMF COFER EUR share unavailable: {e}")
+    if cofer_eur_row is None:
+        world_cb_spec = next(r for r in cb_mu["reserveCurrencyPanel"]["rows"] if r["key"] == "world_cb_reserves_eur")
+        cofer_eur_row = manual_row("World CB reserves in EUR", world_cb_spec, key="world_cb_reserves_eur")
+
+    reserve_panel = {
+        **{k: v for k, v in cb_mu["reservePanel"].items() if k != "rows"},
+        "rows": [fx_reserves_row],
+    }
+    reserve_currency_panel = {
+        **{k: v for k, v in cb_mu["reserveCurrencyPanel"].items() if k != "rows"},
+        "rows": [
+            manual_row("World trade in EUR", next(r for r in cb_mu["reserveCurrencyPanel"]["rows"]
+                                                    if r["key"] == "world_trade_eur"), key="world_trade_eur"),
+            manual_row("World debt in EUR", next(r for r in cb_mu["reserveCurrencyPanel"]["rows"]
+                                                  if r["key"] == "world_debt_eur"), key="world_debt_eur"),
+            manual_row("Global equity market cap in EUR", next(r for r in cb_mu["reserveCurrencyPanel"]["rows"]
+                                                                 if r["key"] == "global_equity_eur"), key="global_equity_eur"),
+            cofer_eur_row,
+        ],
+    }
+    return {
+        "name": cb_mu["name"], "currency": cb_mu["currency"], "zModel": cb_mu.get("zModel", False),
+        "panels": [reserve_panel, reserve_currency_panel],
+    }
+
+
+def _validate_eur(country: dict):
+    """Lighter-weight guard for the euro-area entry — no Z-scored vitals to
+    check (see build_eur's docstring), just that every panel actually has
+    rows and every row has the fields the frontend needs to render it."""
+    if not country.get("panels"):
+        raise RuntimeError("validation: EUR country has no panels, refusing to write")
+    for p in country["panels"]:
+        if not p.get("rows"):
+            raise RuntimeError(f"validation: EUR panel '{p.get('eyebrow')}' has no rows")
+        for r in p["rows"]:
+            if "display" not in r or "tone" not in r or "src" not in r:
+                raise RuntimeError(f"validation: EUR row '{r.get('label')}' missing display/tone/src")
+
+
 def _vital(metric, tone, read, src, unit, tag="live", terms=None):
     v = {
         "value": num(metric["latest"]), "display": pct_display(metric["latest"]),
@@ -1656,17 +1981,33 @@ def main():
         sys.exit(verify())
 
     manual = json.loads(MANUAL.read_text())
-    country = build_us(manual, args.force)
+    us_country = build_us(manual, args.force)
+    eur_country = None
+    eurosystem = None
+    try:
+        eur_country = build_eur(manual)
+        eurosystem = build_eurosystem(manual)
+    except Exception as e:  # noqa: BLE001
+        # TASKeuroarea.md is additive — a euro-area build failure must not
+        # take down the US site (same "degrade rather than break" rule as
+        # every optional source within build_us itself). Loud, not silent.
+        loud_warn(f"EUR country build failed, shipping US only this run: {e}")
+
     payload = {
         "generatedAt": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "meta": {"seed": False, "schema": 1},
-        "countries": {"US": country},
+        "countries": {"US": us_country, **({"EUR": eur_country} if eur_country else {})},
+        **({"centralBanks": {"eurosystem": eurosystem}} if eurosystem else {}),
     }
     atomic_write(OUT, payload)
     print(f"Wrote {OUT.relative_to(ROOT)} — generatedAt {payload['generatedAt']}")
-    for v in country["vitals"]:
+    for v in us_country["vitals"]:
         if v.get("tag") == "live":
             print(f"  {v['key']:<26} {v['display']:>8}  ({v['asOf']}, {len(v['history'])} pts)")
+    if eur_country:
+        print("  EUR country built OK "
+              f"({sum(len(p['rows']) for p in eur_country['panels'])} rows across "
+              f"{len(eur_country['panels'])} panels)")
 
 
 if __name__ == "__main__":

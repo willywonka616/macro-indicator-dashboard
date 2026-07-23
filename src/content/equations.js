@@ -38,7 +38,7 @@ export const equations = {
   debt_to_gdp: {
     kind: "observed",
     definition:
-      "Federal debt held by the public, as a percentage of GDP — a directly published FRED series (FYGFGDQ188S). Not computed from other inputs by this pipeline.",
+      "Government debt as a percentage of GDP — a directly published series, not computed from other inputs by this pipeline. US: FRED FYGFGDQ188S (federal debt held by the public). Euro area: Eurostat gov_10q_ggdebt, whichever sector basis (central or general government) reproduces Dalio's own book figure at his March-2025 vintage — see that row's own note and STATUS.md's EUR section (TASKeuroarea.md §3).",
     caveats: [
       "Dalio's own Ch. 3 equations are written in terms of debt ÷ revenue, not debt ÷ GDP — GDP isn't a resource the government can draw on, only its actual cash flows are. See the “Debt vs revenue” row for his preferred framing.",
     ],

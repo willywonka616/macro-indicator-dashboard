@@ -151,5 +151,93 @@
       "A new round of QE to push real interest rates down.",
       "The central government gaining control over the central bank."
     ]
+  },
+  "centralBanks": {
+    "eurosystem": {
+      "name": "Eurosystem (ECB)",
+      "currency": { "name": "Euro", "code": "EUR", "symbol": "€" },
+      "modelSnapshot": "2025-03-01",
+      "zModel": false,
+      "reservePanel": {
+        "eyebrow": "Liquid reserves (Eurosystem, pooled across members)",
+        "tag": "manual",
+        "note": "Eurosystem FX reserves are pooled at the ECB/NCB level, not held per member state — this panel belongs to the shared central-bank entity (TASKeuroarea.md §1) and renders once regardless of how many euro-area countries are on the dashboard. Gold is a large share of Eurosystem reserves, the same structural point as the US reserves panel.",
+        "rows": [
+          { "key": "fx_reserves_pct_gdp", "label": "FX reserves (of euro-area GDP)",
+            "unit": "of GDP", "tone": "risk", "tag": "manual", "src": "Dalio Ch.17 book table (EUR column)",
+            "display": "9%", "value": 9.0, "asOf": "2025-03",
+            "note": "TASKeuroarea.md §3: attempted live via ECB RAS (Eurosystem official reserve assets, DBnomics, scripts/ecb.py) divided by Eurostat GDP (scripts/eurostat.py). Book value shown here as the fallback — see STATUS.md's EUR section for whether the live construction actually resolved this round." }
+        ]
+      },
+      "reserveCurrencyPanel": {
+        "eyebrow": "Reserve-currency status (EUR)",
+        "tag": "manual",
+        "note": "The euro's own share of world trade, debt, equity and reserves — the same four-way reserve-currency read as the US panel, but for the currency itself rather than any one member state. Belongs to the shared entity for the same reason the CB panel does (TASKeuroarea.md §1).",
+        "rows": [
+          { "key": "world_trade_eur", "label": "World trade in EUR", "unit": "", "tone": "mitig", "tag": "manual",
+            "src": "Dalio Ch.17 book table (EUR column)", "display": "15.4%", "value": 15.4, "asOf": "2025-03",
+            "note": "TASKeuroarea.md §3: same 'no clean structured free source' gap as the US row's SWIFT/BIS assessment — stays manual." },
+          { "key": "world_debt_eur", "label": "World debt in EUR", "unit": "", "tone": "mitig", "tag": "manual",
+            "src": "Dalio Ch.17 book table (EUR column)", "display": "10.4%", "value": 10.4, "asOf": "2025-03",
+            "note": "TASKeuroarea.md §3: same BIS WS_NA_SEC_DSS schema gap as the US row (scripts/bis.py) — stays manual." },
+          { "key": "global_equity_eur", "label": "Global equity market cap in EUR", "unit": "", "tone": "mitig", "tag": "manual",
+            "src": "Dalio Ch.17 book table (EUR column)", "display": "6.5%", "value": 6.5, "asOf": "2025-03",
+            "note": "TASKeuroarea.md §3: same definition-sensitive aggregation gap as the US row — stays manual." },
+          { "key": "world_cb_reserves_eur", "label": "World CB reserves in EUR", "unit": "", "tone": "mitig", "tag": "manual",
+            "src": "Dalio Ch.17 book table (EUR column)", "display": "20.0%", "value": 20.0, "asOf": "2025-03",
+            "note": "TASKeuroarea.md §3: live via IMF COFER EUR share (DBnomics), same dataset/series family as the US panel's USD share — see scripts/imf.py's cofer_eur_share()." }
+        ]
+      }
+    }
+  },
+  "EUR": {
+    "name": "Euro area (aggregate)",
+    "centralBank": "eurosystem",
+    "baseline": "March 2025",
+    "modelSnapshot": "2025-03-01",
+    "lastChecked": "2026-07-23",
+    "zModelNote": "Dalio's Ch.17 gauge-construction tables (the Z-score breakdowns behind the US page's +2.4z / +1.0z scores) are US-only — the EUR column in his book exists only in the raw-indicator tables reproduced below. No Z-scores are fabricated for this entity (TASKeuroarea.md §5): every figure here is a raw value, live where a clean source exists, his March-2025 book column otherwise.",
+    "govAssetsMinusDebt": {
+      "display": "−76%", "unit": "of GDP", "tone": "risk", "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03",
+      "note": "Same structural gap as the US row: no single published series for 'total government financial assets' at this scope exists to net against debt — stays manual."
+    },
+    "debtBasisNote": "Basis identification (TASKeuroarea.md §3, the 'big one'): Eurostat's own headline euro-area ratio is general government (sector S13, ~88-90%); Dalio's Ch.17 table states government debt is central-government only, and his EUR figure is 85%. Both bases are fetched live (scripts/eurostat.py: general_govt_debt_pct_gdp / central_govt_debt_pct_gdp) and compared AT March-2025 — his vintage, not today's reading — against 85%, to identify which basis his table actually uses. See fetch.py's build_eur() and STATUS.md's EUR section for the result and which basis was adopted as the live headline.",
+    "debtProjection10yrFallback": {
+      "display": "87%", "value": 87.0, "unit": "of GDP", "tone": "risk", "asOf": "2025-03",
+      "src": "Dalio Ch.17 book table (EUR column) — manual, no live source built this round",
+      "note": "TASKeuroarea.md §6: CBO has no euro-area counterpart in scope this round. AMECO (European Commission forecast database) is the candidate live source for a follow-up — explicitly not built now, per the task's own instruction."
+    },
+    "holders": {
+      "centralBank": { "display": "30%", "tone": "neutral", "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03",
+        "note": "TASKeuroarea.md §3: Eurosystem holdings (ECB + NCB asset-purchase programmes, e.g. PSPP/APP) — no clean live source identified this round for a comparable aggregate; stays manual." },
+      "domestic": { "display": "41%", "tone": "neutral", "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03",
+        "note": "TASKeuroarea.md §3: would need ECB securities-holdings statistics (by holder residence) — no clean free source identified; stays manual, per the task's own 'if no clean source, those two stay manual-dated' instruction." },
+      "abroad": { "display": "14%", "tone": "caution", "src": "Dalio Ch.17 book table (EUR column)", "asOf": "2025-03",
+        "note": "TASKeuroarea.md §3: same gap as holders.domestic — stays manual." }
+    },
+    "shareHardFX": {
+      "display": "No", "tone": "mitig", "src": "—", "asOf": "2025-03",
+      "note": "Structural fact from Dalio's Ch.17: euro-area debt is issued in euros, not a currency foreign creditors could force — qualitative, not a fetchable series, same treatment as the US row."
+    },
+    "sovereignWealth": {
+      "display": "None", "tone": "risk", "src": "—", "asOf": "2025-03",
+      "note": "Dalio's Ch.17: no euro-area-wide sovereign wealth fund — structural fact, not a series that moves, same treatment as the US row."
+    },
+    "totalDebtAllSectorsFallback": {
+      "display": "169%", "value": 169.0, "unit": "of GDP", "tone": "caution", "asOf": "2025-03",
+      "src": "Dalio Ch.17 book table (EUR column) — manual, no live source confirmed this round",
+      "note": "Same BIS all-sector-credit schema gap as the US 'World debt in USD' row (scripts/bis.py, never yet resolved live) — stays manual."
+    },
+    "ownCurrency": {
+      "currencyStatus": "own",
+      "display": "Yes — ECB is sole issuer",
+      "tone": "mitig",
+      "asOf": "2025-03",
+      "note": "TASKeuroarea.md §2, the single most important semantic in this port: for the AGGREGATE this is true — the ECB has sole authority to issue euros, exactly analogous to the Fed for the US, so this row reads own-currency=yes just like the US row. It is NOT true for any individual member state (Italy, Germany, etc. cannot unilaterally print the currency they borrow in) — this field is a three-state currencyStatus (\"own\" / \"shared\" / \"foreign\"), built now so a future member-state entry renders \"shared\" here instead of the same green 100% as this aggregate row or the US row."
+    },
+    "redFlags": [
+      "Renewed fragmentation risk — a widening of peripheral sovereign spreads forcing the ECB into a support role, testing the currency union's cohesion.",
+      "A member state's fiscal position deteriorating far enough to raise redenomination risk — the shared-currency structure's own version of \"the center losing control.\""
+    ]
   }
 }
