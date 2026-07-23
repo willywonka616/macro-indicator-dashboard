@@ -18,6 +18,7 @@ scale each series happens to use.
 from __future__ import annotations
 
 import datetime as _dt
+import statistics as _statistics
 
 # --- registry ------------------------------------------------------------
 
@@ -482,6 +483,184 @@ def real_10y_rate(dgs10_obs, cpi_obs):
     real_q = quarterly_last(real)  # collapse to quarterly for display / latest
     latest, asof = _latest(real_q)
     return {"latest": round(latest, 2), "asOf": asof, "history": quarterly_history(real_q)}
+
+
+# --- TASKcbrawvalues.md: central bank panel raw values ---------------------
+# Dalio's Ch.17 CB gauge table pairs each Z-score with a "Reading Today" raw
+# value; most of those leaf inputs are ordinary measurable statistics, not
+# model output. The functions below compute live counterparts to sit
+# alongside the frozen (March 2025, manual) book figures. The Z-score wall
+# itself is never touched by anything in this section — these functions
+# return raw numbers only, no Z.
+
+def yoy_pct_change_quarterly(obs) -> dict:
+    """{quarter_key: YoY %} from a quarterly obs list."""
+    q = as_quarterly(obs)
+    out = {}
+    for k, v in q.items():
+        prev = q.get((k[0] - 1, k[1]))
+        if prev:
+            out[k] = (v / prev - 1.0) * 100.0
+    return out
+
+
+def yoy_pct_change_monthly(obs) -> dict:
+    """{(y,m): YoY %} from a monthly obs list."""
+    m = as_monthly(obs)
+    out = {}
+    for (y, mo), v in m.items():
+        prev = m.get((y - 1, mo))
+        if prev:
+            out[(y, mo)] = (v / prev - 1.0) * 100.0
+    return out
+
+
+def trailing_stdev_quarterly(yoy_q: dict, years: float) -> dict:
+    """Population stdev of the trailing `years`*4 points of a {quarter: %}
+    series. Each input point is already a year-over-year rate, so this IS
+    'volatility, annualized' in the standard sense — no separate
+    annualization factor needed. Trailing window (not full history), per
+    TASKcbrawvalues.md's own suggestion: recent volatility, not the whole
+    multi-decade record, which would mix in regimes with no bearing on
+    today's."""
+    keys = sorted(yoy_q)
+    n = int(round(years * 4))
+    window = keys[-n:]
+    if len(window) < 2:
+        raise RuntimeError("trailing_stdev_quarterly: insufficient overlap")
+    sd = _statistics.pstdev(yoy_q[k] for k in window)
+    return {"latest": round(sd, 2), "asOf": q_label(window[-1]),
+            "windowStart": q_label(window[0]), "n": len(window)}
+
+
+def trailing_stdev_monthly(yoy_m: dict, years: float) -> dict:
+    """Same as trailing_stdev_quarterly but for a monthly {(y,m): %} series."""
+    keys = sorted(yoy_m)
+    n = int(round(years * 12))
+    window = keys[-n:]
+    if len(window) < 2:
+        raise RuntimeError("trailing_stdev_monthly: insufficient overlap")
+    sd = _statistics.pstdev(yoy_m[k] for k in window)
+    y, m = window[-1]
+    y0, m0 = window[0]
+    return {"latest": round(sd, 2), "asOf": f"{y}-{m:02d}",
+            "windowStart": f"{y0}-{m0:02d}", "n": len(window)}
+
+
+def cagr_quarterly(obs) -> dict:
+    """Full-history CAGR of a quarterly level series (e.g. real GDP per
+    capita), first observation to latest. The book doesn't state a window
+    for 'long-term'; using the full available run is the most defensible
+    reading of that word without picking an arbitrary shorter cutoff."""
+    q = as_quarterly(obs)
+    keys = sorted(q)
+    first_k, last_k = keys[0], keys[-1]
+    first_v, last_v = q[first_k], q[last_k]
+    years = q_decimal(last_k) - q_decimal(first_k)
+    if years <= 0 or first_v <= 0:
+        raise RuntimeError("cagr_quarterly: degenerate window")
+    rate = (last_v / first_v) ** (1.0 / years) - 1.0
+    return {"latest": round(rate * 100.0, 2), "asOf": q_label(last_k),
+            "fromYear": q_label(first_k), "years": round(years, 1)}
+
+
+def cagr_monthly(monthly: dict) -> dict:
+    """Full-history CAGR of a monthly level dict (e.g. gold price), same
+    'long-term = full available run' reasoning as cagr_quarterly. Nominal
+    — no inflation adjustment — matching how Dalio's own figure reads
+    (stated as a bare annualized return, not explicitly real)."""
+    keys = sorted(monthly)
+    first_k, last_k = keys[0], keys[-1]
+    first_v, last_v = monthly[first_k], monthly[last_k]
+    years = (last_k[0] + (last_k[1] - 1) / 12.0) - (first_k[0] + (first_k[1] - 1) / 12.0)
+    if years <= 0 or first_v <= 0:
+        raise RuntimeError("cagr_monthly: degenerate window")
+    rate = (last_v / first_v) ** (1.0 / years) - 1.0
+    return {"latest": round(rate * 100.0, 2), "asOf": f"{last_k[0]}-{last_k[1]:02d}",
+            "fromYear": f"{first_k[0]}-{first_k[1]:02d}", "years": round(years, 1)}
+
+
+def avg_real_short_rate(short_rate_obs, cpi_obs) -> dict:
+    """Long-term AVERAGE real short-term rate (short rate minus trailing
+    YoY CPI inflation), arithmetic mean over the full overlap of both
+    series — not compounded, since holding cash isn't a compounding
+    position the way an equity or gold holding is (that asymmetry is why
+    this function differs in shape from cagr_monthly/cagr_quarterly above,
+    not an oversight)."""
+    rate_m = as_monthly(short_rate_obs)
+    cpi = as_monthly(cpi_obs)
+    infl = {}
+    for (y, m), v in cpi.items():
+        prev = cpi.get((y - 1, m))
+        if prev:
+            infl[(y, m)] = (v / prev - 1.0) * 100.0
+    real = {k: rate_m[k] - infl[k] for k in rate_m.keys() & infl.keys()}
+    if not real:
+        raise RuntimeError("avg_real_short_rate: no overlap")
+    avg = sum(real.values()) / len(real)
+    last_k, first_k = max(real), min(real)
+    return {"latest": round(avg, 2), "asOf": f"{last_k[0]}-{last_k[1]:02d}",
+            "fromYear": f"{first_k[0]}-{first_k[1]:02d}", "n": len(real)}
+
+
+def money_pct_gdp(money_obs, money_units, gdp_obs, gdp_units) -> dict:
+    """Broad money supply as a % of nominal GDP, quarterly — same
+    bucketing pattern as reserves_pct_gdp above."""
+    m_q = quarterly_last(as_monthly(money_obs))
+    gdp = as_quarterly(gdp_obs)
+    ratio = {}
+    for k in m_q.keys() & gdp.keys():
+        denom = to_dollars(gdp[k], gdp_units)
+        if denom:
+            ratio[k] = to_dollars(m_q[k], money_units) / denom * 100.0
+    if not ratio:
+        raise RuntimeError("money_pct_gdp: no overlapping quarters")
+    latest, asof = _latest(ratio)
+    return {"latest": round(latest, 1), "asOf": asof, "history": quarterly_history(ratio)}
+
+
+def reserves_pct_of_money(combined_reserves_gold_monthly: dict, money_obs, money_units) -> dict:
+    """Reserves (FX excl. gold + gold at market, monthly $) over broad
+    money (monthly $) — both already monthly, no quarterly bucketing
+    needed, so this stays fresher than the %-of-GDP reserves rows."""
+    money_m = as_monthly(money_obs)
+    ratio = {}
+    for k in combined_reserves_gold_monthly.keys() & money_m.keys():
+        denom = to_dollars(money_m[k], money_units)
+        if denom:
+            ratio[k] = combined_reserves_gold_monthly[k] / denom * 100.0
+    if not ratio:
+        raise RuntimeError("reserves_pct_of_money: no overlapping months")
+    last_k = max(ratio)
+    y, m = last_k
+    hist = [{"y": round(k[0] + (k[1] - 1) / 12.0, 3), "v": round(v, 3)} for k, v in sorted(ratio.items())]
+    return {"latest": round(ratio[last_k], 2), "asOf": f"{y}-{m:02d}", "history": hist}
+
+
+def months_of_reserve_runway(reserves_obs, reserves_units, window_months: int = 12) -> dict:
+    """If reserves have been shrinking over the trailing `window_months`,
+    reserves level / average monthly decline = months of runway at that
+    pace. If the trailing trend is flat or rising, there's no sustained
+    sales pace to divide by — returns runwayMonths=None with the trend
+    labelled, rather than a meaningless (or negative/infinite) division.
+    This is the live counterpart to a row where the book itself gives Z
+    only, consistent with there being no sustained sales pace to report."""
+    m = as_monthly(reserves_obs)
+    keys = sorted(m)
+    window = keys[-(window_months + 1):]
+    if len(window) < 2:
+        raise RuntimeError("months_of_reserve_runway: insufficient history")
+    diffs = [to_dollars(m[window[i + 1]], reserves_units) - to_dollars(m[window[i]], reserves_units)
+             for i in range(len(window) - 1)]
+    avg_monthly_change = sum(diffs) / len(diffs)
+    latest_level = to_dollars(m[window[-1]], reserves_units)
+    y, mo = window[-1]
+    if avg_monthly_change >= 0:
+        return {"runwayMonths": None, "trend": "flat_or_rising",
+                "asOf": f"{y}-{mo:02d}", "avgMonthlyChangeUsd": round(avg_monthly_change, 0)}
+    months = latest_level / -avg_monthly_change
+    return {"runwayMonths": round(months, 1), "trend": "declining",
+            "asOf": f"{y}-{mo:02d}", "avgMonthlyChangeUsd": round(avg_monthly_change, 0)}
 
 
 # --- CBO projections (TASKprojections.md) --------------------------------

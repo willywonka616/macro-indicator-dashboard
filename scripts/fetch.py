@@ -321,6 +321,43 @@ def verify() -> int:
     print("\nBIS debt-currency share (world debt in USD), TASKmanualvalues.md:")
     B.verify()
 
+    # TASKcbrawvalues.md: dump metadata/latest values for every new FRED
+    # series the CB gauge's live raw values depend on, so a schema surprise
+    # is visible in the run log the same way every other integration in
+    # this project is. Non-fatal — every one of these has a book-only
+    # fallback (see build_us's cb_live block).
+    print("\nCB gauge raw-value series (TASKcbrawvalues.md):")
+    for sid in ("M2SL", "BOGMBASE", "GDPC1", "A939RX0Q048SBEA", "FEDFUNDS"):
+        try:
+            meta = series_meta(sid)
+            units, obs = series_obs(sid)
+            d, v = obs[-1]
+            print(f"  {sid}: {meta.get('title')!r}, units={units!r}, freq={meta.get('frequency_short')}, "
+                  f"latest {d} = {v}")
+        except Exception as e:  # noqa: BLE001
+            print(f"  {sid}: FAILED: {e}")
+
+    # Central bank profitability (TASKcbrawvalues.md §2, "probably feasible,
+    # attempt and report"): RESPPLLOPNWW ("Earnings Remittances Due to the
+    # U.S. Treasury: Wednesday Level", H.4.1) is the best candidate found —
+    # dumped here, diagnostic only, deliberately NOT wired into any shipped
+    # row this round. The sign/accounting convention (does a rising level
+    # mean the Fed owes MORE unremitted earnings, i.e. a bigger operating
+    # loss / lower profitability, or the reverse?) needs a real look at
+    # live values to interpret correctly, which this dev sandbox can't do
+    # (FRED is blocked here) — this print is that look, for a future
+    # session to build on rather than guess at.
+    print("\nCentral bank profitability probe (TASKcbrawvalues.md §2, diagnostic only):")
+    try:
+        meta = series_meta("RESPPLLOPNWW")
+        units, obs = series_obs("RESPPLLOPNWW")
+        print(f"  RESPPLLOPNWW: {meta.get('title')!r}, units={units!r}, freq={meta.get('frequency_short')}")
+        print("  last 6 observations:")
+        for d, v in obs[-6:]:
+            print(f"    {d}: {v}")
+    except Exception as e:  # noqa: BLE001
+        print(f"  RESPPLLOPNWW: FAILED: {e}")
+
     # GDP + TRESEGUSM052N raw $ values, units, and vintage, plus a full
     # reserves-incl-gold breakdown — a user-facing question (2026-07-22:
     # "reserves rose on a falling gold price — is GDP's basis/units the
@@ -1222,6 +1259,185 @@ def build_us(manual: dict, force: bool) -> dict:
         ],
     }
 
+    # --- TASKcbrawvalues.md: central bank gauge raw values ------------------
+    # Adds live raw values to the CB gauge alongside Dalio's frozen (March
+    # 2025, manual) book figures in mu["cbGauge"]. The Z-scores themselves
+    # are never touched here — only a `live` key is merged onto each
+    # row/component below, matched by `key` against data/manual.json's
+    # cbGauge shape. Every metric degrades independently (one failing
+    # doesn't take any other down), same "isolated, non-fatal" pattern as
+    # every other optional source in this pipeline.
+    cb_live = {}
+
+    def _cb_note(msg):
+        print(f"CB gauge raw value unavailable: {msg}")
+
+    # Unbacked money: M2 (broad money supply) / GDP. Monetary base (a
+    # narrower reading of "unbacked money" — the central bank's own direct
+    # liability, excluding bank-created deposit money) is fetched too, for
+    # a comparison note, not as an alternate primary — M2 is the standard
+    # "money supply" measure when the term is unqualified, chosen on that
+    # conceptual basis, not because of where it happens to land relative to
+    # Dalio's 71%/74% figures (TASKcbrawvalues.md's explicit "do not tune
+    # to his number" instruction).
+    try:
+        m2_units, m2_obs = series_obs("M2SL")
+        unbacked = S.money_pct_gdp(m2_obs, m2_units, raw["GDP"][1], raw["GDP"][0])
+        ub_note = None
+        try:
+            base_units, base_obs = series_obs("BOGMBASE")
+            base_pct = S.money_pct_gdp(base_obs, base_units, raw["GDP"][1], raw["GDP"][0])
+            ub_note = (f"M2 (broad money supply) / GDP — the standard measure when "
+                       f"\"money supply\" is unqualified. Monetary base alone (currency + "
+                       f"bank reserves, the central bank's own direct liability, a "
+                       f"narrower reading of \"unbacked\") is {base_pct['latest']}% of GDP "
+                       f"as of {base_pct['asOf']}, for comparison.")
+        except Exception as e:  # noqa: BLE001
+            _cb_note(f"monetary-base comparison figure: {e}")
+        cb_live["unbacked_money"] = {
+            "display": pct_display(unbacked["latest"], 1), "value": num(unbacked["latest"]),
+            "asOf": unbacked["asOf"], "src": "derived · FRED M2SL / GDP", "note": ub_note,
+        }
+    except Exception as e:  # noqa: BLE001
+        _cb_note(f"unbacked money (M2/GDP): {e}")
+
+    # Reserves / money: (FX excl. gold + gold at market) / M2, monthly.
+    # Isolated gold fetch — deliberately not reusing the Liquid-reserves
+    # panel's local variables (which may not even exist if that block's own
+    # try failed), so a failure in either place can't take the other down.
+    try:
+        m2_units, m2_obs = series_obs("M2SL")
+        cb_oz = G.gold_holdings_troy_oz()
+        cb_price, cb_price_label = G.gold_price_usd_per_oz_labeled()
+        res_m = S.as_monthly(raw["TRESEGUSM052N"][1])
+        res_units = raw["TRESEGUSM052N"][0]
+        combined_m = {k: S.to_dollars(res_m[k], res_units) + cb_oz[k] * cb_price[k]
+                      for k in res_m.keys() & cb_oz.keys() & cb_price.keys()}
+        if not combined_m:
+            raise RuntimeError("no overlapping months across reserves/gold-oz/gold-price")
+        rpm = S.reserves_pct_of_money(combined_m, m2_obs, m2_units)
+        cb_live["reserves_per_money"] = {
+            "display": pct_display(rpm["latest"], 1), "value": num(rpm["latest"]),
+            "asOf": rpm["asOf"],
+            "src": f"derived · FRED (TRESEGUSM052N + Treasury gold oz x {cb_price_label}) / M2SL",
+        }
+    except Exception as e:  # noqa: BLE001
+        _cb_note(f"reserves/money: {e}")
+
+    # Volatility of growth (ann): trailing-10y stdev of YoY real GDP growth.
+    try:
+        gdpc1_units, gdpc1_obs = series_obs("GDPC1")
+        gyoy = S.yoy_pct_change_quarterly(gdpc1_obs)
+        gvol = S.trailing_stdev_quarterly(gyoy, 10)
+        cb_live["growth_volatility"] = {
+            "display": pct_display(gvol["latest"], 1), "value": num(gvol["latest"]),
+            "asOf": gvol["asOf"], "src": "derived · FRED GDPC1, trailing 10y YoY stdev",
+            "note": f"Trailing 10y (since {gvol['windowStart']}), stdev of quarterly YoY real GDP growth.",
+        }
+    except Exception as e:  # noqa: BLE001
+        _cb_note(f"growth volatility: {e}")
+
+    # Volatility of inflation (ann): trailing-10y stdev of YoY CPI inflation.
+    try:
+        iyoy = S.yoy_pct_change_monthly(raw["CPIAUCSL"][1])
+        ivol = S.trailing_stdev_monthly(iyoy, 10)
+        cb_live["inflation_volatility"] = {
+            "display": pct_display(ivol["latest"], 1), "value": num(ivol["latest"]),
+            "asOf": ivol["asOf"], "src": "derived · FRED CPIAUCSL, trailing 10y YoY stdev",
+            "note": f"Trailing 10y (since {ivol['windowStart']}), stdev of monthly YoY CPI inflation.",
+        }
+    except Exception as e:  # noqa: BLE001
+        _cb_note(f"inflation volatility: {e}")
+
+    # Long-term GDP per capita growth: full-history CAGR.
+    try:
+        pc_units, pc_obs = series_obs("A939RX0Q048SBEA")
+        pc_cagr = S.cagr_quarterly(pc_obs)
+        cb_live["gdp_per_capita_growth"] = {
+            "display": pct_display(pc_cagr["latest"], 1), "value": num(pc_cagr["latest"]),
+            "asOf": pc_cagr["asOf"], "src": "derived · FRED A939RX0Q048SBEA, full-history CAGR",
+            "note": f"CAGR from {pc_cagr['fromYear']} to {pc_cagr['asOf']} ({pc_cagr['years']}y).",
+        }
+    except Exception as e:  # noqa: BLE001
+        _cb_note(f"GDP per capita growth: {e}")
+
+    # Real cash return (long-term, ann): FEDFUNDS minus YoY CPI, averaged
+    # over the full overlap — a "storehold of wealth" figure, not a
+    # compounding return (holding cash isn't a compounding position).
+    try:
+        ff_units, ff_obs = series_obs("FEDFUNDS")
+        cash = S.avg_real_short_rate(ff_obs, raw["CPIAUCSL"][1])
+        cb_live["real_cash_return"] = {
+            "display": pct_display(cash["latest"], 1), "value": num(cash["latest"]),
+            "asOf": cash["asOf"], "src": "derived · FRED FEDFUNDS − CPIAUCSL YoY, full-history average",
+            "note": f"Average from {cash['fromYear']} to {cash['asOf']} ({cash['n']} months).",
+        }
+    except Exception as e:  # noqa: BLE001
+        _cb_note(f"real cash return: {e}")
+
+    # Real gold return (long-term, ann): full-history CAGR of the live gold
+    # leg's own price history. Nominal (no inflation adjustment) — matches
+    # how Dalio's own figure reads (a bare annualized return). Isolated
+    # fetch, same reasoning as reserves/money above.
+    try:
+        cb_gold_price, cb_gold_label = G.gold_price_usd_per_oz_labeled()
+        gold_cagr = S.cagr_monthly(cb_gold_price)
+        cb_live["real_gold_return"] = {
+            "display": pct_display(gold_cagr["latest"], 1), "value": num(gold_cagr["latest"]),
+            "asOf": gold_cagr["asOf"], "src": f"derived · {cb_gold_label}, full-history CAGR",
+            "note": f"Nominal CAGR from {gold_cagr['fromYear']} to {gold_cagr['asOf']} ({gold_cagr['years']}y).",
+        }
+    except Exception as e:  # noqa: BLE001
+        _cb_note(f"real gold return: {e}")
+
+    # Reserve FX / financial center: wire in the SAME COFER value already
+    # computed above for cb_reserves_row — not a second fetch or a manual
+    # duplicate (TASKcbrawvalues.md's explicit instruction).
+    if cb_reserves_tag == "live":
+        cb_live["reserve_fx_financial_center"] = {
+            "display": pct_display(cofer["latest"], 1), "value": num(cofer["latest"]),
+            "asOf": cofer["asOf"],
+            "src": "IMF COFER (DBnomics) — same figure as the \"World CB reserves in USD\" row above",
+        }
+
+    # Months of reserve sales before running out: only meaningful when
+    # reserves are actually being sold (see series.py's docstring).
+    try:
+        runway = S.months_of_reserve_runway(raw["TRESEGUSM052N"][1], raw["TRESEGUSM052N"][0])
+        if runway["trend"] == "declining":
+            cb_live["reserve_runway"] = {
+                "display": f"{runway['runwayMonths']} months", "value": runway["runwayMonths"],
+                "asOf": runway["asOf"], "src": "derived · FRED TRESEGUSM052N, trailing 12mo pace",
+            }
+        else:
+            cb_live["reserve_runway"] = {
+                "display": "n/a — no sustained sales", "asOf": runway["asOf"],
+                "src": "derived · FRED TRESEGUSM052N, trailing 12mo pace",
+                "note": "Reserves have been flat or rising over the trailing 12 months — "
+                        "there is no sustained sales pace to project a runway from.",
+            }
+    except Exception as e:  # noqa: BLE001
+        _cb_note(f"months of reserve runway: {e}")
+
+    def _cb_row(spec):
+        """Merge a manual.json cbGauge row/context-item with any live value
+        computed above (matched by `key`), recursing into `components` the
+        same way. Z-scores (`z`) pass through completely untouched."""
+        row = dict(spec)
+        key = row.get("key")
+        if key and key in cb_live:
+            row["live"] = cb_live[key]
+        if "components" in row:
+            row["components"] = [_cb_row(c) for c in row["components"]]
+        return row
+
+    cb_gauge = {
+        **mu["cbGauge"],
+        "rows": [_cb_row(r) for r in mu["cbGauge"]["rows"]],
+        "context": [_cb_row(r) for r in mu["cbGauge"].get("context", [])],
+        "source": "model",
+    }
+
     country = {
         "name": mu["name"], "baseline": mu["baseline"],
         "headline": {
@@ -1232,7 +1448,7 @@ def build_us(manual: dict, force: bool) -> dict:
         "vitals": vitals,
         "panels": [gov_panel, reserves_panel, broader_panel, reserve_ccy_panel],
         "govGauge": {**mu["govGauge"], "source": "model"},
-        "cbGauge": {**mu["cbGauge"], "source": "model"},
+        "cbGauge": cb_gauge,
         "redFlags": mu["redFlags"],
         "provenance": {
             "modelSnapshot": mu.get("modelSnapshot"),

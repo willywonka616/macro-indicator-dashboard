@@ -90,11 +90,13 @@
       "overall": 2.4,
       "note": "Built mostly from borrowing need — including the stress case where creditors won't roll the debt over. Being able to borrow in your own currency pulls the score down.",
       "rows": [
-        { "label": "Current borrowing need", "z": 2.4, "extra": "39% of revenue" },
-        { "label": "— if rollover problems", "z": 2.5, "extra": "239% of revenue" },
-        { "label": "Projected borrowing need", "z": 2.8, "extra": "44% of revenue" },
-        { "label": "— if rollover problems", "z": 2.9, "extra": "254% of revenue" },
-        { "label": "Debt in own currency", "z": -2.0, "extra": "100%", "mitig": true }
+        { "key": "borrowing_need", "label": "Current borrowing need", "z": 2.4, "extra": "39% of revenue",
+          "note": "TASKcbrawvalues.md §3: recomputing this live needs the MSPD maturity profile (for the rollover piece) — its endpoint is a best-effort probe (treasury.py's maturity_profile_probe()), unconfirmed from this project's dev sandbox. Stays manual until a live CI run confirms it resolves; see STATUS.md." },
+        { "key": "borrowing_need_stress", "label": "— if rollover problems", "z": 2.5, "extra": "239% of revenue" },
+        { "key": "borrowing_need_projected", "label": "Projected borrowing need", "z": 2.8, "extra": "44% of revenue" },
+        { "key": "borrowing_need_projected_stress", "label": "— if rollover problems", "z": 2.9, "extra": "254% of revenue" },
+        { "key": "own_currency", "label": "Debt in own currency", "z": -2.0, "extra": "100%", "mitig": true, "constant": true,
+          "note": "Stated constant, not a sourced manual value — the US borrows in its own currency by definition; there is no external series this could drift from, so it carries no asOf." }
       ]
     },
     "cbGauge": {
@@ -102,14 +104,40 @@
       "overall": 1.0,
       "note": "Income statement looks only mildly negative; the balance sheet is about as stretched as it has ever been — lots of unbacked money against tiny reserves. Reserve-currency and institutional strengths keep the total moderate.",
       "rows": [
-        { "label": "Central bank profitability", "z": 0.1, "extra": "−0.2% of GDP" },
-        { "label": "— if rates rise", "z": 0.2, "extra": "−0.4% of GDP" },
-        { "label": "Unbacked money", "z": 0.3, "extra": "71% of GDP" },
-        { "label": "Reserves / money", "z": 1.5, "extra": "low" },
-        { "label": "Currency as storehold", "z": -2.0, "extra": "mitigating", "mitig": true },
-        { "label": "Reserve FX / financial center", "z": -3.3, "extra": "dominant", "mitig": true },
-        { "label": "Rule of law", "z": -1.1, "extra": "strong", "mitig": true },
-        { "label": "Inflation volatility", "z": -2.1, "extra": "1.4% ann", "mitig": true }
+        { "key": "cb_profitability", "label": "Central bank profitability", "z": 0.1,
+          "book": { "display": "−0.2% of GDP", "asOf": "2025-03" },
+          "note": "Attempted live via FRED RESPPLLOPNWW (\"Earnings Remittances Due to the U.S. Treasury\") — see scripts/fetch.py's --verify diagnostic. A clean %-of-GDP profitability figure needs netting income against expenses in a way a single balance-sheet-liability series doesn't cleanly give without H.4.1 parsing (TASKcbrawvalues.md §2 explicitly allows reporting and stopping here rather than building a fragile scrape). Book value only." },
+        { "key": "cb_profitability_stress", "label": "— if rates rise", "z": 0.2,
+          "book": { "display": "−0.4% of GDP", "asOf": "2025-03" } },
+        { "key": "unbacked_money", "label": "Unbacked money", "z": 0.3,
+          "book": { "display": "71% of GDP", "asOf": "2025-03" } },
+        { "key": "reserves_per_money", "label": "Reserves / money", "z": 1.5, "extra": "low",
+          "note": "Book gives a Z only, no raw \"Reading Today\" value (TASKcbrawvalues.md §2) — the live figure below is the first raw number this row has ever shown." },
+        { "key": "currency_storehold", "label": "Currency as storehold", "z": -2.0, "extra": "mitigating", "mitig": true,
+          "note": "The quantitative core of Dalio's storehold-of-wealth argument: a long-term cash saver has lost real value while gold gained — two components below, both live-computed against the same frozen −2.0z.",
+          "components": [
+            { "key": "real_cash_return", "label": "Real cash return (long-term, ann)",
+              "book": { "display": "−1.4%/yr", "asOf": "2025-03" } },
+            { "key": "real_gold_return", "label": "Real gold return (long-term, ann)",
+              "book": { "display": "+9.8%/yr", "asOf": "2025-03" } }
+          ] },
+        { "key": "reserve_fx_financial_center", "label": "Reserve FX / financial center", "z": -3.3, "extra": "dominant", "mitig": true,
+          "book": { "display": "57.0%", "asOf": "2025-03" },
+          "note": "Composite row: reserve-currency share (quantified — same figure as the \"World CB reserves in USD\" row) plus financial-center status, a qualitative index with no single public series, not separately measured (TASKcbrawvalues.md §2)." },
+        { "key": "rule_of_law", "label": "Rule of law", "z": -1.1, "extra": "strong", "mitig": true,
+          "note": "Index construct with no single public series — stays Z-only (TASKcbrawvalues.md §2)." },
+        { "key": "inflation_volatility", "label": "Inflation volatility", "z": -2.1, "mitig": true,
+          "book": { "display": "1.4% ann", "asOf": "2025-03" } }
+      ],
+      "context": [
+        { "key": "growth_volatility", "label": "Volatility of growth (ann)",
+          "book": { "display": "2.2%", "asOf": "2025-03" },
+          "note": "In Dalio's Ch.17 table but not separately Z-scored in our simplified 8-row model — shown as context, not a gauge row (TASKcbrawvalues.md §1)." },
+        { "key": "gdp_per_capita_growth", "label": "Long-term GDP per capita growth",
+          "book": { "display": "1.5%", "asOf": "2025-03" },
+          "note": "In Dalio's Ch.17 table but not separately Z-scored in our simplified 8-row model — shown as context, not a gauge row (TASKcbrawvalues.md §1)." },
+        { "key": "reserve_runway", "label": "Months of reserve sales before running out",
+          "note": "Book gives Z only, consistent with the current pace being ~zero (TASKcbrawvalues.md §2) — not added as a scored row since that Z isn't independently verifiable against the book from here; shown as live-only context." }
       ]
     },
     "redFlags": [

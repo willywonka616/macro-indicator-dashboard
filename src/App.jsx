@@ -175,7 +175,20 @@ export default function App() {
                 <span style={{ fontSize: 11, color: c.faint }}>overall</span>
               </div>
               <div>{g.rows.map((r, j) => <GaugeRow key={j} r={r} />)}</div>
+              {g.context && g.context.length > 0 && (
+                <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${c.lineSoft}` }}>
+                  <div style={{ fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: c.faint, marginBottom: 2 }}>
+                    Supporting context (Dalio's table, no separate Z in our model)
+                  </div>
+                  {g.context.map((r, j) => <GaugeRow key={j} r={r} />)}
+                </div>
+              )}
               <p className="mt-3" style={{ fontSize: 11.5, lineHeight: 1.5, color: c.muted }}>{g.note}</p>
+              <p className="mt-1.5" style={{ fontSize: 10.5, lineHeight: 1.5, color: c.faint }}>
+                Composites and Z-scores above are Dalio's frozen March-2025 model output — not
+                reproducible from public data (see the section intro). Raw values are live where
+                tagged <Tag kind="live" />, otherwise his book figure, carried as-is.
+              </p>
             </section>
           ))}
         </div>
