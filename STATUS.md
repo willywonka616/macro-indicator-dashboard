@@ -6,26 +6,27 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-22g-verification.md` (run output) and
-> `docs/review/2026-07-22g-values.md` (headline values), base commit
-> `c7cdbe8` — `TASKmanualvalues.md`: retired the 10 originally-undated
-> `manual.json` values and de-tautologised §9. TIC holder shares
-> (central bank/domestic/foreign split of debt held by the public) are
-> now live from FRED (`FYGFDPUN`/`FDHBFRBN`/`FDHBFIN`), summing to
-> 100.0% and materially different from Dalio's book figures (14.7% /
-> 55.3% / 30.0% vs. his 13% / 57% / 29%) — a genuine test, not a
-> tautology. The first live run caught a real bug: `FDHBFIN` publishes a
-> full quarter behind its two counterpart series even when healthy,
-> tripping the generic freshness threshold — fixed with a dedicated,
-> longer threshold (`TIC_FOREIGN_FRESH_DAYS`), same pattern as
-> COFER/TRESEGUSM052N. BIS's world-debt-in-USD share was attempted live
-> (DBnomics) but the exact SDMX schema couldn't be confirmed — all three
-> guessed dimension filters returned 0 series, confirmed live; stays
-> manual, honestly. Every remaining manual value (world trade/equity in
-> USD, gov assets-minus-debt, share-hard-FX, sovereign wealth, BIS debt
-> share) now has an explicit `asOf` — no fabricated dates, no undated
-> values left. §9's calibration table now marks each row genuine-test vs.
-> tautology: 4→3 of 13 tautologies. See §28.
+> `docs/review/2026-07-23a-verification.md` (run output) and
+> `docs/review/2026-07-23a-values.md` (headline values), base commit
+> `9b7b11d` — `TASKcbrawvalues.md`: the central bank gauge gains live raw
+> values alongside Dalio's frozen (March 2025) Ch.17 book figures — the
+> Z-score wall itself is completely unchanged (every `z` value, in order,
+> byte-identical, verified by direct diff). Unbacked money (M2/GDP) lands
+> at 71.2% live vs. his 71% book figure, essentially matching without
+> being tuned to. Real cash return flips sign against his figure (+1.0%
+> live vs. −1.4% book, full-history 1954–2026 average) — a genuine,
+> unforced divergence, reported as-is. `Reserves/money`, inflation and
+> growth volatility, and long-term GDP-per-capita growth all ship live
+> too. Central bank profitability (FRED `RESPPLLOPNWW`) resolved live but
+> wasn't shipped as a row — its sign convention only cleanly interprets
+> in the Fed's current deferred-asset regime, not robust across regimes
+> without more work; documented for a future round instead of guessed.
+> Treasury's MSPD maturity-profile probe (open since §21) also resolved
+> live this round — a real, actionable finding for a future "current
+> borrowing need" build, not acted on yet. Two Z-scores cited only in the
+> task's own prose (not verifiable against the book from here) were
+> deliberately NOT added — their raw values ship as unscored context
+> instead. See §29.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -39,9 +40,9 @@ prior sessions and no access to this repo's chat history.
 > `docs/review/2026-07-21c-*.md`, `docs/review/2026-07-21d-*.md`,
 > `docs/review/2026-07-22a-*.md`, `docs/review/2026-07-22b-*.md`,
 > `docs/review/2026-07-22c-*.md`, `docs/review/2026-07-22d-*.md`,
-> `docs/review/2026-07-22e-*.md`, `docs/review/2026-07-22f-*.md`
-> (superseded, left in place). When you add a new round, update this
-> line to point at it.
+> `docs/review/2026-07-22e-*.md`, `docs/review/2026-07-22f-*.md`,
+> `docs/review/2026-07-22g-*.md` (superseded, left in place). When you
+> add a new round, update this line to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -3950,6 +3951,155 @@ so they stay tautologies — honestly, on the record, not by omission.
 
 See the round's `docs/review/` files for the live CI run this task's TIC
 and BIS work still needs, and for the base commit this task builds on.
+
+---
+
+## 29. Central bank panel: live raw values alongside the frozen Z-scores (2026-07-23, twentieth pass)
+
+**TASKcbrawvalues.md**: re-reading Dalio's Ch.17 CB gauge table showed the
+dashboard under-using it — a "Reading Today" column exists next to every
+Z-score, four of which we never carried at all, and most leaf inputs are
+ordinary measurable statistics, not model output. This task brings the CB
+panel from "Z-scores only" to "live raw values where computable, with
+Dalio's Z-scores kept as the frozen March 2025 overlay." **The Z-score
+wall stands completely unchanged**: zero Z-scores added, removed, or
+recomputed anywhere in `data/manual.json` this round — verified by direct
+diff (see §29.6).
+
+### 29.1 What went live
+
+All confirmed live via a real CI run (`workflow_dispatch` on commit
+`d3c15cc`, committed as `9b7b11d`) — figures below are that run's actual
+shipped output, not projected:
+
+| Row | Book (Mar 2025) | Live (2026) | Method |
+|---|---|---|---|
+| Unbacked money | 71% of GDP | **71.2%** (2026-Q1) | M2 (FRED `M2SL`) / GDP. Monetary base alone (a narrower reading): 17.1% of GDP, shown as a comparison note |
+| Reserves / money | Z only, no book figure | **6.4%** (2026-03) | (FX reserves excl. gold + gold at market) / M2, monthly — the first raw number this row has ever shown |
+| Real cash return (long-term, ann) | −1.4%/yr | **+1.0%** (avg 1954-07 to 2026-06, 863 months) | FEDFUNDS minus trailing-YoY CPI, arithmetic mean over the full overlap |
+| Real gold return (long-term, ann) | +9.8%/yr | **+8.3%** (CAGR 1968-04 to 2026-07, 58.2y) | Nominal CAGR of the live gold leg's own full price history |
+| Inflation volatility | 1.4% ann | **2.0%** (trailing 10y, since 2016-06) | Stdev of monthly YoY CPI inflation |
+| Volatility of growth (ann) — context | 2.2% | **2.5%** (trailing 10y, since 2016-Q2) | Stdev of quarterly YoY real GDP growth (`GDPC1`) |
+| Long-term GDP per capita growth — context | 1.5% | **2.0%** (CAGR 1947-Q1 to 2026-Q1, 79.0y) | Full-history CAGR, FRED `A939RX0Q048SBEA` |
+| Months of reserve sales — context | Z only (0.0z, not carried — see §29.4) | **"n/a — no sustained sales"** | Reserves flat/rising over the trailing 12 months — correctly no runway to compute |
+| Reserve FX / financial center | 57.0% | *(not live this run)* | Same COFER figure as "World CB reserves in USD" — currently manual because COFER's own live DBnomics fetch is frozen (§17/§18, pre-existing, unrelated to this task) |
+
+**Real cash return is a genuine, unforced divergence worth flagging**:
+live reads **positive** (+1.0%/yr) against Dalio's **negative** (−1.4%/yr)
+book figure — opposite signs, not a rounding difference. This wasn't
+tuned to match or avoid matching (TASKcbrawvalues.md's explicit
+instruction); it's simply what a full-history (1954–2026) average of
+FEDFUNDS minus YoY CPI actually gives. Plausible explanation: his figure
+likely reflects a shorter or differently-defined window (e.g. the
+post-2008 near-zero-rate era specifically, where real cash returns were
+persistently negative), while the full 72-year average includes the
+higher-rate 1970s–1990s where real cash returns were often positive. Not
+investigated further — TASKcbrawvalues.md's own instruction is to report
+the live reading at a defensible, documented method, not to search for
+the window that reproduces his number.
+
+Every other row lands within a few points of the book figure — a set of
+genuine, non-circular near-matches (unbacked money is remarkably close:
+71.2% live vs. his 71%, from a measure chosen on conceptual grounds
+before this run, not tuned to land there).
+
+### 29.2 Central bank profitability: attempted, not shipped live
+
+`RESPPLLOPNWW` ("Earnings Remittances Due to the U.S. Treasury: Wednesday
+Level," H.4.1) confirmed live: **negative** and **shrinking in
+magnitude** over the last 6 weeks of data (2026-06-10: −$237,738M →
+2026-07-15: −$234,254M). A negative value here is the Fed's *deferred
+asset* position — when cumulative losses exceed earnings, the Fed can't
+remit and instead records an IOU against future profits; the balance
+moving toward zero suggests narrowing losses (improving profitability),
+consistent with the well-known post-2022 rate-driven Fed operating-loss
+regime.
+
+**Not shipped as a live row this round.** The week-over-week change in
+this balance would approximate weekly net income *only while in
+deferred-asset (negative) status* — during a normal-remittance regime
+this same series sits near zero with routine remittances, and the
+differencing method wouldn't give a meaningful figure at all. A robust
+"CB profitability, % of GDP" row needs to handle both regimes correctly,
+which needs more care than this round's time budget allows — exactly the
+"needs H.4.1 parsing, report the option and stop rather than building a
+fragile scrape" case TASKcbrawvalues.md's §2 explicitly anticipates. The
+raw series and its live interpretation are documented here and dumped via
+`--verify` for a future round to build on.
+
+### 29.3 Government side (§3): maturity endpoint confirmed resolved — a real, actionable finding
+
+`treasury.py`'s `maturity_profile_probe()` (added in §21, never
+previously confirmed live from this dev sandbox) **resolved this round**:
+the first candidate, `mspd_table_3_market`, returns individual-security
+rows with both `maturity_date` and `outstanding_amt` fields (plus
+`issue_date`, `interest_rate_pct`, `security_type_desc`, etc.) — exactly
+the fields needed to sum "debt maturing within the next 12 months" for a
+rollover computation.
+
+**This closes the open item from §21's "not verified" status**, and in
+principle makes "Current borrowing need" (§3's first bullet) computable:
+deficit + maturing-debt rollover, over revenue. **Not built this round**
+— summing potentially thousands of paginated individual-security rows
+into a clean 12-month maturity bucket, combined with a clean "deficit"
+definition and wired into the borrowing-need row, is a substantial new
+piece of work in its own right, and this round's scope (the CB panel
+above) was already large. Recommended as a focused follow-up task rather
+than rushed here. `govGauge`'s borrowing-need rows stay manual this
+round; only the endpoint confirmation is new.
+
+**Own-currency share (§3's third bullet)**: `data/manual.json`'s
+`own_currency` row now carries `"constant": true` and an explanatory
+note instead of an implied (and nonexistent) external source — a
+factual constant (the US borrows in its own currency by definition), not
+a manual snapshot that could go stale, so it deliberately carries no
+`asOf`.
+
+### 29.4 Unverifiable Z-scores: not added
+
+TASKcbrawvalues.md's prose cites two Z-scores for rows that don't exist
+anywhere in our current data model: "History of Losses for Savers: 1.1z"
+(for real cash/gold return) and "Months of reserve sales... 0.0z." Neither
+matches any Z-score already in `data/manual.json` (checked directly — no
+`1.1` or `0.0` appears in either gauge's `z` fields), and neither is
+independently verifiable against the book from this session. Rather than
+add two brand-new Z-scored rows on the task prose alone, both raw-value
+sets are shipped as **unscored context** instead: real cash/gold return
+attached (as `components`, no Z of their own) to the existing frozen
+"Currency as storehold" (−2.0z) row they evidence, and months-of-reserve
+runway as a standalone context item. This keeps the "zero Z-scores
+touched" invariant unambiguous rather than resting on an unverified
+citation.
+
+### 29.5 The 71%/74% discrepancy, and the pattern it matches
+
+Dalio's Ch.17 prose states money supply at **74% of GDP**; his own table
+gives **71%**. Same book, same vintage, a 3pt internal spread — the same
+shape of inconsistency as the debt-service row's Ch.3-vs-Ch.17 20%/22%
+spread (§9's table, "Debt service / revenue" row). Recorded here
+alongside it for the same reason: it caps how precisely this pipeline can
+be expected to match either of his own two figures, and justifies
+choosing a defensible method rather than chasing exact reproduction of
+one over the other. This round's unbacked-money row (71.2% live) happens
+to land almost exactly on his **table** figure (71%) and a bit under his
+**prose** figure (74%) — reported as-is, not selected for closeness.
+
+### 29.6 Verified vs. assumed
+
+| Claim | Status |
+|---|---|
+| Zero Z-scores added, removed, or recomputed | **VERIFIED** — every `z` field in both gauges diffed directly against the pre-round file; byte-identical |
+| M2SL/BOGMBASE/GDPC1/A939RX0Q048SBEA/FEDFUNDS resolve and give sane values | **VERIFIED live** — read directly from the CI run's `--verify` diagnostic and the committed `public/data.json` |
+| Unbacked money, reserves/money, inflation & growth volatility, GDP-per-capita growth, real cash/gold return all ship live with correct, sane magnitudes | **VERIFIED live** — read directly from `public/data.json` at commit `9b7b11d` |
+| Reserve FX share wires the same COFER figure as the reserve-currency panel, not a second fetch | **VERIFIED** — code reads the same `cofer` variable; this run it's `None` because COFER's own live fetch is currently frozen (pre-existing, §17/§18), not because of anything new here |
+| RESPPLLOPNWW's sign convention (negative = deferred asset from accumulated losses) | **ASSUMED** — a defensible reading of a real, live-confirmed trend, not independently corroborated against a second source this round |
+| The MSPD maturity endpoint (`mspd_table_3_market`) resolves with maturity_date + outstanding_amt | **VERIFIED live** — read directly from the CI run's `--verify` diagnostic |
+| "Current borrowing need" is now buildable from that endpoint | **ASSUMED** — the necessary fields are confirmed present; the actual aggregation was not built or tested this round |
+| The 71%/74% book discrepancy | **VERIFIED** — this is the task's own stated fact, recorded, not independently re-derived from the book |
+| Frontend renders book/live/Z distinctly and the CB panel's new context section | **VERIFIED** — Playwright screenshots against both a synthetic build and the real production `data.json` |
+
+See the round's `docs/review/` files for the full before/after row table
+and base commit.
 
 ---
 
