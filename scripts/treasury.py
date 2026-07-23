@@ -538,23 +538,36 @@ def maturity_profile_probe() -> dict:
 MSPD_TABLE3_MARKET = MATURITY_ENDPOINT_CANDIDATES[0]
 
 
+def _is_mspd_total_row(class1_desc) -> bool:
+    """mspd_table_3_market mixes individual-security rows (security_class1_desc
+    = 'Bills Maturity Value'/'Notes'/'Bonds'/etc., security_class2_desc = a
+    real CUSIP) with at least one GRAND-TOTAL row per record_date
+    ('Total Marketable') in the SAME table — confirmed live
+    (TASKborrowingneed.md exploratory round). Summing every row's
+    outstanding_amt without excluding this would double the real total.
+    Matches any class1 value starting with 'total' defensively, in case
+    other total/subtotal rows exist beyond the one confirmed so far."""
+    return str(class1_desc or "").strip().lower().startswith("total")
+
+
 def mspd_schema_probe(near_date: str | None = None) -> dict:
     """Diagnostic only. Fetches one record_date's full snapshot (the
     latest, or the one closest to `near_date` if given) and reports:
     distinct security_type_desc/class values (does anything here mark a
-    security as Fed-held?), the raw scale of outstanding_amt (compared
-    against the known ~$29-31T ballpark for total marketable debt, to
-    infer whether it's whole dollars or thousands), and which actual
-    record_date was used."""
+    security as Fed-held?), the individual-securities sum vs. the table's
+    own 'Total Marketable' row (should match — an internal consistency
+    check that also reveals outstanding_amt's real scale/units against a
+    single authoritative number instead of a possibly-corrupted sum), and
+    which actual record_date was used."""
     # Find the actual record_date to query — Treasury dates snap to
     # business days, so "the 31st" may not exist; ask for whichever
     # dates the API actually has near the target instead of guessing.
-    probe_params = {"sort": "-record_date", "page[size]": "500"}
+    probe_params = {"sort": "-record_date", "page[size]": "1000"}
     if near_date:
         lo = (dt.date.fromisoformat(near_date) - dt.timedelta(days=20)).isoformat()
         hi = (dt.date.fromisoformat(near_date) + dt.timedelta(days=20)).isoformat()
         probe_params = {"filter": f"record_date:gte:{lo},record_date:lte:{hi}",
-                         "sort": "-record_date", "page[size]": "500"}
+                         "sort": "-record_date", "page[size]": "1000"}
     rows = _get(MSPD_TABLE3_MARKET, probe_params, max_pages=2)
     if not rows:
         raise RuntimeError(f"mspd_schema_probe: no rows near {near_date or 'latest'}")
@@ -562,15 +575,19 @@ def mspd_schema_probe(near_date: str | None = None) -> dict:
     same_date_rows = [r for r in rows if r["record_date"] == record_date]
     fields = list(rows[0])
     type_desc_cols = [c for c in fields if c.endswith("_desc")]
-    total_outstanding = sum(_num(r.get("outstanding_amt")) or 0.0 for r in same_date_rows)
+    total_rows = [r for r in same_date_rows if _is_mspd_total_row(r.get("security_class1_desc"))]
+    indiv_rows = [r for r in same_date_rows if not _is_mspd_total_row(r.get("security_class1_desc"))]
+    sum_indiv = sum(_num(r.get("outstanding_amt")) or 0.0 for r in indiv_rows)
     return {
         "recordDate": record_date,
         "distinctRecordDatesInPage": sorted({r["record_date"] for r in rows}, reverse=True)[:10],
         "fields": fields,
         "distinctByDescCol": {c: _distinct(same_date_rows, c, limit=15) for c in type_desc_cols},
         "nRowsThisDate": len(same_date_rows),
-        "sumOutstandingAmtThisDate_rawUnits": total_outstanding,
-        "sampleRow": same_date_rows[0],
+        "totalRows": total_rows,
+        "nIndividualRows": len(indiv_rows),
+        "sumOutstandingAmtIndividualRows_rawUnits": sum_indiv,
+        "sampleIndividualRow": indiv_rows[0] if indiv_rows else None,
     }
 
 
@@ -594,11 +611,12 @@ def mspd_maturing_debt(record_date: str, window_days: int = 366,
     rows = _get(MSPD_TABLE3_MARKET, params, max_pages=200)
     if not rows:
         raise RuntimeError(f"mspd_maturing_debt: no rows for record_date={record_date}")
+    indiv_rows = [r for r in rows if not _is_mspd_total_row(r.get("security_class1_desc"))]
     cutoff = dt.date.fromisoformat(record_date) + dt.timedelta(days=window_days)
     total_outstanding = 0.0
     maturing = 0.0
     n_maturing = 0
-    for r in rows:
+    for r in indiv_rows:
         amt = _num(r.get("outstanding_amt"))
         if amt is None:
             continue
@@ -617,7 +635,7 @@ def mspd_maturing_debt(record_date: str, window_days: int = 366,
         "recordDate": record_date,
         "maturingUsd": maturing * amt_scale,
         "totalOutstandingUsd": total_outstanding * amt_scale,
-        "nSecurities": len(rows), "nMaturing": n_maturing,
+        "nSecurities": len(indiv_rows), "nMaturing": n_maturing,
     }
 
 
@@ -916,25 +934,32 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
               f"not guessed")
 
     print("\n  MSPD schema probe (TASKborrowingneed.md — units, cadence, "
-          "holder-identifying fields, latest snapshot):")
+          "holder-identifying fields, latest snapshot; round 2, excludes "
+          "the table's own 'Total Marketable' row from the individual sum "
+          "and prints it separately for a scale cross-check):")
     try:
         sp = mspd_schema_probe()
         print(f"    record_date used: {sp['recordDate']}")
-        print(f"    distinct record_dates seen in a 500-row page: {sp['distinctRecordDatesInPage']}")
+        print(f"    distinct record_dates seen in a 1000-row page: {sp['distinctRecordDatesInPage']}")
         print(f"    fields: {sp['fields']}")
         for col, vals in sp["distinctByDescCol"].items():
             print(f"    distinct {col}: {vals}")
-        print(f"    rows at this record_date: {sp['nRowsThisDate']}")
-        print(f"    sum(outstanding_amt) at this record_date, RAW units: "
-              f"{sp['sumOutstandingAmtThisDate_rawUnits']:,.0f}")
-        print(f"    (compare against ~$29-31T known total marketable debt to infer "
-              f"whole-dollars vs. thousands scale)")
-        print(f"    sample row: {sp['sampleRow']}")
+        print(f"    rows at this record_date: {sp['nRowsThisDate']} "
+              f"({sp['nIndividualRows']} individual + {len(sp['totalRows'])} total/subtotal)")
+        print(f"    'Total Marketable' row(s) in full: {sp['totalRows']}")
+        print(f"    sum(outstanding_amt) over INDIVIDUAL rows only, RAW units: "
+              f"{sp['sumOutstandingAmtIndividualRows_rawUnits']:,.0f}")
+        print(f"    (compare both this sum and the 'Total Marketable' row's own "
+              f"outstanding_amt against the known ~$29-31T total marketable debt — "
+              f"they should roughly agree with each other, and that agreement "
+              f"reveals the real scale/units)")
+        print(f"    sample individual row: {sp['sampleIndividualRow']}")
 
         print("\n  MSPD maturing-debt sum, latest snapshot (TASKborrowingneed.md, "
-              "amt_scale=1 — raw units, scale not yet confirmed):")
+              "amt_scale=1 — raw units, scale not yet confirmed; individual "
+              "rows only, 'Total Marketable' excluded):")
         mat = mspd_maturing_debt(sp["recordDate"], window_days=366, amt_scale=1.0)
-        print(f"    record_date {mat['recordDate']}: {mat['nSecurities']} securities, "
+        print(f"    record_date {mat['recordDate']}: {mat['nSecurities']} individual securities, "
               f"{mat['nMaturing']} maturing within 366 days")
         print(f"    total outstanding (raw units): {mat['totalOutstandingUsd']:,.0f}")
         print(f"    maturing within 1yr (raw units): {mat['maturingUsd']:,.0f}")
@@ -948,8 +973,18 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
     try:
         sp25 = mspd_schema_probe(near_date="2025-03-31")
         print(f"    record_date used: {sp25['recordDate']}")
-        print(f"    rows at this record_date: {sp25['nRowsThisDate']}")
-        print(f"    sum(outstanding_amt), RAW units: {sp25['sumOutstandingAmtThisDate_rawUnits']:,.0f}")
+        print(f"    rows at this record_date: {sp25['nRowsThisDate']} "
+              f"({sp25['nIndividualRows']} individual + {len(sp25['totalRows'])} total/subtotal)")
+        print(f"    'Total Marketable' row(s): {sp25['totalRows']}")
+        print(f"    sum(outstanding_amt) over individual rows, RAW units: "
+              f"{sp25['sumOutstandingAmtIndividualRows_rawUnits']:,.0f}")
+    except Exception as e:  # noqa: BLE001
+        print(f"    FAILED: {e}")
+
+    print("\n  mts_table_1 schema dump (TASKborrowingneed.md — deficit computation "
+          "found 0 matching rows last round; real classification_desc values needed):")
+    try:
+        _dump("mts_table_1", DEFICIT_ENDPOINT, ["rcpt_outly", "amt"])
     except Exception as e:  # noqa: BLE001
         print(f"    FAILED: {e}")
 
