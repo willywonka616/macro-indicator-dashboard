@@ -872,21 +872,37 @@ gap had gone unnoticed because it was never added to this table.
 | Global equity market cap in USD | 65.7% | 65.7% | **manual**, carried from `data/manual.json`, now dated (asOf 2025-03, §28) | **tautology** | Trivial — same figure. §28 assessed a live path and found none: "share of global equity market cap denominated in USD" isn't a standard published series — computing it would mean aggregating exchange-level caps across every country and currency-converting, messier than the other rows here. Stays manual, but honestly dated now |
 | World CB reserves in USD | 57.0% | 57.1% (2026-Q1, latest actually-published IMF figure) | **manual** as of 2026-07-20 | **genuine test** | **Also retracted-then-fixed, §18.** §17's fix fell back to the manual figure already sitting in `data/manual.json` — which had been transcribed from this same book (57.0%, ~2024) — so it "matched" Dalio's own number by construction, not independent corroboration, same flaw as the reserves row above. §18 replaces it with the **latest actually-published IMF COFER figure** (57.13%, 2026-Q1, researched via web search against IMF's own data brief and cross-checked against two independent secondary sources), deliberately NOT the book's number. It happens to land close to his 57.0% anyway — a **genuine, non-circular near-match**, unlike the row above |
 | Debt / revenue | ~580% (Mar 2025, stated) | 576% (2026-Q1, shipped); **580% at 2025-Q1 (Mar-2025, his own vintage)** | live, derived (§3, §12, §13) | **genuine test** | **Matches almost exactly at his vintage** — see §13: switching to TOTAL receipts, net of refunds (the corrected, shipped basis) puts debt/revenue at $28.93T / $4.99T TTM = 580% for 2025-Q1, essentially identical to his stated figure. Strongest confirmation yet that TOTAL, net-of-refunds receipts is his denominator |
+| CB gauge: Unbacked money (M2/GDP) | 71% of GDP | 71.2% (2026-Q1) | **live**, `S.money_pct_gdp` (§29) | **genuine test** | Near-exact match, not tuned to be (M2 chosen on conceptual grounds before this figure was known — TASKcbrawvalues.md's "do not tune" instruction). **Vintage caveat**: live reading is today's (2026-Q1), not recomputed at his March-2025 vintage — unlike the debt/revenue row above, no historical-cutoff recomputation was done this round; the close match is suggestive, not a vintage-matched proof |
+| CB gauge: Real cash return (long-term, ann) | −1.4%/yr | +1.0% (avg 1954-07–2026-06) | **live**, `S.avg_real_short_rate` (§29) | **genuine test** | **Opposite sign** — a real, unforced divergence, not tuned away. Full-history average (72 years); his figure likely reflects a shorter or differently-defined window (not investigated further, per the same "don't chase his number" instruction) |
+| CB gauge: Real gold return (long-term, ann) | +9.8%/yr | +8.3% (CAGR 1968-04–2026-07) | **live**, `S.cagr_monthly` on the live gold leg (§29) | **genuine test** | Same order of magnitude, ~1.5pt off — a real independent computation, not transcribed from his table |
+| CB gauge: Inflation volatility | 1.4% ann | 2.0% (trailing 10y to 2026-06) | **live**, `S.trailing_stdev_monthly` on CPI YoY (§29) | **genuine test** | Higher than his figure — plausibly the 10y trailing window now includes the 2021-2022 inflation spike his March-2025 vintage may have windowed differently. Not investigated further |
+| CB gauge: Volatility of growth (ann), context | 2.2% | 2.5% (trailing 10y to 2026-Q1) | **live**, `S.trailing_stdev_quarterly` on GDPC1 YoY (§29) | **genuine test** | Close. Context row (no Z in our model — §29.4) |
+| CB gauge: GDP per capita growth, context | 1.5% | 2.0% (CAGR 1947-Q1–2026-Q1) | **live**, `S.cagr_quarterly` on A939RX0Q048SBEA (§29) | **genuine test** | Somewhat higher over the full 79-year window than his stated figure. Context row (no Z in our model — §29.4) |
 
 **Genuine-test vs. tautology count, before/after TASKmanualvalues.md
-(§28):** of these 13 rows, **before** this task 4 were tautologies (held
+(§28) and TASKcbrawvalues.md (§29):** of these 19 rows (13 vitals/panels
+rows + 6 new CB-gauge raw-value rows with a book comparator — `Reserves/
+money` and the two reserve-runway/reserve-FX gauge items are excluded
+here, either because the book gives no raw value to compare against, or
+the live figure isn't shipping this run), **before** TASKmanualvalues.md
+4 were tautologies (held
 CB/domestic/abroad, world trade, world debt in USD, global equity market
 cap — all hand-carried figures matching Dalio's own book by construction)
-and 9 were genuine tests. **After**: the holder-shares row is now a
-genuine test (live TIC/SOMA via FRED, independent of his book) — **3
-tautologies remain** (world trade, world debt in USD, global equity
-market cap) **and 10 of 13 rows are genuine tests.** World debt in USD
+and 9 were genuine tests (of the original 13). After TASKmanualvalues.md:
+the holder-shares row became a genuine test (live TIC/SOMA via FRED,
+independent of his book) — 3 tautologies remained (world trade, world
+debt in USD, global equity market cap) out of 13. World debt in USD
 (BIS) was attempted but not resolved — see §28; it is the one row still
 explicitly flagged as "live attempted, not yet working," not silently
 left as a plain match. The other two remaining tautologies were assessed
 for a live path and found to have none (§28) — they are honestly dated
 manual values now, not undated ones, but they are still matches by
-construction, not tests.
+construction, not tests. **After TASKcbrawvalues.md (§29) adds 6 more
+genuine-test rows** (all newly-live, none tautological — a live CB-gauge
+figure computed independently from FRED cannot match his book by
+construction the way a transcribed manual value does): **16 of 19 rows
+are now genuine tests, 3 remain tautologies** — the same three as before,
+unchanged by this round.
 
 **Read the "Basis" column before trusting a "match."** As of this pass
 (§17, 2026-07-20), **eight** of the twelve rows are `manual` — hand-carried
@@ -3964,7 +3980,11 @@ panel from "Z-scores only" to "live raw values where computable, with
 Dalio's Z-scores kept as the frozen March 2025 overlay." **The Z-score
 wall stands completely unchanged**: zero Z-scores added, removed, or
 recomputed anywhere in `data/manual.json` this round — verified by direct
-diff (see §29.6).
+diff (see §29.6). §9's calibration table (above) now also carries six new
+genuine-test rows for the newly-live CB-gauge figures with a book
+comparator, with an explicit vintage caveat where a full historical-cutoff
+recomputation (like the TIC row's) wasn't done this round — see §9's
+updated before/after count (16 of 19 rows now genuine tests).
 
 ### 29.1 What went live
 
