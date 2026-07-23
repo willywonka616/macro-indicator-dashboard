@@ -2,6 +2,7 @@ import React from "react";
 import { c, zColor } from "../theme.js";
 import ZScale from "./ZScale.jsx";
 import Tag from "./Tag.jsx";
+import EquationButton from "./EquationButton.jsx";
 
 /* One line inside a risk gauge (gov / central bank), or a Z-less context
  * line underneath one (TASKcbrawvalues.md).
@@ -70,6 +71,7 @@ export default function GaugeRow({ r }) {
       <div className="flex items-center justify-between mb-1">
         <span className="flex items-center gap-1.5">
           <span style={{ fontSize: 13, color: r.mitig ? c.mitig : c.text }}>{r.label}</span>
+          <EquationButton row={r} />
           {r.live && <Tag kind="live" />}
         </span>
         {hasZ && (

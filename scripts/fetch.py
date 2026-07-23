@@ -914,6 +914,52 @@ def build_us(manual: dict, force: bool) -> dict:
                     f"a human to check for a newer CBO vintage"
                 )
 
+    # --- TASKborrowingneed.md: government borrowing need -------------------
+    # "Current borrowing need" = trailing-12mo deficit / trailing-12mo
+    # revenue (verified against Dalio's March-2025 vintage: 34.0% live vs.
+    # his 39% book figure, close enough to confirm the construction — see
+    # STATUS.md §30). "Projected borrowing need" is the same construction
+    # at CBO's own FY10 baseline. The "— if rollover problems" stress
+    # variants (both current and projected) are NOT shipped live this
+    # round: they need debt-maturing-within-12-months from MSPD, and a
+    # genuine, unresolved data-quality issue was found there (individual
+    # security rows sum to ~2.9x the table's own reported total; CUSIP
+    # reopening was investigated and ruled out as the cause since
+    # deduplication didn't change the sum) — rather than ship a number
+    # built on data with a known, unexplained ~3x discrepancy, those rows
+    # stay manual, with the residual documented here and in STATUS.md §30.
+    borrowing_need_tag = "live"
+    borrowing_need = None
+    try:
+        deficit_ttm = T.deficit_ttm_dollars()
+        revenue_ttm2 = T.revenue_ttm_dollars()
+        for label, ttm in (("deficit TTM", deficit_ttm), ("revenue TTM", revenue_ttm2)):
+            S.require_fresh(label, max(ttm), S.FRESHNESS_DAYS_BY_FREQ["Monthly"])
+        borrowing_need = S.borrowing_need_pct(deficit_ttm, revenue_ttm2)
+        if not (20.0 <= borrowing_need["latest"] <= 80.0):
+            raise RuntimeError(
+                f"validation: current borrowing need {borrowing_need['latest']}% is outside "
+                f"the 20-80% sanity band — likely a unit/field error, not a real reading")
+    except Exception as e:  # noqa: BLE001
+        print(f"Current borrowing need unavailable/stale, falling back to manual: {e}")
+        borrowing_need_tag = "manual"
+    assert_provenance(fallbacks_fired, "Current borrowing need", "live", borrowing_need_tag,
+                       reason="live Treasury MTS deficit/revenue fetch failed, exceeded its "
+                              "freshness threshold, or failed the sanity band")
+
+    borrowing_need_projected_tag = "projection" if cbo_data else "manual"
+    borrowing_need_projected = None
+    if cbo_data:
+        try:
+            borrowing_need_projected = S.cbo_projected_borrowing_need_pct(cbo_data, fy_end)
+            if not (20.0 <= borrowing_need_projected["latest"] <= 80.0):
+                raise RuntimeError(
+                    f"validation: projected borrowing need {borrowing_need_projected['latest']}% "
+                    f"is outside the 20-80% sanity band")
+        except Exception as e:  # noqa: BLE001
+            print(f"Projected borrowing need unavailable: {e}")
+            borrowing_need_projected_tag = "manual"
+
     # Dalio's equation #3 (Ch.3): the interest rate that would keep debt
     # flat, computed across CBO's baseline, shown alongside the ACTUAL
     # average effective rate (Treasury, live) so the gap is legible.
@@ -1438,6 +1484,53 @@ def build_us(manual: dict, force: bool) -> dict:
         "source": "model",
     }
 
+    # TASKborrowingneed.md: merge the live/projection borrowing-need
+    # figures into govGauge's rows, same key-matched pattern as cbGauge
+    # above. Only "borrowing_need"/"borrowing_need_projected" get a live
+    # value this round — the two "— if rollover problems" rows stay
+    # manual (see the block above for why) and pass through unchanged.
+    gov_live = {}
+    if borrowing_need_tag == "live":
+        gov_live["borrowing_need"] = {
+            "display": pct_display(borrowing_need["latest"], 0), "value": num(borrowing_need["latest"]),
+            "asOf": borrowing_need["asOf"], "src": "derived · Treasury MTS (mts_table_1 deficit) / "
+                                                    "(mts_table_4 total receipts, net of refunds), TTM",
+            "terms": [
+                _term("Deficit (TTM)", "Treasury MTS (mts_table_1, current_month_dfct_sur_amt)",
+                      borrowing_need["asOf"]),
+                _term("Total receipts, net of refunds (TTM)",
+                      "Treasury (MTS mts_table_4, total receipts net of refunds, TTM)",
+                      borrowing_need["asOf"]),
+            ],
+        }
+    if borrowing_need_projected_tag == "projection":
+        gov_live["borrowing_need_projected"] = {
+            "display": pct_display(borrowing_need_projected["latest"], 0),
+            "value": num(borrowing_need_projected["latest"]),
+            "asOf": borrowing_need_projected["asOf"],
+            "src": f"CBO 10-Year Budget Projections (publication #{51118}), FY{fy_end} "
+                   f"(projected outlays − revenue) / revenue",
+            "terms": [
+                _term("Projected outlays − revenue, CBO FY-end",
+                      f"CBO 10-Year Budget Projections (publication #{51118})",
+                      f"FY{fy_end}", tag="projection"),
+                _term("Projected revenue, CBO FY-end",
+                      f"CBO 10-Year Budget Projections (publication #{51118})",
+                      f"FY{fy_end}", tag="projection"),
+            ],
+        }
+
+    def _gov_row(spec):
+        row = dict(spec)
+        key = row.get("key")
+        if key and key in gov_live:
+            row["live"] = gov_live[key]
+            if "terms" in gov_live[key]:
+                row["terms"] = gov_live[key]["terms"]
+        return row
+
+    gov_gauge = {**mu["govGauge"], "rows": [_gov_row(r) for r in mu["govGauge"]["rows"]], "source": "model"}
+
     country = {
         "name": mu["name"], "baseline": mu["baseline"],
         "headline": {
@@ -1447,7 +1540,7 @@ def build_us(manual: dict, force: bool) -> dict:
         },
         "vitals": vitals,
         "panels": [gov_panel, reserves_panel, broader_panel, reserve_ccy_panel],
-        "govGauge": {**mu["govGauge"], "source": "model"},
+        "govGauge": gov_gauge,
         "cbGauge": cb_gauge,
         "redFlags": mu["redFlags"],
         "provenance": {

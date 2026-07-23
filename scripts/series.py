@@ -663,6 +663,42 @@ def months_of_reserve_runway(reserves_obs, reserves_units, window_months: int = 
             "asOf": f"{y}-{mo:02d}", "avgMonthlyChangeUsd": round(avg_monthly_change, 0)}
 
 
+# --- TASKborrowingneed.md: government borrowing need -----------------------
+
+def borrowing_need_pct(deficit_ttm: dict, revenue_ttm: dict) -> dict:
+    """Current borrowing need: trailing-12mo deficit / trailing-12mo
+    revenue, as a % — TASKborrowingneed.md's "current borrowing need"
+    construction (deficit / revenue), verified against Dalio's March-2025
+    book vintage (39%) before being adopted; see STATUS.md §30. Both
+    inputs are {(year, month): $} dicts (treasury.py's
+    deficit_ttm_dollars()/revenue_ttm_dollars())."""
+    common = deficit_ttm.keys() & revenue_ttm.keys()
+    if not common:
+        raise RuntimeError("borrowing_need_pct: no overlapping months")
+    ratio = {k: deficit_ttm[k] / revenue_ttm[k] * 100.0 for k in common if revenue_ttm[k]}
+    if not ratio:
+        raise RuntimeError("borrowing_need_pct: no valid (nonzero-revenue) months")
+    last = max(ratio)
+    hist = [{"y": round(k[0] + (k[1] - 1) / 12.0, 3), "v": round(v, 2)} for k, v in sorted(ratio.items())]
+    return {"latest": round(ratio[last], 1), "asOf": f"{last[0]}-{last[1]:02d}", "history": hist}
+
+
+def cbo_projected_borrowing_need_pct(cbo_data: dict, fy: int) -> dict:
+    """Projected borrowing need at a given fiscal year: CBO's own
+    projected (outlays_total - rev_total) / rev_total, as a % — the
+    10-year-forward counterpart to borrowing_need_pct(), using CBO's
+    baseline dollar levels directly (no maturity-window assumption
+    needed, unlike the roll-problems variant — see STATUS.md §30 for why
+    that one stays manual)."""
+    outlays = cbo_data["outlays_total"].get(fy)
+    rev = cbo_data["rev_total"].get(fy)
+    if outlays is None or rev is None:
+        raise RuntimeError(f"cbo_projected_borrowing_need_pct: FY{fy} not in this vintage")
+    deficit = outlays - rev
+    return {"latest": round(deficit / rev * 100.0, 1), "asOf": f"FY{fy}",
+            "deficitUsd": deficit, "revenueUsd": rev}
+
+
 # --- CBO projections (TASKprojections.md) --------------------------------
 # Every function below reads only CBO's own published baseline (see
 # cbo.py) — no extrapolation, no fitted models, no scenario output. A

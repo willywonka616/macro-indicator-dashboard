@@ -71,6 +71,31 @@ export const equations = {
       "Government assets minus government debt, as a percentage of GDP — a manually hand-entered figure, not computed live by this pipeline.",
   },
 
+  borrowing_need: {
+    kind: "derived",
+    definition: [{ num: "Deficit (TTM)", den: "Total receipts, net of refunds (TTM)" }],
+    formula: {
+      label: "Dalio's indicator #1 (Ch. 3) — new borrowing relative to income",
+      lines: [["Current Borrowing Need", "=", { num: "Deficit", den: "Revenue" }]],
+      prose:
+        "The new money the government must raise this year, assuming maturing debt rolls over normally — Dalio's most basic gauge of how fast a government is going into debt relative to what it actually collects (TASKborrowingneed.md).",
+    },
+    caveats: [
+      "Verified against Dalio's own March-2025 book figure (39%) before shipping: this construction reads 34.0% at today's live reading (2026-07) — close enough, at a different point in time, to confirm the construction rather than force a match (see STATUS.md §30).",
+      "The “— if rollover problems” stress variant below adds debt maturing within 12 months to the deficit — that piece stays manual: a genuine, unresolved data-quality issue was found in the Treasury MSPD data it would need (see that row's own note and STATUS.md §30).",
+    ],
+  },
+
+  borrowing_need_projected: {
+    kind: "derived",
+    definition: [{ num: "Projected deficit (outlays − revenue), CBO FY10", den: "Projected revenue, CBO FY10" }],
+    formulaNote: "Same construction as “Current borrowing need” above, applied to CBO's own 10-year-forward baseline instead of Treasury's trailing-12-month actuals — no separate formula.",
+    caveats: [
+      "CBO publishes projected total outlays and total revenue directly — no maturity-window assumption is needed for this row (unlike the “if rollover problems” variant, which stays manual).",
+      "Changes when CBO republishes a new baseline (roughly twice a year), not necessarily when the fiscal outlook itself changes — same framing as the “Debt, 10-yr projection” row above.",
+    ],
+  },
+
   debt_10yr_projection: {
     kind: "observed",
     definition:
