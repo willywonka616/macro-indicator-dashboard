@@ -550,6 +550,33 @@ def _is_mspd_total_row(class1_desc) -> bool:
     return str(class1_desc or "").strip().lower().startswith("total")
 
 
+def _dedupe_mspd_by_cusip(rows):
+    """MSPD reopens a CUSIP across multiple issue_date rows (a bill or
+    note sold in several tranches that all mature on the same date) —
+    outstanding_amt is populated on (typically) just one of those rows and
+    null on the rest, but summing every row regardless still over-counts
+    whenever more than one row happens to carry a value. Confirmed live
+    (TASKborrowingneed.md exploratory round, CUSIP 912797RF6: 4 rows, same
+    maturity_date, issue_dates spanning 2025-07 to 2026-05, only one
+    non-null outstanding_amt): naively summing all individual rows gave
+    ~2.9x the table's own 'Total Marketable' total for the same date.
+    Groups by CUSIP (security_class2_desc) and keeps the single row with
+    the largest outstanding_amt seen for that CUSIP — maturity_date is
+    identical across a CUSIP's reopening rows (confirmed from the same
+    example), so no maturity-window information is lost by keeping only
+    one row per CUSIP."""
+    best = {}
+    for r in rows:
+        cusip = r.get("security_class2_desc")
+        amt = _num(r.get("outstanding_amt"))
+        if amt is None:
+            continue
+        prev = best.get(cusip)
+        if prev is None or amt > (_num(prev.get("outstanding_amt")) or 0.0):
+            best[cusip] = r
+    return list(best.values())
+
+
 def mspd_schema_probe(near_date: str | None = None) -> dict:
     """Diagnostic only. Fetches one record_date's full snapshot (the
     latest, or the one closest to `near_date` if given) and reports:
@@ -592,6 +619,8 @@ def mspd_schema_probe(near_date: str | None = None) -> dict:
         dup_cusip, dup_n = counts.most_common(1)[0]
         dup_example = {"cusip": dup_cusip, "count": dup_n,
                         "rows": [r for r in indiv_rows if r.get("security_class2_desc") == dup_cusip]}
+    deduped = _dedupe_mspd_by_cusip(indiv_rows)
+    sum_deduped = sum(_num(r.get("outstanding_amt")) or 0.0 for r in deduped)
     return {
         "recordDate": record_date,
         "distinctRecordDatesInPage": sorted({r["record_date"] for r in rows}, reverse=True)[:10],
@@ -603,6 +632,8 @@ def mspd_schema_probe(near_date: str | None = None) -> dict:
         "nDistinctCusips": len(distinct_cusips),
         "duplicateCusipExample": dup_example,
         "sumOutstandingAmtIndividualRows_rawUnits": sum_indiv,
+        "nDedupedRows": len(deduped),
+        "sumOutstandingAmtDeduped_rawUnits": sum_deduped,
         "sampleIndividualRow": indiv_rows[0] if indiv_rows else None,
     }
 
@@ -610,7 +641,8 @@ def mspd_schema_probe(near_date: str | None = None) -> dict:
 def mspd_maturing_debt(record_date: str, window_days: int = 366,
                         amt_scale: float = 1.0) -> dict:
     """Sum `outstanding_amt` (marketable securities only, by this table's
-    own scope) for the given `record_date` snapshot, split into maturing-
+    own scope, deduped per CUSIP via _dedupe_mspd_by_cusip — see its
+    docstring) for the given `record_date` snapshot, split into maturing-
     within-`window_days` vs. total. Bills are INCLUDED in "maturing"
     (TASKborrowingneed.md §2: "a bill that can't roll is exactly the
     problem" — Dalio's stress framing wants them in). SOMA (Fed-held)
@@ -627,7 +659,8 @@ def mspd_maturing_debt(record_date: str, window_days: int = 366,
     rows = _get(MSPD_TABLE3_MARKET, params, max_pages=200)
     if not rows:
         raise RuntimeError(f"mspd_maturing_debt: no rows for record_date={record_date}")
-    indiv_rows = [r for r in rows if not _is_mspd_total_row(r.get("security_class1_desc"))]
+    indiv_rows = _dedupe_mspd_by_cusip(
+        [r for r in rows if not _is_mspd_total_row(r.get("security_class1_desc"))])
     cutoff = dt.date.fromisoformat(record_date) + dt.timedelta(days=window_days)
     total_outstanding = 0.0
     maturing = 0.0
@@ -675,12 +708,16 @@ def government_deficit_monthly() -> dict:
     """{(year, month): deficit, $} from mts_table_1's own
     `current_month_dfct_sur_amt` column. Positive = deficit, negative =
     surplus (this pipeline's convention, matching TASKborrowingneed.md's
-    framing "deficit ~$1.9T") — MTS's own official convention labels this
-    column "Deficit(-)/Surplus(+)", i.e. the RAW field is negative for a
-    deficit, so the sign is flipped here. **Sign convention confirmed by
-    cross-checking a live run's raw values against the known fact that
-    the US has run a deficit every month for years** (see verify()'s
-    diagnostic dump) — not assumed from the field name alone.
+    framing "deficit ~$1.9T"). **The RAW field itself is already positive
+    for a deficit** — confirmed live (TASKborrowingneed.md exploratory
+    round): an initial version of this function assumed the opposite from
+    the PDF-era MTS convention ("Deficit(-)/Surplus(+)") and flipped the
+    sign, which produced a NEGATIVE trailing-12-month total — i.e. a
+    "surplus," contradicting the well-known fact that the US has run a
+    deficit every month for years. Removing that flip gave a trailing-12-
+    month total of +$1,829.2B (live, 2026-06) — almost exactly
+    TASKborrowingneed.md's own stated book figure ("deficit ~$1.9T"),
+    confirming the corrected sign, not just ruling out the wrong one.
 
     "Year-to-Date"/"FY ..." rows are aggregates, not single months —
     excluded so they don't get treated as (and double-count) a monthly
@@ -697,7 +734,7 @@ def government_deficit_monthly() -> dict:
         if desc == "Year-to-Date" or desc.startswith("FY "):
             continue
         ym = _ym(row["record_date"])
-        out[ym] = -raw  # MTS convention: raw is negative for a deficit
+        out[ym] = raw  # confirmed live: raw is already positive for a deficit
     if not out:
         raise RuntimeError(
             "government_deficit_monthly: no single-month rows resolved from "
@@ -973,6 +1010,12 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
                   f"full rows: {dup['rows']}")
         else:
             print(f"    no repeated CUSIPs — every individual row is a distinct security")
+        print(f"    after deduping by CUSIP (keep max outstanding_amt per CUSIP): "
+              f"{sp['nDedupedRows']} rows, sum {sp['sumOutstandingAmtDeduped_rawUnits']:,.0f} "
+              f"RAW units — compare against the 'Total Marketable' row's own "
+              f"outstanding_amt above; agreement confirms both the dedup logic and "
+              f"the scale/units (millions of dollars, if this and the Total row both "
+              f"land near ~29,000,000-31,000,000)")
         print(f"    sample individual row: {sp['sampleIndividualRow']}")
 
         print("\n  MSPD maturing-debt sum, latest snapshot (TASKborrowingneed.md, "
