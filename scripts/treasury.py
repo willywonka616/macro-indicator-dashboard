@@ -577,6 +577,60 @@ def _dedupe_mspd_by_cusip(rows):
     return list(best.values())
 
 
+def _is_real_cusip(v) -> bool:
+    v = str(v or "").strip().lower()
+    return v not in ("", "null", "none")
+
+
+def mspd_aggregation_level_probe(record_date: str) -> dict:
+    """TASKmspdparsing.md: tests the aggregation-level-duplication
+    hypothesis for the ~2.9x individual-rows-vs-Total-Marketable gap
+    found in TASKborrowingneed.md's exploratory rounds (CUSIP-level
+    deduplication was tested and disconfirmed as the cause — the sum was
+    unchanged). Hypothesis: the table interleaves DETAIL rows (one per
+    real CUSIP) with SUBTOTAL/TOTAL rows at one or more coarser levels
+    (per security class, and/or grand total), each carrying its own
+    outstanding_amt — summing every row over-counts once per hierarchy
+    level. `security_class2_desc` being a real CUSIP-like string
+    (detail) vs. 'null' (an aggregate row at some level — confirmed true
+    for the grand "Total Marketable" row) is the detail-vs-aggregate
+    signal used here."""
+    params = {"filter": f"record_date:eq:{record_date}", "page[size]": "1000"}
+    rows = _get(MSPD_TABLE3_MARKET, params, max_pages=5)
+    if not rows:
+        raise RuntimeError(f"mspd_aggregation_level_probe: no rows for record_date={record_date}")
+
+    detail_rows = [r for r in rows if _is_real_cusip(r.get("security_class2_desc"))]
+    agg_rows = [r for r in rows if not _is_real_cusip(r.get("security_class2_desc"))]
+    agg_by_class1: dict = {}
+    for r in agg_rows:
+        agg_by_class1.setdefault(r.get("security_class1_desc"), []).append({
+            "security_class1_desc": r.get("security_class1_desc"),
+            "security_class2_desc": r.get("security_class2_desc"),
+            "outstanding_amt": r.get("outstanding_amt"),
+            "issued_amt": r.get("issued_amt"),
+        })
+
+    sum_detail = sum(_num(r.get("outstanding_amt")) or 0.0 for r in detail_rows)
+    sum_all = sum(_num(r.get("outstanding_amt")) or 0.0 for r in rows)
+    total_marketable_row = next(
+        (r for r in agg_rows if _is_mspd_total_row(r.get("security_class1_desc"))), None)
+    total_marketable_amt = _num(total_marketable_row.get("outstanding_amt")) if total_marketable_row else None
+
+    return {
+        "recordDate": record_date,
+        "nRowsTotal": len(rows),
+        "nDetailRows": len(detail_rows),
+        "nAggRows": len(agg_rows),
+        "aggRowsByClass1": agg_by_class1,
+        "sumDetailOnly_rawUnits": sum_detail,
+        "sumAllRows_rawUnits": sum_all,
+        "totalMarketableRow_outstandingAmt_rawUnits": total_marketable_amt,
+        "ratioDetailVsTotalMarketable": (sum_detail / total_marketable_amt) if total_marketable_amt else None,
+        "ratioAllRowsVsTotalMarketable": (sum_all / total_marketable_amt) if total_marketable_amt else None,
+    }
+
+
 def mspd_schema_probe(near_date: str | None = None) -> dict:
     """Diagnostic only. Fetches one record_date's full snapshot (the
     latest, or the one closest to `near_date` if given) and reports:
@@ -1028,6 +1082,24 @@ def verify(tax_receipts_monthly: dict | None = None) -> bool:
         print(f"    maturing within 1yr (raw units): {mat['maturingUsd']:,.0f}")
         if mat["totalOutstandingUsd"]:
             print(f"    maturing share of total: {mat['maturingUsd']/mat['totalOutstandingUsd']*100:.1f}%")
+    except Exception as e:  # noqa: BLE001
+        print(f"    FAILED: {e}")
+
+    print("\n  MSPD aggregation-level-duplication hypothesis test (TASKmspdparsing.md):")
+    try:
+        ap = mspd_aggregation_level_probe(sp["recordDate"])
+        print(f"    record_date {ap['recordDate']}: {ap['nRowsTotal']} rows total — "
+              f"{ap['nDetailRows']} detail (real CUSIP) + {ap['nAggRows']} aggregate (null CUSIP)")
+        print(f"    aggregate rows by security_class1_desc:")
+        for class1, rows_ in ap["aggRowsByClass1"].items():
+            print(f"      {class1!r}: {len(rows_)} row(s) — {rows_}")
+        print(f"    sum(outstanding_amt), DETAIL rows only: {ap['sumDetailOnly_rawUnits']:,.0f}")
+        print(f"    sum(outstanding_amt), ALL rows (detail + aggregate): {ap['sumAllRows_rawUnits']:,.0f}")
+        print(f"    'Total Marketable' row's own outstanding_amt: "
+              f"{ap['totalMarketableRow_outstandingAmt_rawUnits']:,.0f}")
+        print(f"    ratio, detail-only / Total Marketable: {ap['ratioDetailVsTotalMarketable']:.4f} "
+              f"(success = ~1.00)")
+        print(f"    ratio, all-rows / Total Marketable: {ap['ratioAllRowsVsTotalMarketable']:.4f}")
     except Exception as e:  # noqa: BLE001
         print(f"    FAILED: {e}")
 
