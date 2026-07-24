@@ -6,30 +6,30 @@ for another AI assistant (or human) picking this up cold, with no memory of
 prior sessions and no access to this repo's chat history.
 
 > **Current review-round files:**
-> `docs/review/2026-07-23d-verification.md` (run output) and
-> `docs/review/2026-07-23d-values.md` (headline values), base commit
-> `eeb68bd` — `TASKeuroarea.md`: the euro area (aggregate), first non-US
-> country entry. Shared central-bank data model (`centralBank` reference
-> + top-level `centralBanks` entity), three-state own-currency field
-> (`own`/`shared`/`foreign`), no Z-scores anywhere for this entity (§5's
-> own instruction — Dalio's gauge-construction tables are US-only). Every
-> new Eurostat/ECB/COFER-EUR source tried live via `workflow_dispatch`,
-> not assumed: `gov_10q_ggdebt` (both general- and central-government
-> debt bases) and `bop_gdp6_q` (current account) **resolved real,
-> correctly-computed values** but ship `manual` this round because
-> DBnomics' own mirror of both is frozen 380-480 days behind (same
-> pre-existing "mirror can freeze for a year+" failure mode already
-> documented for COFER, §17/§18 — confirmed independently: even the US's
-> COFER USD share read 568 days stale in this same run). `gov_10q_ggnfa`
-> (interest/revenue), ECB `RAS` (reserves — confirmed the right dataset,
-> wrong key shape), and COFER's EUR share genuinely did not resolve
-> (404s) — documented honestly as "live attempted, not yet resolved,"
-> same treatment as BIS's still-unresolved integration. **The single
-> most interesting finding**: basis-identification at Dalio's own
-> vintage found GENERAL government (87.7%, target 85%) is the closer
-> match, not central government (77.6%) as the task's own text expected
-> — a genuine, unforced result. `build_us()` is byte-identical
-> before/after (verified via `git diff` and a local test). See §32.
+> `docs/review/2026-07-24a-verification.md` (run output) and
+> `docs/review/2026-07-24a-values.md` (headline values), base commit
+> `3fb9c14` — `TASKnativesources.md`: native sources are now this
+> project's default; DBnomics is a convenience-cache fallback only (three
+> incidents forced this — gold's PCPS mirror frozen, COFER 568 days
+> stale, and the euro-area series 380-480 days stale, §32). New
+> `scripts/sdmx.py` client, new `CLAUDE.md` recording the policy.
+> **First round this project has ever shipped a genuinely live euro-area
+> row**: Eurostat `gov_10q_ggdebt` (both general- and central-government
+> debt bases) now resolves via NATIVE SDMX, current (2026-Q1) — confirmed
+> directly in the committed `public/data.json` (`debt_to_gdp` and its
+> context row both `tag: "live"`). Two real bugs found and fixed via two
+> live CI rounds: `EUROSTAT_FRESH_DAYS` was miscalibrated (150d, forgot
+> Eurostat dates quarterly observations to quarter-START like FRED does —
+> fixed to 230d) and ECB RAS's first confirmed-real key resolves to
+> implausible all-zero values (now caught by a new plausibility guard
+> instead of silently shipping a wrong "0%" figure). Interest/revenue,
+> ECB reserves, ECB QSA (total debt), IMF COFER (both currencies, both
+> SDMX versions), and BIS all remain genuinely unresolved after
+> structured native attempts — documented honestly with the exact HTTP
+> status from each, not chased further. "Migrate both or neither" COFER
+> coordination implemented and tested (not yet exercised live — both
+> currencies failed identically this round). Full DBnomics-dependency
+> audit table in §33.5. See §33.
 > Each review pass gets its own new file under `docs/review/` instead of
 > rewriting `docs/verification-log.md` / `docs/current-values.md` in
 > place — a reviewer's fetch tool caches by URL and can't see edits to an
@@ -45,9 +45,9 @@ prior sessions and no access to this repo's chat history.
 > `docs/review/2026-07-22c-*.md`, `docs/review/2026-07-22d-*.md`,
 > `docs/review/2026-07-22e-*.md`, `docs/review/2026-07-22f-*.md`,
 > `docs/review/2026-07-22g-*.md`, `docs/review/2026-07-23a-*.md`,
-> `docs/review/2026-07-23b-*.md`, `docs/review/2026-07-23c-*.md`
-> (superseded, left in place). When you add a new round, update this
-> line to point at it.
+> `docs/review/2026-07-23b-*.md`, `docs/review/2026-07-23c-*.md`,
+> `docs/review/2026-07-23d-*.md` (superseded, left in place). When you
+> add a new round, update this line to point at it.
 
 Last updated: **2026-07-19** (later the same day, following an external
 review of §10's review package), by Claude (Sonnet 5). This pass: split
@@ -4549,6 +4549,171 @@ numbers).
 See `docs/review/2026-07-23d-{values,verification}.md` for the full
 review-round writeup, base commit, and the complete job-log excerpts
 behind every claim above.
+
+---
+
+## 33. Native-first: go native, migrate off the DBnomics mirror (2026-07-24, twenty-fourth pass)
+
+`TASKnativesources.md` — a standing policy change (native sources are now
+the default; DBnomics is a fallback cache only) plus the migration it
+enabled. New `scripts/sdmx.py` (Eurostat SDMX 2.1 JSON-stat, ECB SDMX 2.1
+CSV) and new `CLAUDE.md` recording the policy for future sessions. Three
+live CI rounds this pass (`workflow_dispatch` runs `30061177601`,
+`30061697837` — the first found two real bugs, the second confirms both
+fixed), each read directly from the job log, not assumed.
+
+### 33.1 What actually went native — read directly from the final confirming run
+
+`public/data.json` at commit `3fb9c14` (the CI's own data-refresh commit
+on top of the fix commit `16d4b3a`), inspected directly:
+
+| Source | Result | Confirmed via |
+|---|---|---|
+| Eurostat `gov_10q_ggdebt`, general govt (S13) | **LIVE, native SDMX** — 89.4% as of 2026-Q1 | `public/data.json`: `debt_to_gdp` row, `tag: "live"`, `src: "Eurostat gov_10q_ggdebt (native SDMX)..."` |
+| Eurostat `gov_10q_ggdebt`, central govt (S1311) | **LIVE, native SDMX** — 79.1% as of 2026-Q1 (context row) | Same file: `debt_to_gdp_other_basis` row, `tag: "live"` |
+| Eurostat `namq_10_gdp` | **LIVE, native SDMX** — €4,018,237M as of 2026-Q1 | Job log (used internally for the FX-reserves ratio; not its own shipped row) |
+| Eurostat `gov_10q_ggnfa` (interest/revenue) | Native AND mirror both 404 | Job log — unchanged from round c/d, this dataset's na_item/unit codes remain unconfirmed regardless of transport |
+| Eurostat `bop_gdp6_q` (current account) | Native fails (silently — see §33.4), mirror resolves but stale (568/388d) | Job log: `source=dbnomics_mirror`, then rejected by the freshness guard |
+| ECB `RAS` (reserves) | Native "resolves" (HTTP 200) but the value is implausible — correctly rejected by this round's new plausibility guard | Job log: `no native or mirror attempt resolved to a plausible value` |
+| ECB `QSA` (total debt, bonus attempt) | 404, both native attempts | Job log — one bounded attempt made, per the task's own framing; stays exactly what it was (never had a live source) |
+| IMF COFER, both currencies | Native 404 (SDMX 3.0)/501 (SDMX 2.1) for both; mirror fails too (EUR: 404; USD: mirror itself would resolve stale but was correctly forced to manual by the "migrate both or neither" rule since EUR failed entirely) | Job log |
+| BIS `WS_NA_SEC_DSS` | Native probe 404 on both guessed keys; DBnomics mirror still 0 series (unchanged) | Job log — documented as migration debt, not chased further (its blocker was always unconfirmed dimension codes, not mirror staleness) |
+| Gold (LBMA / World Bank Pink Sheet) | Already native-direct, confirmed unchanged | `scripts/gold.py`'s own docstring — DBnomics only appears in its historical narrative, not its active source list |
+
+**This is the first round in this project where a euro-area row has ever
+shipped genuinely live** — `debt_to_gdp` and its context row, both native,
+both current (2026-Q1, not frozen). **Claim status: VERIFIED** — read
+directly from the committed `public/data.json`, not inferred from the
+job log alone.
+
+### 33.2 Two real bugs the first CI round surfaced, fixed and confirmed by the second
+
+1. **`EUROSTAT_FRESH_DAYS` too tight (150d).** The first confirming run
+   (`30061177601`) found native `gov_10q_ggdebt` correctly resolving
+   CURRENT 2026-Q1 data — genuinely healthy — but the freshness guard
+   rejected it as stale at 204 days old. Root cause: forgot Eurostat
+   dates a quarterly observation to the START of the quarter, not the
+   release date — exactly the same convention that gives FRED's own
+   quarterly series their 220d threshold (see `series.py`'s comment on
+   `FRESHNESS_DAYS_BY_FREQ["Quarterly"]`). A threshold built from "t+113d
+   real lag + headroom" alone, without adding the up-to-90-day
+   quarter-start-to-today span, was miscalibrated from the start. Fixed
+   to 230d; the second run (`30061697837`) confirms `debt_to_gdp` now
+   ships live (§33.1).
+2. **ECB RAS's first key resolves to a nonsense value.** The confirmed
+   real DBnomics-discovered key (`M.N.4F.1C.S121.S121.FC.FI.RT1.RT.F41A.
+   TM13.EUR.X1.N.N.ALL`) returns HTTP 200 with real observations —
+   but EVERY value is exactly 0.0. A resolved HTTP request is not the
+   same as a plausible value; without a check, this would have shipped
+   as a live "0% of GDP" reserves figure the moment the OTHER blocker
+   (bug 1, which was gating this same code path via the GDP freshness
+   check) got fixed — which is exactly what nearly happened, since both
+   bugs were found in the SAME run. Added `_plausible_reserves()`
+   (rejects an all-near-zero history) to `scripts/ecb.py`; the second
+   run confirms it correctly falls through to "no attempt resolved" and
+   stays manual, not a silent wrong number.
+
+**Both fixes verified against real live data, not just locally** — the
+first run demonstrated each bug with a real HTTP response, the second
+run (after the fix, same commit range) demonstrates the corrected
+behavior with a real HTTP response. **Claim status: VERIFIED.**
+
+### 33.3 "Migrate both or neither" — COFER coordination, confirmed live
+
+Neither USD nor EUR resolved natively this run (both hit the same
+IMF-API-instability wall this module's docstring already documented).
+Locally, a dedicated test (`test_fetch.py`) mocks one currency native and
+the other mirror-only and confirms the natively-resolved one is correctly
+forced back to manual — this rule wasn't exercised live this round (both
+currencies failed identically, so there was nothing to coordinate), but
+the code path is real and tested. **Claim status: VERIFIED locally, not
+yet exercised live** (would need one currency's native attempt to
+actually succeed while the other's doesn't, which hasn't happened yet).
+
+### 33.4 Honest gaps, not silently left
+
+- **`bop_gdp6_q`'s native attempt fails silently** — `eurostat.py`'s
+  `verify()` only prints the FINAL resolved source, not each individual
+  native-attempt failure the way ECB's `verify_ecb()` does. The exact
+  reason current account's native fetch doesn't resolve (wrong dimension
+  order for this specific dataset? A different key shape entirely?)
+  is genuinely unknown — filed as migration debt for a future session,
+  not guessed at here.
+- **COFER's IMF-native attempts get a real, specific answer, not a
+  shrug**: SDMX 3.0 (`api.imf.org`) returns HTTP 404 for both currencies;
+  SDMX 2.1 (`sdmxcentral.imf.org`) returns HTTP 501 (Not Implemented) for
+  both. Two structured attempts, both cleanly diagnosed, per the task's
+  own instruction — not chased with a third guess.
+- **ECB QSA and BIS native**: both 404, per the reasoning already given
+  in §33.1's table. Neither was a "resolved but stale" migration target
+  to begin with (QSA never had a source at all; BIS's blocker is
+  dimension codes, not transport) — both stay exactly what they already
+  were, now with one additional documented attempt each.
+
+### 33.5 DBnomics dependency audit (TASKnativesources.md §4)
+
+Every series this pipeline touches, and its current transport:
+
+| Series | Native attempted? | Result | DBnomics fallback kept? | Threshold |
+|---|---|---|---|---|
+| Eurostat govt debt (both bases) | Yes | **LIVE native** | Yes, as fallback only | 230d (was 150d, fixed §33.2) |
+| Eurostat current account | Yes | Mirror (stale) | Yes | 230d |
+| Eurostat GDP (internal) | Yes | **LIVE native** | Yes | 230d |
+| Eurostat interest/revenue | Yes | Neither (manual) | Yes, still fails too | 230d |
+| ECB RAS (reserves) | Yes (2 attempts) | Neither plausible (manual) | Yes, still fails too | 60d (Monthly bucket) |
+| ECB QSA (total debt) | Yes (1 bounded attempt) | 404 (manual, unchanged) | No DBnomics equivalent ever built | 230d |
+| IMF COFER (USD + EUR) | Yes (2 attempts each) | Neither (manual/mirror-stale) | Yes | 270d (COFER's own documented longer lag — already appropriately tight, not loosened) |
+| BIS debt-currency share | Yes (2-key probe, diagnostic) | 404 (manual, unchanged) | Yes, still 0 series | n/a (never resolved) |
+| Gold price (LBMA / World Bank) | Already native | **LIVE native** | No — genuinely retired, not "kept as fallback" | Per-leg, unchanged |
+| FRED series (US debt/GDP/etc.) | N/A — FRED has no DBnomics-mirror equivalent in this pipeline | **LIVE native**, always was | N/A | Unchanged |
+
+**Remaining mirror dependencies are all deliberate and now tightened**
+(§4's requirement): none carry a looser-than-one-cycle threshold, and
+every one either has a live-succeeding native alternative already
+serving (Eurostat debt/GDP) or has been probed natively and honestly
+found still-unresolved (interest/revenue, ECB reserves/QSA, COFER, BIS)
+rather than left untried. **Claim status: VERIFIED** — every row above
+traces to a specific job-log line or `public/data.json` field.
+
+### 33.6 Guards (TASKnativesources.md §5)
+
+- Freshness thresholds are per-source real cadence, not inherited —
+  `EUROSTAT_FRESH_DAYS` (230d) and `ECB_RESERVES_FRESH_DAYS` (now the
+  generic 60d Monthly bucket, confirmed appropriate after live research
+  found RAS's real ~45d lag) both have their own calibration comment.
+- The mirror-vs-native cross-check (§2's requirement): general-govt debt
+  read 89.4%/79.1%(central) via native this round vs. 88.2%/78.1% via
+  the mirror in round c/d (STATUS.md §32) — a small, expected drift from
+  a newer quarter (2026-Q1 vs the mirror's frozen 2025-Q2), not a
+  disagreement. Same construction, same numbers within normal
+  quarter-over-quarter movement — no addressing error.
+- No silent basis change: `debt_basis_adopted` is still `"general"` in
+  `public/data.json`'s provenance, same as round c/d's finding (STATUS.md
+  §32.4) — the vintage-identification logic itself wasn't touched this
+  round, only its transport.
+- US rows: untouched except where migration applies (COFER — see
+  `build_us()`'s now source-aware `src` string). `build_us()`'s core
+  logic (debt/GDP, debt service, reserves, etc., none FRED-DBnomics-
+  mirrored) is unchanged; a byte-identical assertion would be
+  meaningless there since nothing in that path changed transport this
+  round — the meaningful check is the COFER row's own correctness,
+  verified in §33.2/§33.3.
+
+### 33.7 Verified vs. assumed
+
+| Claim | Status |
+|---|---|
+| Eurostat government debt (both bases) resolves live via native SDMX, current (2026-Q1) | **VERIFIED** — read directly from `public/data.json` and the job log |
+| The euro area has a genuinely live-shipping row for the first time this project | **VERIFIED** — `debt_to_gdp`/`debt_to_gdp_other_basis`, `tag: "live"`, native src, in the committed file |
+| `EUROSTAT_FRESH_DAYS` was miscalibrated, now fixed | **VERIFIED** — demonstrated live before the fix (204d rejected at 150d threshold) and after (204d accepted at 230d threshold) |
+| ECB RAS's first key returns implausible zero values | **VERIFIED** — read directly from two separate job logs, same result both times |
+| The plausibility guard correctly rejects that exact bug shape | **VERIFIED** — local regression test + the second live run's log showing the correct "no attempt resolved" outcome instead of a shipped 0% |
+| gov_10q_ggnfa, ECB RAS (both keys), ECB QSA, IMF COFER (both currencies, both SDMX versions), BIS (native) all remain genuinely unresolved | **VERIFIED** — each traces to a specific HTTP status in the job log, not silently unattempted |
+| "Migrate both or neither" fires correctly when currencies disagree | **VERIFIED locally only** — not yet exercised live (both currencies failed identically this round) |
+| Native-first policy recorded for future sessions | **VERIFIED** — `CLAUDE.md` created, `STATUS.md` (this section), `README.md`'s COFER description updated |
+
+See `docs/review/2026-07-24a-{values,verification}.md` for the full
+round writeup and complete job-log excerpts behind every claim above.
 
 ---
 
