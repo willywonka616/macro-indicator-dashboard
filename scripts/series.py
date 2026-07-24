@@ -143,24 +143,33 @@ TRESEGUS_FRESH_DAYS = 180
 # quarter (~90d) of headroom above the generic Quarterly threshold.
 TIC_FOREIGN_FRESH_DAYS = FRESHNESS_DAYS_BY_FREQ["Quarterly"] + 90
 
-# --- euro-area cadences (TASKeuroarea.md §3) ------------------------------
+# --- euro-area cadences (TASKeuroarea.md §3, tightened by TASKnativesources.md §5) --
 #
 # Eurostat government finance statistics are quarterly with a real ~3-4
 # month publication lag (confirmed via web research on gov_10q_ggdebt's own
-# release calendar: "t+113 days" after quarter-end) — meaningfully slower
-# than the ~220d headroom the generic Quarterly bucket already carries for
-# FRED's own quarterly series (which are dated to quarter START, not
-# release date, unlike Eurostat's). Reusing the generic Quarterly threshold
-# unmodified would be reusing a US-calibrated number for a structurally
-# different release cadence — TASKeuroarea.md's explicit instruction not
-# to do. 280d = ~9 months of headroom past a t+113d normal lag.
-EUROSTAT_FRESH_DAYS = 280
+# release calendar: "t+113 days" after quarter-end). The original 280d
+# threshold (~9 months of headroom) was calibrated defensively BEFORE this
+# project knew a DBnomics mirror could freeze for 380-480 days (STATUS.md
+# §32) — it was, in effect, loose enough to let that exact failure slip
+# through uncaught for a while. TASKnativesources.md §5's guard requirement
+# ("no looser than one publication cycle") applies whether the data comes
+# back via native Eurostat SDMX or the DBnomics mirror fallback: real-world
+# freshness is real-world freshness regardless of transport. 150d = t+113d
+# normal lag plus ~5 weeks of headroom for routine variance — one cycle,
+# not two-and-a-half.
+EUROSTAT_FRESH_DAYS = 150
 
-# ECB RAS (Eurosystem official reserve assets) is monthly, BOP/IMF-style
-# sourced data (BPM6 classification) — same reasoning as TRESEGUSM052N's
-# own longer-than-domestic-monthly threshold above, not the generic 60d
-# Monthly bucket calibrated to domestic FRED series like CPIAUCSL.
-ECB_RESERVES_FRESH_DAYS = 180
+# ECB RAS (Eurosystem official reserve assets): confirmed via live web
+# research (TASKnativesources.md) to publish "on the 15th day of each
+# month with reference to the previous month" — a real lag of at most
+# ~45 days, comfortably inside the generic 60d Monthly bucket. The
+# original 180d threshold predated this confirmation and was a defensive
+# guess; now that the real cadence is known, reuse the generic Monthly
+# threshold rather than carry a bespoke number with no calibration behind
+# it (the same "don't reuse a threshold whose basis you can't state"
+# discipline that justified giving this series its OWN threshold in the
+# first place, back when the real cadence wasn't yet known).
+ECB_RESERVES_FRESH_DAYS = FRESHNESS_DAYS_BY_FREQ["Monthly"]
 
 # --- manual-value freshness (STATUS.md §19) -------------------------------
 #

@@ -133,12 +133,15 @@ No component changes needed — the country selector is driven by the keys in
 - **Debt vs GDP** uses FRED `FYGFGDQ188S` — federal debt **held by the public**
   as a % of GDP (Dalio's framing), not gross public debt (`GFDEGDQ188S`, which
   also counts intragovernmental holdings and runs ~20 pts higher).
-- **World CB reserves in USD** (reserve-currency panel) is live from **IMF COFER
-  via DBnomics** (`scripts/imf.py`): USD-allocated ÷ sum of all currency
-  components, quarterly. (IMF's own legacy API host was decommissioned; DBnomics
-  is a free, stable mirror.) Fetched best-effort — if it's unreachable the build
-  **falls back to the manual value** rather than failing the run. The other three
-  reserve-currency shares (trade, debt, equity) stay manual (no free API).
+- **World CB reserves in USD** (reserve-currency panel) is live from **IMF COFER,
+  native SDMX first, DBnomics as a fallback mirror** (`scripts/imf.py`):
+  USD-allocated ÷ sum of all currency components, quarterly. Native sources are
+  this project's default (see `CLAUDE.md`) — DBnomics is a convenience cache, kept
+  only where the native endpoint genuinely doesn't resolve, with a freshness
+  threshold no looser than one publication cycle. Fetched best-effort — if
+  neither resolves the build **falls back to the manual value** rather than
+  failing the run. The other three reserve-currency shares (trade, debt, equity)
+  stay manual (no free API).
 - **Current account / GDP** (from FRED `IEABC`, BEA) is a 3-year trailing average;
   the fetcher annualises the quarterly flow unless the series is already annualised
   (`--verify` shows the units so this can be confirmed).

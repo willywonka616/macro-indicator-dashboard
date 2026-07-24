@@ -29,6 +29,20 @@ full via `verify()` so the first live CI run is the actual test — and if
 it doesn't resolve, `debt_currency_share_usd()` raises cleanly and the
 caller falls back to the existing manual value, same as every other
 source in this project that can fail.
+
+**TASKnativesources.md §4 audit note**: BIS *does* have its own native
+SDMX RESTful API, confirmed via live web research —
+`https://stats.bis.org/api/v1/data/{dataset}/{key}/all` (real example:
+`.../data/WS_EER_M/M.N.B.CH/all?startPeriod=2000&endPeriod=2000&detail=full`).
+Unlike the Eurostat/ECB/COFER migrations elsewhere in this project, this
+module's blocker was never DBnomics-mirror staleness — it's the
+underlying SDMX dimension codes themselves being unconfirmed, a problem
+transport migration alone doesn't fix. `verify()` now also probes the
+native endpoint (`_native_probe()`) with the same best-effort attempts,
+so if a future session (or this one, live) gets lucky, it's visible —
+but this stays a DBnomics-based module for now, not a completed native
+migration; kept as documented migration debt, not silently left as if
+nothing changed.
 """
 
 from __future__ import annotations
@@ -39,6 +53,7 @@ import time
 import requests
 
 DATASET = "https://api.db.nomics.world/v22/series/BIS/WS_NA_SEC_DSS"
+NATIVE_BASE = "https://stats.bis.org/api/v1/data/WS_NA_SEC_DSS"
 
 # Best-effort dimension-name guesses, tried in order — DBnomics generally
 # preserves a dataset's own SDMX dimension IDs, but BIS's own public docs
@@ -107,10 +122,30 @@ def debt_currency_share_usd() -> dict:
         "and bis.py module docstring for what was found")
 
 
+def _native_probe():
+    """TASKnativesources.md §4: best-effort probe of BIS's own native SDMX
+    endpoint, same unconfirmed dimension-code guesses as the DBnomics
+    attempts above (Q.5J and Q.3P as the "world" issuer-residence code).
+    Diagnostic only — dumped via verify(), not wired into
+    debt_currency_share_usd() (this module's real blocker is the
+    dimension codes, not which transport serves them)."""
+    for key in ("Q.5J", "Q.3P"):
+        url = f"{NATIVE_BASE}/{key}/all"
+        try:
+            r = requests.get(url, params={"format": "csv", "detail": "full"}, timeout=30)
+            print(f"  native probe {url}: HTTP {r.status_code}, "
+                  f"{len(r.text.splitlines())} lines" if r.status_code == 200
+                  else f"  native probe {url}: HTTP {r.status_code}")
+        except requests.exceptions.RequestException as e:
+            print(f"  native probe {url}: FAILED: {e}")
+
+
 def verify() -> bool:
     """Dumps whatever the best-effort dimension-filter attempts actually
     return, so the exact schema (or exact failure) is visible in the run
     log. Non-fatal: always returns True."""
+    print(f"\n[BIS] native SDMX probe (TASKnativesources.md §4, diagnostic only): {NATIVE_BASE}")
+    _native_probe()
     print(f"\n[BIS] {DATASET}")
     for attempt in _ATTEMPTS:
         params = {"dimensions": json.dumps(attempt), "limit": "20", "observations": "1"}

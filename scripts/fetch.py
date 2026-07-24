@@ -1272,15 +1272,32 @@ def build_us(manual: dict, force: bool) -> dict:
                      "real, 10y", key="real_rates", terms=real_rate_terms),
         ],
     }
-    # World CB reserves in USD: live from IMF COFER, else fall back to manual.
+    # World CB reserves in USD: native IMF COFER first, DBnomics mirror
+    # second (imf.py's cofer_usd_share()), else fall back to manual.
+    # TASKnativesources.md §3: "migrate both or neither, same series
+    # family" — if USD resolves natively but the EUR share (Eurosystem
+    # panel) doesn't, USD is deliberately downgraded to manual too, so
+    # the two currencies of the same underlying COFER dataset never show
+    # a mismatched provenance tag against each other.
     cb_reserves_tag = "live"
     try:
         cofer = I.cofer_usd_share()
         S.require_fresh("IMF COFER USD share", cofer["asOf"], S.COFER_FRESH_DAYS)
+        if cofer.get("source") == "native":
+            try:
+                eur_check = I.cofer_eur_share()
+                if eur_check.get("source") != "native":
+                    raise RuntimeError(
+                        "USD resolved natively but EUR did not — 'migrate both or neither' "
+                        "(TASKnativesources.md §3) means USD stays manual until both do")
+            except Exception as coord_e:  # noqa: BLE001
+                raise RuntimeError(f"COFER USD/EUR coordination check failed: {coord_e}") from coord_e
+        cofer_src = ("IMF COFER (native SDMX, " + cofer.get("attempt", "") + ")"
+                     if cofer.get("source") == "native" else "IMF COFER (DBnomics mirror)")
         cb_reserves_row = {
             "label": "World CB reserves in USD", "value": num(cofer["latest"]),
             "display": pct_display(cofer["latest"], 1), "unit": "", "tone": "mitig",
-            "tag": "live", "src": "IMF COFER (DBnomics)", "asOf": cofer["asOf"], "history": cofer["history"],
+            "tag": "live", "src": cofer_src, "asOf": cofer["asOf"], "history": cofer["history"],
             "key": "world_cb_reserves_usd",
         }
     except Exception as e:  # noqa: BLE001
@@ -1680,9 +1697,10 @@ def build_eur(manual: dict) -> dict:
             debt_basis_adopted, chosen, other = "general", general, central
         S.require_fresh("Eurostat government debt (chosen basis)", chosen["asOf"], S.EUROSTAT_FRESH_DAYS)
         sector_code = "S1311" if debt_basis_adopted == "central" else "S13"
+        src_label = "native SDMX" if chosen.get("source") == "native" else "DBnomics mirror"
         debt_row = live_row(
             "Government debt (% of GDP)", chosen, "risk",
-            f"Eurostat gov_10q_ggdebt (DBnomics), {debt_basis_adopted} government "
+            f"Eurostat gov_10q_ggdebt ({src_label}), {debt_basis_adopted} government "
             f"({sector_code}, geo={chosen['geo']})",
             "of GDP", decimals=0, key="debt_to_gdp",
             note=f"Basis identified at Dalio's March-2025 vintage (TASKeuroarea.md §3): "
@@ -1692,9 +1710,10 @@ def build_eur(manual: dict) -> dict:
         debt_tag = "live"
         other_label = "general" if debt_basis_adopted == "central" else "central"
         if other.get("history"):
+            other_src_label = "native SDMX" if other.get("source") == "native" else "DBnomics mirror"
             debt_context_row = live_row(
                 f"— {other_label} government basis (context)", other, "neutral",
-                f"Eurostat gov_10q_ggdebt (DBnomics), {other_label} government, geo={other['geo']}",
+                f"Eurostat gov_10q_ggdebt ({other_src_label}), {other_label} government, geo={other['geo']}",
                 "of GDP", decimals=1, key="debt_to_gdp_other_basis",
                 note=f"Shown for comparison only — Dalio's own table uses the {debt_basis_adopted}-"
                      f"government basis (row above), identified at his March-2025 vintage.")
@@ -1724,9 +1743,10 @@ def build_eur(manual: dict) -> dict:
     try:
         ir = E.central_govt_interest_pct_revenue()
         S.require_fresh("Eurostat central govt interest/revenue", ir["asOf"], S.EUROSTAT_FRESH_DAYS)
+        ir_src_label = "native SDMX" if ir.get("source") == "native" else "DBnomics mirror"
         interest_row = live_row(
             "Government interest (% of revenue)", ir, "risk",
-            f"derived · Eurostat gov_10q_ggnfa (DBnomics), central government interest (D41) / "
+            f"derived · Eurostat gov_10q_ggnfa ({ir_src_label}), central government interest (D41) / "
             f"total revenue (TR), geo={ir['geo']}",
             "of revenue", decimals=1, key="interest_to_revenue")
         interest_tag = "live"
@@ -1757,9 +1777,10 @@ def build_eur(manual: dict) -> dict:
         ca = E.current_account_pct_gdp()
         S.require_fresh("Eurostat current account", ca["asOf"], S.EUROSTAT_FRESH_DAYS)
         ca_3yr = S.trailing_avg_quarterly_pct(ca["raw"], quarters=12)
+        ca_src_label = "native SDMX" if ca.get("source") == "native" else "DBnomics mirror"
         ca_row = live_row(
             "Current account, 3-yr avg", ca_3yr, "caution",
-            f"Eurostat bop_gdp6_q (DBnomics), geo={ca['geo']}", "of GDP", decimals=1,
+            f"Eurostat bop_gdp6_q ({ca_src_label}), geo={ca['geo']}", "of GDP", decimals=1,
             key="current_account_3yr")
         ca_tag = "live"
     except Exception as e:  # noqa: BLE001
@@ -1812,13 +1833,41 @@ def build_eur(manual: dict) -> dict:
             manual_row("Sovereign wealth assets", mu["sovereignWealth"], key="sovereign_wealth"),
         ],
     }
+    # --- Total debt (all sectors): ONE bounded native attempt (ECB QSA) ---
+    # TASKnativesources.md §2/§4: never had a live source at all (not a
+    # "resolved but stale" migration target, despite the task's framing —
+    # same BIS all-sector-credit schema gap as the US's own equivalent
+    # row). See scripts/ecb.py's total_debt_pct_gdp() for the one
+    # reasoned attempt made here.
+    total_debt_tag = "manual"
+    total_debt_row = None
+    try:
+        td = EC.total_debt_pct_gdp()
+        S.require_fresh("ECB QSA total debt (all sectors)", td["asOf"], S.EUROSTAT_FRESH_DAYS)
+        if not (50.0 <= td["latest"] <= 500.0):
+            raise RuntimeError(f"validation: total debt {td['latest']}% of GDP outside the sane 50-500% band")
+        total_debt_row = live_row(
+            "Total debt (all sectors)", td, "caution",
+            f"ECB QSA (native SDMX), all sectors, geo=EA20", "of GDP", decimals=0,
+            key="total_debt_all_sectors")
+        total_debt_tag = "live"
+    except Exception as e:  # noqa: BLE001
+        print(f"EUR total debt (all sectors) unavailable: {e}")
+    if total_debt_row is None:
+        # total_debt_all_sectors: same reasoning as above — equations.js's
+        # entry names FRED TCMDO specifically, wrong for this book figure.
+        total_debt_row = manual_row("Total debt (all sectors)",
+                                     {**mu["totalDebtAllSectorsFallback"],
+                                      "note": mu["totalDebtAllSectorsFallback"].get("note", "") +
+                                              " (2026-07-24: one bounded native ECB QSA attempt made "
+                                              "this round, per TASKnativesources.md — see STATUS.md "
+                                              "for the result; not chased further than one attempt.)"})
+
     broader_panel = {
         "eyebrow": "Broader health (euro area aggregate)", "tag": "model",
         "note": "Economy-wide leverage and the external balance, same as the US panel.",
         "rows": [
-            # total_debt_all_sectors: same reasoning as above — equations.js's
-            # entry names FRED TCMDO specifically, wrong for this book figure.
-            manual_row("Total debt (all sectors)", mu["totalDebtAllSectorsFallback"]),
+            total_debt_row,
             ca_row,
         ],
     }
@@ -1908,9 +1957,12 @@ def build_eurosystem(manual: dict) -> dict:
             raise RuntimeError(f"validation: FX reserves {pct}% of GDP outside the sane 0.5-30% band")
         hist = [{"y": S.q_decimal(k), "v": round((res_q[k][1] / gdp_annual[k]) * 100.0, 2)}
                 for k in common_q]
+        res_src_label = "native SDMX" if reserves.get("source") == "native" else "DBnomics mirror"
+        gdp_src_label = "native SDMX" if gdp.get("source") == "native" else "DBnomics mirror"
         fx_reserves_row = live_row(
             "FX reserves (of euro-area GDP)", pct, pct_display(pct, 1), S.q_label(last_q), "risk",
-            f"derived · ECB RAS (reserve assets) / Eurostat namq_10_gdp, both {S.q_label(last_q)}",
+            f"derived · ECB RAS ({res_src_label}, reserve assets) / "
+            f"Eurostat namq_10_gdp ({gdp_src_label}), both {S.q_label(last_q)}",
             "of GDP", key="fx_reserves_pct_gdp", history=hist)
         fx_reserves_tag = "live"
     except Exception as e:  # noqa: BLE001
@@ -1919,15 +1971,27 @@ def build_eurosystem(manual: dict) -> dict:
         fx_reserves_row = manual_row("FX reserves (of euro-area GDP)",
                                       cb_mu["reservePanel"]["rows"][0], key="fx_reserves_pct_gdp")
 
-    # --- World CB reserves in EUR: IMF COFER, same dataset as the US USD share ---
+    # --- World CB reserves in EUR: native IMF COFER first, DBnomics mirror
+    # second, same dataset as the US USD share. "Migrate both or neither"
+    # (TASKnativesources.md §3) enforced here too — EUR stays manual
+    # unless USD ALSO resolved natively this same run (see fetch.py's
+    # build_us(), which applies the mirror-image check).
     cofer_eur_tag = "manual"
     cofer_eur_row = None
     try:
         cofer_eur = I.cofer_eur_share()
         S.require_fresh("IMF COFER EUR share", cofer_eur["asOf"], S.COFER_FRESH_DAYS)
+        if cofer_eur.get("source") == "native":
+            usd_check = I.cofer_usd_share()
+            if usd_check.get("source") != "native":
+                raise RuntimeError(
+                    "EUR resolved natively but USD did not — 'migrate both or neither' "
+                    "(TASKnativesources.md §3) means EUR stays manual until both do")
+        cofer_eur_src = ("IMF COFER (native SDMX, " + cofer_eur.get("attempt", "") + ")"
+                          if cofer_eur.get("source") == "native" else "IMF COFER (DBnomics mirror)")
         cofer_eur_row = live_row(
             "World CB reserves in EUR", cofer_eur["latest"], pct_display(cofer_eur["latest"], 1),
-            cofer_eur["asOf"], "mitig", "IMF COFER (DBnomics)", "",
+            cofer_eur["asOf"], "mitig", cofer_eur_src, "",
             key="world_cb_reserves_eur", history=cofer_eur.get("history"))
         cofer_eur_tag = "live"
     except Exception as e:  # noqa: BLE001
