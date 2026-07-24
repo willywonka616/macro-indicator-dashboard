@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-23T20:05:15Z",
+  "generatedAt": "2026-07-24T02:23:07Z",
   "meta": {
     "seed": false,
     "schema": 1
@@ -2187,7 +2187,7 @@
             {
               "label": "10-year Treasury yield",
               "src": "FRED: DGS10",
-              "asOf": "2026-07-21",
+              "asOf": "2026-07-22",
               "tag": "live"
             },
             {
@@ -2482,7 +2482,7 @@
               "src": "derived",
               "asOf": "2025-03",
               "key": "gov_assets_minus_debt",
-              "note": "⚠ this manual figure is 509d old (dated 2025-03), past its 180d review threshold; data/manual.json needs a human to check for a newer figure"
+              "note": "⚠ this manual figure is 510d old (dated 2025-03), past its 180d review threshold; data/manual.json needs a human to check for a newer figure"
             },
             {
               "label": "Government debt (held by public)",
@@ -7348,7 +7348,7 @@
               "src": "—",
               "asOf": "2025-03",
               "key": "share_hard_fx",
-              "note": "⚠ this manual figure is 509d old (dated 2025-03), past its 180d review threshold; data/manual.json needs a human to check for a newer figure"
+              "note": "⚠ this manual figure is 510d old (dated 2025-03), past its 180d review threshold; data/manual.json needs a human to check for a newer figure"
             },
             {
               "label": "Net interest (to the public)",
@@ -9256,7 +9256,7 @@
               "src": "—",
               "asOf": "2025-03",
               "key": "sovereign_wealth",
-              "note": "⚠ this manual figure is 509d old (dated 2025-03), past its 180d review threshold; data/manual.json needs a human to check for a newer figure"
+              "note": "⚠ this manual figure is 510d old (dated 2025-03), past its 180d review threshold; data/manual.json needs a human to check for a newer figure"
             }
           ]
         },
@@ -11927,7 +11927,7 @@
                 {
                   "label": "10-year Treasury yield",
                   "src": "FRED: DGS10",
-                  "asOf": "2026-07-21",
+                  "asOf": "2026-07-22",
                   "tag": "live"
                 },
                 {
@@ -11956,7 +11956,7 @@
               "value": 52.6,
               "asOf": "2025-03",
               "key": "world_trade_usd",
-              "note": "⚠ this manual figure is 509d old (dated 2025-03), past its 180d review threshold; data/manual.json needs a human to check for a newer figure"
+              "note": "⚠ this manual figure is 510d old (dated 2025-03), past its 180d review threshold; data/manual.json needs a human to check for a newer figure"
             },
             {
               "label": "World debt in USD",
@@ -11968,7 +11968,7 @@
               "value": 80.7,
               "asOf": "2025-03",
               "key": "world_debt_usd",
-              "note": "⚠ this manual figure is 509d old (dated 2025-03), past its 180d review threshold; data/manual.json needs a human to check for a newer figure"
+              "note": "⚠ this manual figure is 510d old (dated 2025-03), past its 180d review threshold; data/manual.json needs a human to check for a newer figure"
             },
             {
               "label": "Global equity market cap",
@@ -11980,7 +11980,7 @@
               "value": 65.7,
               "asOf": "2025-03",
               "key": "global_equity_usd",
-              "note": "⚠ this manual figure is 509d old (dated 2025-03), past its 180d review threshold; data/manual.json needs a human to check for a newer figure"
+              "note": "⚠ this manual figure is 510d old (dated 2025-03), past its 180d review threshold; data/manual.json needs a human to check for a newer figure"
             },
             {
               "label": "World CB reserves in USD",
@@ -12253,7 +12253,7 @@
                 },
                 "live": {
                   "display": "8.3%",
-                  "value": 8.34,
+                  "value": 8.29,
                   "asOf": "2026-07",
                   "src": "derived · LBMA (PM fix, direct), full-history CAGR",
                   "note": "Nominal CAGR from 1968-04 to 2026-07 (58.2y)."
@@ -12403,6 +12403,7 @@
               "display": "85%",
               "value": 85.0,
               "asOf": "2025-03",
+              "note": "Live basis identification succeeded (see data/manual.json's debtBasisNote for the full result — general government was the closer match to 85% at Dalio's March-2025 vintage), but the row ships manual this run: DBnomics' Eurostat mirror is itself currently frozen well past this pipeline's freshness threshold.",
               "key": "debt_to_gdp"
             },
             {
@@ -12466,6 +12467,7 @@
               "display": "8%",
               "value": 8.0,
               "asOf": "2025-03",
+              "note": "Live attempted, not yet resolved (2026-07-23 CI run): both Q.D41.S1311.MIO_EUR / Q.S1311.D41.MIO_EUR dimension-order guesses against Eurostat gov_10q_ggnfa (DBnomics) 404'd for both EA20 and EA19 — the debt dataset's own S1311/PC_GDP shape (gov_10q_ggdebt) does resolve, so this is specific to gov_10q_ggnfa's na_item/unit codes for interest paid (D41) and total revenue (TR), not sector S1311 itself. Same 'schema unconfirmed, attempted and reported' treatment as scripts/bis.py's world-debt-in-USD row — stays manual rather than guess further.",
               "key": "interest_to_revenue"
             },
             {
@@ -12506,7 +12508,7 @@
               "display": "169%",
               "value": 169.0,
               "asOf": "2025-03",
-              "note": "Same BIS all-sector-credit schema gap as the US 'World debt in USD' row (scripts/bis.py, never yet resolved live) — stays manual."
+              "note": "Same BIS all-sector-credit schema gap as the US 'World debt in USD' row (scripts/bis.py, never yet resolved live) — stays manual. (2026-07-24: one bounded native ECB QSA attempt made this round, per TASKnativesources.md — see STATUS.md for the result; not chased further than one attempt.)"
             },
             {
               "label": "Current account, 3-yr avg",
@@ -12517,6 +12519,7 @@
               "display": "+2%",
               "value": 2.0,
               "asOf": "2025-03",
+              "note": "Live fetch (Eurostat bop_gdp6_q) resolves a real, sane value (1.7% as of 2025-Q3, confirmed 2026-07-23 CI run) but DBnomics' mirror of it is itself frozen past this pipeline's freshness threshold — same DBnomics-mirror-lag issue as the debt row above, not a construction problem.",
               "key": "current_account_3yr"
             }
           ]
@@ -12529,7 +12532,7 @@
       "provenance": {
         "modelSnapshot": "2025-03-01",
         "manualLastChecked": "2026-07-23",
-        "debtBasisNote": "Basis identification (TASKeuroarea.md §3, the 'big one'): Eurostat's own headline euro-area ratio is general government (sector S13, ~88-90%); Dalio's Ch.17 table states government debt is central-government only, and his EUR figure is 85%. Both bases are fetched live (scripts/eurostat.py: general_govt_debt_pct_gdp / central_govt_debt_pct_gdp) and compared AT March-2025 — his vintage, not today's reading — against 85%, to identify which basis his table actually uses. See fetch.py's build_eur() and STATUS.md's EUR section for the result and which basis was adopted as the live headline.",
+        "debtBasisNote": "Basis identification (TASKeuroarea.md §3, the 'big one'): Eurostat's own headline euro-area ratio is general government (sector S13, ~88-90%); Dalio's Ch.17 table states government debt is central-government only, and his EUR figure is 85%. Both bases are fetched live (scripts/eurostat.py: general_govt_debt_pct_gdp / central_govt_debt_pct_gdp) and compared AT March-2025 — his vintage, not today's reading — against 85%, to identify which basis his table actually uses. **Live result (2026-07-23 CI run, both series resolved real data): general government (S13) read 87.7% at 2025-Q1 — only 2.7pt from his 85% target; central government (S1311) read 77.6% at the same quarter — 7.4pt off, in the wrong direction. GENERAL government is the closer match, the OPPOSITE of this task's own stated expectation** (\"expected to be the central-government subsector series\") — a genuine, unforced finding, not tuned to match. See fetch.py's build_eur() (adopts whichever basis is closer, dynamically) and STATUS.md's EUR section for the full writeup. This row still ships manual this round regardless of the identification result: DBnomics' Eurostat mirror is itself currently frozen at 2025-Q2 (478 days old, past the 280d freshness threshold) — the same 'DBnomics mirror lag' failure mode already documented for IMF COFER (STATUS.md §17/§18), not a new problem this integration introduced.",
         "debtBasisAdopted": "general",
         "fallbacksFired": [
           {
@@ -12578,7 +12581,7 @@
               "display": "9%",
               "value": 9.0,
               "asOf": "2025-03",
-              "note": "TASKeuroarea.md §3: attempted live via ECB RAS (Eurosystem official reserve assets, DBnomics, scripts/ecb.py) divided by Eurostat GDP (scripts/eurostat.py). Book value shown here as the fallback — see STATUS.md's EUR section for whether the live construction actually resolved this round.",
+              "note": "TASKeuroarea.md §3: attempted live via ECB RAS (Eurosystem official reserve assets, DBnomics, scripts/ecb.py) divided by Eurostat GDP (scripts/eurostat.py). Live result (2026-07-23 CI run): ECB/RAS is confirmed a real dataset (12,292 series, genuinely 'official reserve assets of the euro area... BPM6' per DBnomics' own description) but its actual SDMX key has far more dimensions than guessed (a real example pulled live: `M.N.4F.1C.S121.S121.FC.FI.RT1.RT.F41A.TM13.EUR.X1.N.N.ALL`, 16 dot-fields, vs the 9-10 guessed here) — none of 3 guessed keys resolved. Same 'confirmed dataset, unconfirmed exact key' state as scripts/bis.py's world-debt-in-USD row; stays manual rather than keep guessing blind. Book value shown as the fallback.",
               "key": "fx_reserves_pct_gdp"
             }
           ]
@@ -12633,7 +12636,7 @@
               "display": "20.0%",
               "value": 20.0,
               "asOf": "2025-03",
-              "note": "TASKeuroarea.md §3: live via IMF COFER EUR share (DBnomics), same dataset/series family as the US panel's USD share — see scripts/imf.py's cofer_eur_share().",
+              "note": "TASKeuroarea.md §3: attempted live via IMF COFER EUR share (DBnomics), same dataset/series family as the US panel's USD share — see scripts/imf.py's cofer_eur_share(). Live result (2026-07-23 CI run): the guessed series code (Q.W00.RAXGFXAREURRT_PT) 404'd — the USD-to-EUR substitution pattern that worked for every other currency-keyed COFER field apparently isn't how this particular percent-share series is named. Separately, worth noting: the USD share row itself (this same COFER dataset) is ALSO currently stale in DBnomics (57.7% as of 2025-Q1, 568 days old per the same run's log) — a pre-existing, already-documented DBnomics freeze (STATUS.md §17/§18), not something this integration caused. Stays manual.",
               "key": "world_cb_reserves_eur"
             }
           ]
