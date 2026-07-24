@@ -93,26 +93,45 @@ def _dbnomics_fetch(key: str) -> dict:
     return out
 
 
+def _plausible_reserves(hist: dict) -> bool:
+    """Reject a syntactically-resolved series that's obviously not
+    aggregate reserve assets — confirmed live (2026-07-24 CI run) that
+    the first _KEY_ATTEMPTS guess resolves (HTTP 200, real observations)
+    but returns EXACTLY 0.0 for every point, i.e. some narrow/irrelevant
+    instrument-maturity slice of the BOP DSD, not the total. A resolved
+    key with no exception raised is NOT the same as a resolved key with a
+    plausible value — this project's own "confirm rather than assume"
+    rule applies to the VALUE, not just the HTTP status."""
+    return any(v > 1000.0 for v in hist.values())  # real reserves are hundreds of billions of EUR (millions-denominated)
+
+
 def reserve_assets_eur() -> dict:
     """{"latest": float (EUR, millions), "asOf": "YYYY-MM", "history": [...],
     "raw": {...}, "source": "native"|"dbnomics_mirror"} — Eurosystem
     official reserve assets. Tries native ECB SDMX first (both key
     attempts), then the DBnomics mirror (same two keys) as a fallback.
-    Raises if none resolve; caller falls back to the manual (book) figure."""
+    Raises if none resolve to a PLAUSIBLE value (see _plausible_reserves);
+    caller falls back to the manual (book) figure."""
     last_err = None
     for key in _KEY_ATTEMPTS:
         try:
             hist = X.ecb_series(ECB_FLOW, key, last_n=36)
+            if not _plausible_reserves(hist):
+                raise RuntimeError(f"key {key} resolved but values are implausible for aggregate "
+                                    f"reserve assets (e.g. all zero) — not the right series")
             return _to_metric(hist, key, "native")
         except Exception as e:  # noqa: BLE001
             last_err = e
     for key in _KEY_ATTEMPTS:
         try:
             hist = _dbnomics_fetch(key)
+            if not _plausible_reserves(hist):
+                raise RuntimeError(f"key {key} resolved via mirror but values are implausible")
             return _to_metric(hist, key, "dbnomics_mirror")
         except RuntimeError as e:
             last_err = e
-    raise RuntimeError(f"ECB RAS: no native or mirror attempt resolved ({_KEY_ATTEMPTS}): {last_err}")
+    raise RuntimeError(f"ECB RAS: no native or mirror attempt resolved to a plausible value "
+                        f"({_KEY_ATTEMPTS}): {last_err}")
 
 
 def _to_metric(hist: dict, key: str, source: str) -> dict:

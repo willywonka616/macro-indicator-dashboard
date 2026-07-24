@@ -154,10 +154,22 @@ TIC_FOREIGN_FRESH_DAYS = FRESHNESS_DAYS_BY_FREQ["Quarterly"] + 90
 # through uncaught for a while. TASKnativesources.md §5's guard requirement
 # ("no looser than one publication cycle") applies whether the data comes
 # back via native Eurostat SDMX or the DBnomics mirror fallback: real-world
-# freshness is real-world freshness regardless of transport. 150d = t+113d
-# normal lag plus ~5 weeks of headroom for routine variance — one cycle,
-# not two-and-a-half.
-EUROSTAT_FRESH_DAYS = 150
+# freshness is real-world freshness regardless of transport.
+#
+# 2026-07-24 live-CI correction: an initial 150d threshold (t+113d normal
+# lag + ~5 weeks headroom) was WRONG — it forgot that, exactly like FRED's
+# own quarterly series (see the generic "Quarterly" bucket's own comment
+# above), Eurostat dates a quarterly observation to the START of the
+# quarter, not the release date. Confirmed live: native gov_10q_ggdebt
+# correctly resolved CURRENT 2026-Q1 data, genuinely healthy, and the
+# freshness guard wrongly rejected it as stale at 204 days old — the
+# exact "reused a threshold whose basis didn't hold" bug this project has
+# hit before (§25's quarterly_last() bug, from a different cause, same
+# family of "the fix looked right until live data disagreed"). 230d =
+# up to ~90d for quarter-start dating + t+113d real lag + headroom, same
+# reasoning as FRED's own 220d, calibrated slightly looser since Eurostat's
+# own confirmed real lag (113d) is longer than FRED's quarterly series.
+EUROSTAT_FRESH_DAYS = 230
 
 # ECB RAS (Eurosystem official reserve assets): confirmed via live web
 # research (TASKnativesources.md) to publish "on the 15th day of each
